@@ -9,7 +9,7 @@ Two backends with the same functions:
 
 A flat is a dict: page_id, property_id, title, status, reason, elevator, portal, total_monthly, upfront, floor,
 interested (the renter's "Interested?" column: Yes, No or None; None also when the column does not exist),
-furnished, commission, metro_m. `upfront` is read from "Move-in cost" when the database has it, else "Upfront".
+furnished, commission, metro_m. `upfront` is, per flat, the first filled value of "Move-in total", "Move-in cost", "Upfront".
 Only Property ID and Status are required; any other missing property reads as None and is listed in MISSING.
 Only Status and Reason are ever written, and only to a test or synthetic database unless ALLOW_REAL is set.
 """
@@ -78,7 +78,7 @@ def data_source_id():
 REQUIRED = ("Property ID", "Status")
 OPTIONAL = ("Name", "Reason", "Interested?", "Elevator", "Furnished", "Floor", "Metro m", "Commission",
             "Total monthly", "Sources")
-UPFRONT_NAMES = ("Move-in cost", "Upfront")  # first one present wins; issue #84 renames Upfront to Move-in cost
+UPFRONT_NAMES = ("Move-in total", "Move-in cost", "Upfront")  # per page the first filled one wins (issue #84)
 MISSING = []  # optional properties the last list_flats() did not find; reported by loop.py
 ALLOW_REAL = False  # set by loop.py --real; without it only a test or synthetic database is ever written
 
@@ -91,7 +91,7 @@ def _number(p, name):
 def _flat(page):
     p = page.get("properties") or {}
     sources = [s.get("name") for s in (p.get("Sources") or {}).get("multi_select") or [] if s.get("name")]
-    upfront = next((_number(p, name) for name in UPFRONT_NAMES if name in p), None)
+    upfront = next((v for v in (_number(p, name) for name in UPFRONT_NAMES) if v is not None), None)
     return {
         "page_id": page["id"],
         "property_id": _plain(p.get("Property ID") or {}),
