@@ -22,10 +22,7 @@ p, h1, h2, ol { margin: 0; padding: 0; }
 }
 
 header { display: flex; align-items: center; gap: .8rem; margin-bottom: 4vh; }
-.mark { width: 3.6rem; height: 2.25rem; flex: none; }
-.bracket { fill: none; stroke: #ff8a70; stroke-width: 5; stroke-linecap: round; }
-.house { fill: #fff; }
-.window { fill: #ffd23f; }
+.mark { width: 2.75rem; height: 2.75rem; flex: none; image-rendering: pixelated; }
 .brand { font-size: 1.25rem; font-weight: 800; letter-spacing: .16em; }
 .team { font-size: 1rem; color: rgba(255, 255, 255, .7); }
 .repo {
