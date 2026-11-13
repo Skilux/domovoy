@@ -23,7 +23,7 @@ ESTIMATED_ORDER = (
     "total_monthly",
     "hidden_monthly",
     "first_payment",
-    "upfront",
+    "move_in_cost",
     "missing_furniture_cost",
 )
 
@@ -40,15 +40,24 @@ def compute_costs(listing: Listing, ex: Extraction, profile: SearchProfile) -> C
     commission = _commission(ex.commission.value, rent)
     one_time = _one_time_fees(ex.one_time_fees.value)
     first_payment = total
-    upfront = _sum(first_payment, kauce, commission, one_time)
     furniture, furniture_cost = _missing_furniture(ex.missing_furniture.value)
+    move_in_cost, move_in_note = _move_in(
+        rent=rent,
+        services=services,
+        energy=energy,
+        energy_estimated=energy_estimated,
+        kauce=kauce,
+        commission=commission,
+        fees=ex.one_time_fees.value,
+        furniture_cost=furniture_cost,
+    )
 
     values: dict[str, int | None] = {
         "energy": energy,
         "total_monthly": total,
         "hidden_monthly": hidden,
         "first_payment": first_payment,
-        "upfront": upfront,
+        "move_in_cost": move_in_cost,
         "missing_furniture_cost": furniture_cost,
     }
     depends_on_estimate = {
@@ -56,8 +65,8 @@ def compute_costs(listing: Listing, ex: Extraction, profile: SearchProfile) -> C
         "total_monthly": energy_estimated,
         "hidden_monthly": energy_estimated,
         "first_payment": energy_estimated,
-        "upfront": energy_estimated,
         # The furniture prices come from a table, so their total is an estimate.
+        "move_in_cost": energy_estimated or bool(furniture_cost),
         "missing_furniture_cost": bool(furniture),
     }
     estimated = [
@@ -74,10 +83,11 @@ def compute_costs(listing: Listing, ex: Extraction, profile: SearchProfile) -> C
         commission=commission,
         one_time_fees=one_time,
         first_payment=first_payment,
-        upfront=upfront,
         missing_furniture=furniture,
         missing_furniture_cost=furniture_cost,
         hidden_monthly=hidden,
+        move_in_cost=move_in_cost,
+        move_in_note=move_in_note,
         estimated=estimated,
     )
 
@@ -151,3 +161,49 @@ def _missing_furniture(items: list[Furniture] | None) -> tuple[list[str], int | 
     unique = list(dict.fromkeys(items))
     names: list[str] = list(unique)
     return names, sum(FURNITURE_CZK[item] for item in unique)
+
+
+def _move_in(
+    *,
+    rent: int | None,
+    services: int | None,
+    energy: int | None,
+    energy_estimated: bool,
+    kauce: int | None,
+    commission: int | None,
+    fees: list[OneTimeFee] | None,
+    furniture_cost: int | None,
+) -> tuple[int | None, str | None]:
+    """Cash needed to move in, and a note on what it leaves out or estimates.
+
+    First month (rent + services + energy) + kauce + commission (VAT included) + stated one-time fees + missing
+    furniture. Unknown parts are left out instead of making the sum unknown, and estimates count; the note names
+    both. None only when the rent is unknown. It replaces the old upfront (stated costs only, unknown when any part
+    was unknown); call_context still calls it upfront.
+    """
+    if rent is None:
+        return None, "Unknown: rent is not stated."
+    fee_amounts = [fee.czk for fee in fees or []]
+    parts: list[tuple[str, int | None]] = [
+        ("services", services),
+        ("energy", energy),
+        ("deposit", kauce),
+        ("commission", commission),
+        ("one-time fees", None if fees is None else sum(c for c in fee_amounts if c is not None)),
+        ("missing furniture", furniture_cost),
+    ]
+    excluded = [name for name, value in parts if value is None]
+    if fees is not None and None in fee_amounts:
+        excluded.append("amounts of some one-time fees")
+    estimated = [name for name, flag in (("energy", energy_estimated), ("furniture", bool(furniture_cost))) if flag]
+    sentences = []
+    if excluded:
+        sentences.append("Excludes %s (not stated)." % _join(excluded))
+    if estimated:
+        sentences.append("Includes estimated %s." % _join(estimated))
+    total = rent + sum(value for _, value in parts if value is not None)
+    return total, " ".join(sentences) or "All parts stated."
+
+
+def _join(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else "%s and %s" % (", ".join(names[:-1]), names[-1])

@@ -202,8 +202,8 @@ def fake_costs(*, rejected_source_ids: tuple[str, ...] = ()) -> SimpleNamespace:
     def compute_costs(listing: Listing, ex: Extraction, profile: SearchProfile) -> Costs:
         return Costs(
             rent=listing.rent, services=None, energy=None, total_monthly=listing.rent, kauce=None,
-            commission=None, one_time_fees=None, first_payment=None, upfront=None,
-            missing_furniture=[], missing_furniture_cost=None, hidden_monthly=None, estimated=[],
+            commission=None, one_time_fees=None, first_payment=None, move_in_cost=None,
+            move_in_note=None, missing_furniture=[], missing_furniture_cost=None, hidden_monthly=None, estimated=[],
         )
 
     def evaluate(listing: Listing, ex: Extraction, costs: Costs, profile: SearchProfile) -> Evaluation:
@@ -502,8 +502,9 @@ def test_flatitem_assembly_matches_the_hand_built_example():
     ).model_copy(update={"model": "example-model", "status": "partial"})
     costs = Costs(
         rent=24000, services=2000, energy=1500, total_monthly=27500, kauce=24000, commission=0,
-        one_time_fees=500, first_payment=27500, upfront=52000, missing_furniture=["washing machine"],
-        missing_furniture_cost=8000, hidden_monthly=3500, estimated=["energy", "total_monthly"],
+        one_time_fees=500, first_payment=27500, move_in_cost=60000,
+        move_in_note="Includes estimated energy and furniture.", missing_furniture=["washing machine"],
+        missing_furniture_cost=8000, hidden_monthly=3500, estimated=["energy", "total_monthly", "move_in_cost"],
     )
     evaluation = Evaluation(
         match="needs_info",

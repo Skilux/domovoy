@@ -156,7 +156,8 @@ def owned_values(item: FlatItem) -> dict[str, dict[str, Any]]:
         "Total monthly": {"number": item.total_monthly},
         "Kauce": {"number": item.kauce},
         "Commission": {"number": item.commission},
-        "Upfront": {"number": item.upfront},
+        "Move-in cost": {"number": item.move_in_cost},
+        "Move-in note": {"rich_text": _text(item.move_in_note)},
         "Missing furniture cost": {"number": item.missing_furniture_cost},
         "Estimated": _multi(item.estimated),
         "Lease type": _select(LEASE_NAMES.get(item.lease_type or "", "Unknown")),
@@ -211,8 +212,8 @@ def _cost_table(item: FlatItem) -> dict[str, Any]:
         ("Commission", item.commission, False),
         ("One-time fees", item.one_time_fees, False),
         ("First payment", item.first_payment, False),
-        ("Upfront", item.upfront, False),
-        ("Missing furniture cost", item.missing_furniture_cost, False),
+        ("Move-in cost", item.move_in_cost, "move_in_cost" in estimated),
+        ("Missing furniture cost", item.missing_furniture_cost, "missing_furniture_cost" in estimated),
     ]
     table_rows = [("Item", "Amount")] + [(label, _money(value, est)) for label, value, est in rows]
     children = [

@@ -2,7 +2,8 @@
 
 Verdicts use the extracted values as they are. An unverified value is still used, and the flat gets
 the "extraction unverified" risk flag so Claude can check it. A value over a cap only because of
-estimated energy is unknown (estimated), not a fail, and gets the "over budget (est.)" flag.
+estimated energy (or, for move_in_cost, estimated furniture) is unknown (estimated), not a fail, and gets the
+"over budget (est.)" flag.
 """
 
 from datetime import date
@@ -55,14 +56,14 @@ def _verdict(
 def _verdicts(
     listing: Listing, ex: Extraction, costs: Costs, req: Requirements
 ) -> list[Verdict]:
-    # Energy is the only estimate inside total_monthly and upfront.
+    # Energy is the only estimate inside total_monthly; move_in_cost can also hold estimated furniture.
     energy_estimate = (costs.energy or 0) if "energy" in costs.estimated else 0
     # Lower bounds from the known, stated parts only (estimated energy left out). They decide a cap
     # check when the full value is unknown: a known part already over the cap is a fail.
     stated_energy = 0 if "energy" in costs.estimated else costs.energy
     monthly_floor = _known_sum(costs.rent, costs.services, stated_energy)
     fees = ex.one_time_fees.value or []
-    upfront_floor = monthly_floor + _known_sum(
+    move_in_floor = monthly_floor + _known_sum(
         costs.kauce, costs.commission, *(fee.czk for fee in fees)
     )
     verdicts = [
@@ -78,15 +79,7 @@ def _verdicts(
     ]
     if req.max_upfront is not None:
         verdicts.append(
-            _cap_verdict(
-                "max_upfront",
-                "Upfront cost",
-                costs.upfront,
-                req.max_upfront,
-                "upfront" in costs.estimated,
-                energy_estimate,
-                upfront_floor,
-            )
+            _move_in_cost_verdict(costs, req.max_upfront, energy_estimate, move_in_floor)
         )
     if req.elevator == "required":
         verdicts.append(_elevator_verdict(listing.elevator))
@@ -143,6 +136,50 @@ def _cap_verdict(
         f"{label} {value:,} CZK is above the {cap:,} CZK limit{note}",
         estimated,
     )
+
+
+def _move_in_cost_verdict(costs: Costs, cap: int, energy_estimate: int, floor: int) -> Verdict:
+    """max_upfront, checked against move_in_cost, which sums the known parts and includes estimates.
+
+    Stated parts alone over the cap: fail. Over only with estimated energy or furniture: unknown (estimated).
+    Within the cap: pass when every part is known, else unknown, because a part not stated could push it over.
+    Rent unknown (move_in_cost None): the stated parts decide as in _cap_verdict.
+    """
+    name, label, value = "max_upfront", "Move-in cost", costs.move_in_cost
+    if value is None:
+        return _cap_verdict(name, label, None, cap, False, 0, floor)
+    furniture_estimate = (
+        (costs.missing_furniture_cost or 0) if "missing_furniture_cost" in costs.estimated else 0
+    )
+    stated = value - energy_estimate - furniture_estimate
+    estimated = "move_in_cost" in costs.estimated
+    if stated > cap:
+        return _verdict(
+            name, "fail", f"{label} is at least {stated:,} CZK from stated costs, above the {cap:,} CZK limit"
+        )
+    if value > cap:
+        return _verdict(
+            name,
+            "unknown",
+            f"{label} {value:,} CZK is over the {cap:,} CZK limit only with estimated energy or furniture",
+            True,
+        )
+    parts = (
+        costs.services,
+        costs.energy,
+        costs.kauce,
+        costs.commission,
+        costs.one_time_fees,
+        costs.missing_furniture_cost,
+    )
+    if any(part is None for part in parts):
+        return _verdict(
+            name,
+            "unknown",
+            f"{label} is {value:,} CZK from the known parts, within the {cap:,} CZK limit, but some parts are not stated",
+        )  # not marked estimated: that would raise "over budget (est.)", and it is not over
+    note = " (estimated)" if estimated else ""
+    return _verdict(name, "pass", f"{label} {value:,} CZK is within the {cap:,} CZK limit{note}", estimated)
 
 
 def _known_sum(*parts: int | None) -> int:

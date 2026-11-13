@@ -21,7 +21,7 @@ This version replaces the earlier draft that used the GitHub board as the shortl
 - [ ] Sreality, Bezrealitky and iDNES each return real Prague rentals with `url` and `collected_at`. A failing source is reported in the summary and doesn't fail the run.
 - [ ] Cross-portal duplicates merge into one flat with a stable `property_id`.
 - [ ] Featherless extracts the fields in [Extraction](#extraction). Each comes with a verbatim quote and a confidence, and each quote is checked to be a real substring of the listing. The cache works, and OpenAI takes over when Featherless fails.
-- [ ] Python computes `total_monthly`, `upfront` and `missing_furniture_cost`. Unknown values stay `null` and are listed in `unknowns`.
+- [ ] Python computes `total_monthly`, `move_in_cost` and `missing_furniture_cost`. Unknown values stay `null` and are listed in `unknowns`.
 - [ ] Each requirement gets a pass, fail or unknown verdict. A hard fail never reaches Notion.
 - [ ] The Actor checks the Notion schema against `notion_contract.json` before scraping. It creates or updates one page per flat, with `Status = Shortlisted` set only on creation. Running it twice creates no duplicates and never overwrites `Status`, `Reason` or the page body.
 - [ ] `notion.py setup` creates the database from the contract. Running it again changes nothing.
@@ -150,8 +150,10 @@ One item per deduplicated flat. Names follow `call_context` in [plan.md](../plan
 | `rent`, `services`, `energy` | int \| null | Monthly |
 | `total_monthly` | int \| null | See [Cost math](#cost-math) |
 | `estimated` | string[] | Fields that contain an estimate, e.g. `["energy", "total_monthly"]` |
-| `kauce`, `commission`, `one_time_fees`, `first_payment`, `upfront` | int \| null | |
+| `kauce`, `commission`, `one_time_fees`, `first_payment` | int \| null | |
 | `missing_furniture`, `missing_furniture_cost` | string[], int \| null | |
+| `move_in_cost` | int \| null | Cash to move in, known parts summed; replaces `upfront`. See [Cost math](#cost-math) |
+| `move_in_note` | string \| null | Plain English: which parts `move_in_cost` leaves out (not stated) and which it estimates |
 | `move_in_date` | string \| null | ISO date |
 | `lease_type` | `"najem"` \| `"podnajem"` \| null | |
 | `lease_length_months`, `pets_allowed`, `permanent_residence`, `unit_type_hint` | | |
@@ -207,10 +209,16 @@ Python only. Estimates are listed in `estimated` and shown as "(est.)".
 total_monthly          = rent + services + energy        # energy from the per-m² table when not included or not stated
 commission             = N × rent or the stated amount, × 1.21 when VAT is extra
 first_payment          = total_monthly
-upfront                = first_payment + kauce + commission + stated one_time_fees   # per plan.md: stated costs only
-missing_furniture_cost = sum of missing_furniture priced from a fixed CZK table; shown next to upfront, not inside it
+missing_furniture_cost = sum of missing_furniture priced from a fixed CZK table
+move_in_cost           = rent + services + energy + kauce + commission + stated one_time_fees + missing_furniture_cost
+                         # sums the known parts, estimates included; null only when rent is unknown
+move_in_note           = "Excludes commission (not stated). Includes estimated energy and furniture."
 hidden_monthly         = total_monthly − rent             # "hidden costs: +8,400 CZK/month"
 ```
+
+`move_in_cost` replaced `upfront` (decision 13 Nov, 14:12): there is one move-in value. It answers "how much cash do I need on move-in day" even when a part is unknown, so it leaves unknown parts out and names them in `move_in_note`. It is in `estimated` when energy or furniture is estimated. The profile requirement keeps its name `max_upfront` and checks `move_in_cost`: stated parts alone over the cap fail; over only with estimated energy or furniture is unknown (estimated); within the cap with a part not stated is unknown.
+
+**call_context mapping:** `call_context` still has the field `upfront`. Until it is renamed, `notion.py` fills `upfront` from the Notion property **Move-in cost**, so the call sees the same number, estimates included.
 
 Both tables (energy per m² and furniture prices) live in `apify/` and get a sanity check from the team before the demo. Furniture prices never come from the model.
 
@@ -244,6 +252,7 @@ The Actor stays under Notion's limit of about 3 requests per second. 100 new fla
 | Status | select | Actor on create, then Vladimir / Claude | Shortlisted, Not interested, Interested, Calling, Viewing booked, Not booked. See [plan.md](../plan.md). |
 | Reason | rich_text | Vladimir | Typed when rejecting |
 | Notes | rich_text | Vladimir | |
+| Interested? | select | Vladimir | Yes (green), No (red). Set by hand; the Actor never writes it. |
 | Viewing date | date | Claude | |
 | Profiles | multi_select | Actor | Profile ids that matched |
 | Match | select | Actor | Strong, Needs info |
@@ -251,7 +260,8 @@ The Actor stays under Notion's limit of about 3 requests per second. 100 new fla
 | Area m², Floor, Metro m | number | Actor | |
 | Elevator, Furnished | select | Actor | Yes, Partly, No, Unknown |
 | Address | rich_text | Actor | As listed |
-| Rent, Services, Energy, Total monthly, Kauce, Commission, Upfront, Missing furniture cost | number | Actor | CZK |
+| Rent, Services, Energy, Total monthly, Kauce, Commission, Move-in cost, Missing furniture cost | number | Actor | CZK. Move-in cost was Upfront: `notion.py setup` renames that property in place. It is call_context `upfront` |
+| Move-in note | rich_text | Actor | What Move-in cost leaves out or estimates |
 | Estimated | multi_select | Actor | Which values are estimates |
 | Lease type | select | Actor | Nájem, Podnájem, Unknown |
 | Move-in date | date | Actor | |

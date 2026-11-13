@@ -41,7 +41,7 @@ EXPECTED_LISTING = {
     "collected_at": "2026-11-13T12:00:00+01:00",
     "rent": 22000,
     "total_monthly": 24500,
-    "upfront": None,
+    "upfront": 46500,  # call_context upfront, read from the "Move-in cost" property
     "kauce": 22000,
     "commission": None,
     "move_in_date": None,
@@ -104,7 +104,7 @@ def no_more(results):
     return {"results": results, "has_more": False, "next_cursor": None}
 
 
-def flat_page(page_id=PAGE_ID, status="Interested"):
+def flat_page(page_id=PAGE_ID, status="Interested", interested=None):
     def text(value):
         return [{"plain_text": value}] if value else []
     return {
@@ -114,6 +114,7 @@ def flat_page(page_id=PAGE_ID, status="Interested"):
             "Name": {"type": "title", "title": text("2+kk · SYNTHETIC · Testville")},
             "Property ID": {"type": "rich_text", "rich_text": text("synthetic-test-001")},
             "Status": {"type": "select", "select": {"name": status}},
+            "Interested?": {"type": "select", "select": {"name": interested} if interested else None},
             "Reason": {"type": "rich_text", "rich_text": []},
             "Notes": {"type": "rich_text", "rich_text": []},
             "Viewing date": {"type": "date", "date": None},
@@ -122,7 +123,7 @@ def flat_page(page_id=PAGE_ID, status="Interested"):
             "Collected at": {"type": "date", "date": {"start": "2026-11-13T12:00:00+01:00"}},
             "Rent": {"type": "number", "number": 22000},
             "Total monthly": {"type": "number", "number": 24500},
-            "Upfront": {"type": "number", "number": None},
+            "Move-in cost": {"type": "number", "number": 46500},
             "Kauce": {"type": "number", "number": 22000},
             "Commission": {"type": "number", "number": None},
             "Move-in date": {"type": "date", "date": None},
@@ -307,6 +308,81 @@ class SetupTest(unittest.TestCase):
         self.assertEqual((out["added_properties"], out["added_options"], out["conflicts"]), ([], {}, []))
         self.assertEqual(self.fake.writes(), [])
 
+    def test_fresh_setup_colors_the_interested_options(self):
+        self.fake.answer("GET", "/blocks/%s/children" % PARENT, no_more([]))
+        self.fake.answer("POST", "/databases", {"id": DB_ID, "url": DB_URL})
+        self.fake.answer("GET", "/databases/%s" % DB_ID, database_object())
+        notion.setup()
+        [create] = [c for c in self.fake.calls if c[:2] == ("POST", "/databases")]
+        schema = create[2]["initial_data_source"]["properties"]
+        self.assertEqual(schema["Interested?"], {"select": {"options": [{"name": "Yes", "color": "green"},
+                                                                        {"name": "No", "color": "red"}]}})
+        self.assertEqual(schema["Move-in cost"], {"number": {"format": "koruna"}})
+        self.assertNotIn("Upfront", schema)
+        self.assertEqual(schema["Move-in note"], {"rich_text": {}})
+
+    def test_live_database_renames_upfront_in_place_then_changes_nothing(self):
+        # The live shortlist: Interested? added by hand with its colors, Upfront not yet renamed, no Move-in note.
+        props = live(remove=["Move-in note"])
+        props["Upfront"] = dict(props.pop("Move-in cost"), id="p-upfront")
+        props["Interested?"]["select"]["options"] = [{"id": "y", "name": "Yes", "color": "green"},
+                                                     {"id": "n", "name": "No", "color": "red"}]
+        self.existing_database(props)
+        out = notion.setup()
+        self.assertEqual(self.fake.writes(), [("PATCH", "/data_sources/%s" % DS_ID, {"properties": {
+            "p-upfront": {"name": "Move-in cost"}, "Move-in note": {"rich_text": {}}}})])
+        self.assertEqual(out["renamed_properties"], {"Upfront": "Move-in cost"})
+        self.assertEqual(out["added_properties"], ["Move-in note"])
+        self.assertEqual((out["added_options"], out["conflicts"]), ({}, []))
+        self.assertTrue(out["changed"])
+        self.fake.calls.clear()
+        self.existing_database(live())
+        out = notion.setup()
+        self.assertFalse(out["changed"])
+        self.assertEqual(out["renamed_properties"], {})
+        self.assertEqual(self.fake.writes(), [])
+
+    def test_an_old_name_of_another_type_is_not_renamed(self):
+        props = live()
+        props["Upfront"] = {"id": "p-upfront", "type": "rich_text", "rich_text": {}}
+        del props["Move-in cost"]
+        self.existing_database(props)
+        out = notion.setup()
+        self.assertEqual(self.fake.writes(), [("PATCH", "/data_sources/%s" % DS_ID, {"properties": {
+            "Move-in cost": {"number": {"format": "koruna"}}}})])
+        self.assertEqual((out["renamed_properties"], out["added_properties"]), ({}, ["Move-in cost"]))
+
+    def test_database_title_from_config_targets_a_separate_database(self):
+        e2e = "DOMOVOY shortlist (e2e)"
+        # The parent holds the real shortlist only: the e2e database is created next to it, never the real one used.
+        self.fake.answer("GET", "/blocks/%s/children" % PARENT, no_more([child_block(DB_ID)]))
+        self.fake.answer("POST", "/databases", {"id": "e2e-db", "url": DB_URL})
+        self.fake.answer("GET", "/databases/e2e-db", database_object("e2e-db"))
+        out = notion.setup({"notion": {"database_title": e2e}})
+        [create] = [c for c in self.fake.calls if c[:2] == ("POST", "/databases")]
+        self.assertEqual(create[2]["title"], [{"type": "text", "text": {"content": e2e}}])
+        self.assertEqual((out["database"], out["database_title_from"]), (e2e, "config notion.database_title"))
+        self.assertTrue(out["created"])
+        # Default: the contract title, reported as such.
+        self.fake.calls.clear()
+        self.existing_database(live())
+        out = notion.setup({"notion": {}})
+        self.assertEqual((out["database"], out["database_title_from"]), ("DOMOVOY shortlist",
+                                                                        "contract database_title"))
+        self.assertFalse(out["changed"])
+        with self.assertRaisesRegex(RuntimeError, "database_title"):
+            notion.setup({"notion": {"database_title": " "}})
+
+    def test_a_missing_colored_option_is_added_with_its_color(self):
+        props = live()
+        props["Interested?"]["select"]["options"] = [{"id": "y", "name": "Yes", "color": "blue"}]
+        self.existing_database(props)
+        out = notion.setup()
+        [(_, _, body)] = self.fake.writes()
+        self.assertEqual(body, {"properties": {"Interested?": {"select": {"options": [
+            {"id": "y"}, {"name": "No", "color": "red"}]}}}})
+        self.assertEqual(out["added_options"], {"Interested?": ["No"]})
+
     def test_a_missing_property_is_added_alone(self):
         self.existing_database(live(remove=["Owner listing"]))
         out = notion.setup()
@@ -434,7 +510,18 @@ class BackendTest(unittest.TestCase):
         [query] = [c for c in self.fake.calls if c[1].endswith("/query")]
         self.assertEqual(query[2]["filter"], {"property": "Status", "select": {"equals": "Interested"}})
         self.assertEqual(rows, [{"id": PAGE_ID, "title": "2+kk · SYNTHETIC · Testville", "url": PAGE_URL,
-                                 "status": "Interested", "listing": EXPECTED_LISTING}])
+                                 "status": "Interested", "interested": None, "listing": EXPECTED_LISTING}])
+
+    def test_interested_is_true_for_yes_false_for_no_and_none_when_empty(self):
+        for answer, expected in (("Yes", True), ("No", False), (None, None)):
+            page = flat_page(status="Shortlisted", interested=answer)
+            self.fake.answer("POST", "/data_sources/%s/query" % DS_ID, no_more([page]))
+            self.fake.answer("GET", "/pages/%s" % PAGE_ID, page)
+            self.fake.answer("GET", "/blocks/%s/children" % PAGE_ID, no_more([]))
+            [row] = notion.list_flats(CFG_NOTION, "Shortlisted")
+            self.assertIs(row["interested"], expected, answer)
+            self.assertIs(notion.get_flat(CFG_NOTION, PAGE_ID)["interested"], expected, answer)
+            self.assertNotIn("interested", row["listing"])  # a row key for call.py, not a call_context field
 
     def test_list_flats_without_a_status_has_no_filter(self):
         notion.list_flats(CFG_NOTION)
@@ -529,6 +616,23 @@ class CallShapeTest(unittest.TestCase):
         backend = call.load_backend(dict(CFG_NOTION, backend={"module": "scripts/notion.py"}))
         for name in ("list_flats", "get_flat", "set_status", "append", "set_viewing_date"):
             self.assertTrue(hasattr(backend.module, name), name)
+
+    def test_call_py_calls_a_shortlisted_flat_only_when_interested_is_yes(self):
+        def answer_query(body, query):
+            status = body["filter"]["select"]["equals"]
+            if status == "Shortlisted":
+                return no_more([flat_page(OTHER_PAGE_ID, "Shortlisted", "No"),
+                                flat_page(PAGE_ID, "Shortlisted", "Yes"),
+                                flat_page("33333333-3333-4333-8333-333333333333", "Shortlisted")])
+            return no_more([])
+        self.fake.answer("POST", "/data_sources/%s/query" % DS_ID, answer_query)
+        backend = call.Shortlist(notion)
+        page = call.pick_page(CFG_NOTION, backend, None)
+        self.assertEqual(page["notion_page_id"], PAGE_ID)
+        self.assertIs(page["interested"], True)
+        context = call.build_context(CFG_NOTION, page, WINDOWS)
+        self.assertEqual(call.validate(context, call.load_schema("call_context")), [])
+        self.assertNotIn("interested", context)
 
     def test_the_interested_flat_gives_a_valid_call_context(self):
         pages = call.Shortlist(notion).list_pages(CFG_NOTION, "Interested")
