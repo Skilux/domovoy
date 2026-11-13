@@ -42,7 +42,7 @@ class CallTest(unittest.TestCase):
         context = call.build_context(CFG, PAGE, WINDOWS, listing)
         self.assertEqual(context["new_field"], {"x": 1})
         self.assertIsNone(context["rent"])
-        self.assertEqual(context["unknowns"], [])
+        self.assertEqual(context["unknowns"], CFG["call_context"]["ask_also"])
 
     def test_bad_context_is_refused(self):
         with self.assertRaises(call.Refusal):
@@ -120,6 +120,39 @@ def backend_with(*rows, calls=None):
     module = types.SimpleNamespace(list_flats=list_flats, set_status=lambda cfg, flat_id, status: None,
                                    append=lambda cfg, flat_id, text: None)
     return call.Shortlist(module)
+
+
+def config_with(ask_also):
+    cfg = copy.deepcopy(CFG)
+    cfg["call_context"].pop("ask_also", None)
+    if ask_also is not None:
+        cfg["call_context"]["ask_also"] = ask_also
+    return cfg
+
+
+class AskAlsoTest(unittest.TestCase):
+    def test_questions_follow_the_flats_own_unknowns(self):
+        context = call.build_context(config_with(["the unit number of the flat", "who the landlord is"]),
+                                     PAGE, WINDOWS)
+        self.assertEqual(context["unknowns"],
+                         ["commission", "move_in_date", "the unit number of the flat", "who the landlord is"])
+        self.assertNotIn("ask_also", context)
+        self.assertEqual(call.validate(context, call.load_schema("call_context")), [])
+
+    def test_duplicates_are_skipped_case_insensitive(self):
+        context = call.build_context(config_with(["Commission", " who the landlord is ", "WHO THE LANDLORD IS"]),
+                                     PAGE, WINDOWS)
+        self.assertEqual(context["unknowns"], ["commission", "move_in_date", "who the landlord is"])
+
+    def test_absent_or_empty_changes_nothing(self):
+        for ask_also in (None, []):
+            context = call.build_context(config_with(ask_also), PAGE, WINDOWS)
+            self.assertEqual(context["unknowns"], ["commission", "move_in_date"])
+            self.assertNotIn("ask_also", context)
+
+    def test_at_most_two_extra_questions(self):
+        context = call.build_context(config_with(["one", "two", "three"]), PAGE, WINDOWS)
+        self.assertEqual(context["unknowns"], ["commission", "move_in_date", "one", "two"])
 
 
 class CallableTest(unittest.TestCase):

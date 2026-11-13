@@ -27,7 +27,11 @@
   },
   "call_context": {
     "user_name": "Vladimir",
-    "realtor_name": "Demo Realtor"
+    "realtor_name": "Demo Realtor",
+    "ask_also": [
+      "the unit number of the flat",
+      "who the landlord is"
+    ]
   },
   "active_profile": "example-2kk-30k",
   "profiles": [
