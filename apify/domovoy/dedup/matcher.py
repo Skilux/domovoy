@@ -50,10 +50,11 @@ def merge(listings: list[Listing], ids: PropertyIdMap) -> list[Flat]:
 
     Persisted identity wins over fuzzy matching. A listing whose "portal:source_id" is in `ids`
     keeps its property_id, and listings that share one stay one flat, even when their attributes
-    have drifted. A new listing joins an established id only if no listing from its own portal
-    holds that id in this run, and it matches one of those listings. Otherwise it joins another
-    match or gets a new id. Established ids are never merged or reassigned. `ids` is updated in
-    place with the new listings, and the caller saves it. The input order does not matter.
+    have drifted. A new listing joins an established id only if no key of its own portal holds
+    that id in `ids`, absent listings included, and it matches one of the listings present.
+    Otherwise it joins another match or gets a new id. Established ids are never merged or
+    reassigned. `ids` is updated in place with the new listings, and the caller saves it. The
+    input order does not matter.
     """
     ordered = _ordered(listings)
     established: dict[str, list[Listing]] = {}
@@ -63,7 +64,7 @@ def merge(listings: list[Listing], ids: PropertyIdMap) -> list[Flat]:
             established.setdefault(known, []).append(listing)
     fresh = [listing for listing in ordered if listing_key(listing) not in ids]
     in_use = set(ids.values())
-    clusters = _place_fresh(fresh, established, ids)
+    clusters = _place_fresh(fresh, established, _portals_by_id(ids), ids)
     flats = [_flat(property_id, members) for property_id, members in established.items()]
     for members in clusters:
         property_id = _fresh_property_id(listing_key(members[0]), in_use)
@@ -121,7 +122,10 @@ def _ordered(listings: list[Listing]) -> list[Listing]:
 
 
 def _place_fresh(
-    fresh: list[Listing], established: dict[str, list[Listing]], ids: PropertyIdMap
+    fresh: list[Listing],
+    established: dict[str, list[Listing]],
+    portals: dict[str, set[str]],
+    ids: PropertyIdMap,
 ) -> list[list[Listing]]:
     """New listings join an established id when they may. The rest group among themselves.
 
@@ -130,9 +134,10 @@ def _place_fresh(
     """
     clusters: list[list[Listing]] = []
     for listing in fresh:
-        joined = _joinable_id(listing, established)
+        joined = _joinable_id(listing, established, portals)
         if joined is not None:
             established[joined].append(listing)
+            portals[joined].add(listing.portal)
             ids[listing_key(listing)] = joined
             continue
         for members in clusters:
@@ -144,19 +149,30 @@ def _place_fresh(
     return clusters
 
 
-def _joinable_id(listing: Listing, established: dict[str, list[Listing]]) -> str | None:
+def _joinable_id(
+    listing: Listing, established: dict[str, list[Listing]], portals: dict[str, set[str]]
+) -> str | None:
     """The first established id this new listing may join, or None.
 
-    No listing from its own portal may already hold the id in this run. One match is enough: the
-    listings of an established flat may have drifted apart, and requiring all of them would split
-    the flat.
+    `portals` holds, per id, the portals of every key in the persisted map, so a same-portal key
+    blocks the join whether or not its listing is in this run. A listing that joins earlier in this
+    run is added to `portals` as it joins. One match is enough: the listings of an established flat
+    may have drifted apart, and requiring all of them would split the flat.
     """
     for property_id, members in established.items():
-        if any(member.portal == listing.portal for member in members):
+        if listing.portal in portals[property_id]:
             continue
         if any(same_flat(listing, member) for member in members):
             return property_id
     return None
+
+
+def _portals_by_id(ids: PropertyIdMap) -> dict[str, set[str]]:
+    """The portals of every key in the persisted map, grouped by the id each key holds."""
+    portals: dict[str, set[str]] = {}
+    for key, property_id in ids.items():
+        portals.setdefault(property_id, set()).add(key.partition(":")[0])
+    return portals
 
 
 def _fresh_property_id(first_key: str, in_use: set[str]) -> str:

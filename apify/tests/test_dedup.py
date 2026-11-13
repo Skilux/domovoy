@@ -313,6 +313,29 @@ def test_a_new_id_never_equals_an_absent_persisted_id():
     assert ids == {"idnes:9": stale, "bezrealitky:b-9": flats[0].property_id}
 
 
+def test_an_absent_listing_keeps_its_portal_slot_in_the_id_map():
+    ids: PropertyIdMap = {}
+    merge([make("sreality", "2"), make("bezrealitky", "b-9")], ids)  # run 1: one flat
+    first_id = ids["sreality:2"]
+    merge([make("sreality", "1"), make("bezrealitky", "b-9")], ids)  # run 2: sreality:2 absent
+    assert ids["sreality:1"] != first_id  # the absent sreality:2 still holds first_id
+    flats = merge([make("sreality", "1"), make("sreality", "2"), make("bezrealitky", "b-9")], ids)
+    held = {flat.property_id: [(s.portal, s.source_id) for s in flat.sources] for flat in flats}
+    assert held == {
+        first_id: [("sreality", "2"), ("bezrealitky", "b-9")],
+        ids["sreality:1"]: [("sreality", "1")],
+    }
+
+
+def test_two_new_listings_from_one_portal_never_share_an_established_id():
+    ids: PropertyIdMap = {}
+    merge([make("bezrealitky", "b-9")], ids)  # run 1: a flat seen on bezrealitky only
+    flats = merge([make("bezrealitky", "b-9"), make("sreality", "1"), make("sreality", "2")], ids)
+    assert ids["sreality:1"] == ids["bezrealitky:b-9"]
+    assert ids["sreality:2"] != ids["sreality:1"]
+    assert len(flats) == 2
+
+
 def test_a_new_id_never_reuses_a_claimed_id():
     # A stale map gives sreality:1 the id that hashing "bezrealitky:b-9" would produce.
     stale = new_property_id("bezrealitky:b-9")
