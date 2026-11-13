@@ -59,12 +59,33 @@ def actor_output_fields() -> list[str]:
     return names
 
 
+class FakeNamedStore:
+    def __init__(self) -> None:
+        self.data: dict[str, Any] = {}
+
+    async def get_value(self, key: str) -> Any:
+        return self.data.get(key)
+
+    async def set_value(self, key: str, value: Any) -> None:
+        self.data[key] = value
+
+
 class FakeStore:
+    """The Platform the pipeline uses: default key-value store, dataset and named stores."""
+
     def __init__(self) -> None:
         self.values: dict[str, Any] = {}
+        self.items: list[dict[str, Any]] = []
+        self.named: dict[str, FakeNamedStore] = {}
 
     async def set_value(self, key: str, value: Any) -> None:
         self.values[key] = value
+
+    async def push_data(self, items: list[dict[str, Any]]) -> None:
+        self.items.extend(items)
+
+    async def open_key_value_store(self, name: str) -> FakeNamedStore:
+        return self.named.setdefault(name, FakeNamedStore())
 
 
 class FakeSource:
