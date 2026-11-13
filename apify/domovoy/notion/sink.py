@@ -60,20 +60,33 @@ class NotionError(RuntimeError):
 
 
 class Throttle:
-    """Spaces requests at `rate` per second. Slots are reserved under a lock, so concurrent callers queue up."""
+    """Spaces requests at `rate` per second. Slots are reserved under a lock, so concurrent callers queue up.
+
+    One sink, one throttle: the pipeline's per-flat tasks share the sink, so the run stays at `rate` in total.
+    pause() sets a shared cooldown. A caller that already holds a slot rechecks it right before dispatch and, if a
+    cooldown started while it waited, reserves a new slot after the cooldown, still spaced at `rate`.
+    """
 
     def __init__(self, rate: float) -> None:
         self._interval = 1.0 / rate
         self._next_slot = 0.0
+        self._cooldown_until = 0.0
         self._lock = asyncio.Lock()
 
     async def wait(self) -> None:
-        async with self._lock:
-            now = time.monotonic()
-            slot = max(now, self._next_slot)
-            self._next_slot = slot + self._interval
-        if slot > now:
-            await asyncio.sleep(slot - now)
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                slot = max(now, self._next_slot, self._cooldown_until)
+                self._next_slot = slot + self._interval
+            if slot > now:
+                await asyncio.sleep(slot - now)
+            if time.monotonic() >= self._cooldown_until:
+                return
+
+    def pause(self, seconds: float) -> None:
+        """Hold every caller, queued ones included: no request starts before `seconds` from now."""
+        self._cooldown_until = max(self._cooldown_until, time.monotonic() + seconds)
 
 
 def option_name(name: str) -> str:
@@ -299,14 +312,14 @@ class NotionSink:
             await self._client.aclose()
 
     async def _request(self, method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
-        """One paced call. Waits Retry-After (or backs off) on 429, up to max_retries times."""
+        """One paced call. A 429 pauses the shared throttle for Retry-After (or a backoff), up to max_retries times."""
         attempt = 0
         while True:
             await self._throttle.wait()
             response = await self._client.request(method, API + path, json=body, headers=self._headers)
             if response.status_code != 429 or attempt >= self.max_retries:
                 break
-            await asyncio.sleep(_retry_after(response, self.retry_base * 2 ** attempt))
+            self._throttle.pause(_retry_after(response, self.retry_base * 2 ** attempt))
             attempt += 1
         if response.status_code >= 400:
             code = _error_code(response)

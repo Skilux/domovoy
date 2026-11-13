@@ -12,7 +12,15 @@
 | `Qwen/Qwen3-30B-A3B-Instruct-2507` | yes | 1 | 262144 |
 | `deepseek-ai/DeepSeek-V4-Flash` | yes | 4 | 262144 |
 
-`concurrency_cost` is the number of slots one call takes. The API does not report the account's total slot limit; that is plan concurrency (open item 7), still open.
+`concurrency_cost` is the number of slots one call takes.
+
+## Plan concurrency limit (open item 7 / P3), verified 2026-11-13 (perf ticket)
+
+- `GET https://api.featherless.ai/v1/plan` (free, no completion) returns plan `feather_request_pricing` ("Request Pricing", paid per request from credits) with `"concurrency": 100`, `max_model_size` null and `max_context_length` null.
+- `GET /account/concurrency/stream` (free, SSE) shows `"limit": 100` and the in-flight requests with their unit cost: a Qwen call showed `"cost": 1`.
+- Docs (featherless.ai/docs/concurrency-limits, /docs/api-reference-error-codes): each request reserves its model's units while in flight; a request that would push the organization over the limit gets HTTP 429 ("concurrent-unit or model-switch limit"). The limit is shared by every app on the account.
+- Probe: 10 Qwen calls on the five fixture texts with 8 in flight at once: 10 of 10 valid, no 429, 7 to 12 s each, the same as one at a time.
+- Default `llm.concurrency` is now **8** units: up to 8 Qwen calls, or a DeepSeek fallback (4 units) beside 4 Qwen calls. That is 8 % of the plan, leaving room for other apps on the account. With request pricing, the number of requests per run, not the concurrency, sets the cost.
 
 ## Bench as relayed from issue #35
 
@@ -32,6 +40,10 @@ Paid model calls in this session: about 37 (Qwen 29, DeepSeek-V4-Flash 3, OpenAI
 
 ## Attempts and what gets recorded
 
+- Concurrency is a weighted, first-come-first-served slot limiter (`llm.SlotLimiter`) with `llm.concurrency` units. A call holds its model's units (`llm.MODEL_SLOTS`; an unknown model counts as 4) while in flight; a cost is never lowered: a model whose units exceed `llm.concurrency` is left out of the chain, with a warning (DeepSeek-V4-Flash below 4). An OpenAI call holds 1 unit, so the last resort is bounded too.
+- HTTP 429 is waited out with `Retry-After` or a backoff from 1 s (at most 30 s), outside the slots and without using an attempt, up to 5 times per call.
+- Every failed attempt is logged with its reason class only: `transport:<error>`, `http_<status>`, `no_choices`, `empty`, `truncated` (finish reason `length`), `refusal`, `json_parse` or `schema:<field path>`, with the token counts. Never the content.
+
 - Qwen: one attempt and one retry. A transport error is retried as it was sent; an invalid answer is retried with a repair message.
 - DeepSeek-V4-Flash: one attempt. OpenAI: one attempt. Worst case per listing: four requests.
 - `Extraction.provider` is `featherless` for either Featherless model and `openai` for OpenAI. `Extraction.model` is the id that actually answered. A cache hit returns provider `cache` with the stored model.
@@ -46,7 +58,7 @@ Paid model calls in this session: about 37 (Qwen 29, DeepSeek-V4-Flash 3, OpenAI
 | --- | --- | --- |
 | `model` | `Qwen/Qwen3-30B-A3B-Instruct-2507` | primary, one slot per call |
 | `fallbackModel` | `deepseek-ai/DeepSeek-V4-Flash` | first fallback, four slots per call |
-| `concurrency` | `1` | WP0's `LlmConfig` default is 2. At 2, a Qwen call and a DeepSeek call could hold 5 slots at once; at 1, at most 4 |
+| `concurrency` | `8` | Featherless units held at once (weighted: Qwen 1, DeepSeek-V4-Flash 4). The plan allows 100. Was 1 before the perf ticket |
 | `timeoutSec` | `60` | covers the 5 to 15 s cold start |
 | (no input field) | `gpt-4o-mini` | OpenAI last resort, `DEFAULT_OPENAI_MODEL`. An assumption: it answered on this account, Vladimir has not chosen it |
 
@@ -61,6 +73,24 @@ Paid model calls in this session: about 37 (Qwen 29, DeepSeek-V4-Flash 3, OpenAI
 1. The first live run failed 5 of 5: the model returned bare values and Charge objects without the `value`/`quote`/`confidence` wrapper, and copied the portal's structured rent into `rent` with a quote that was not in the text. Fixes: the prompt shows the exact 14-key shape, the structured price is no longer sent, and a bare value is kept with confidence 0 (unknown).
 2. The second run passed 2 of 5 texts: one quote joined two places in the text, one furnished value had no support, one deposit and one commission were filed under one-time fees, and some values had no quote. Fixes: quote discipline in the prompt, one-time fees limited to one-time payments, furnished null when the text is silent, and a value without a quote counts as unknown.
 3. Review round 1 (cache): a cache hit returned a stored, already gated result. A stored quote could be verified against another listing (two descriptions that differ only by a closing tag share a key after `_fence()`), a value below a raised threshold survived, and a stale structured rent was kept. The cache now stores the raw answer and every read is gated again. Tests: threshold raised, threshold lowered, the `_fence()` collision, and a stale structured rent.
+
+## Run time (perf ticket, local `apify run`, Notion off, Vinohrady profile, max_listings 5 per source, fresh cache)
+
+| Run | Code | Flats | Wall time | Sources | Per-flat extraction |
+| --- | --- | --- | --- | --- | --- |
+| before | main 882f2b2, concurrency 1, extract all then write | 13 | 155.8 s | about 12 s | about 11 s on average, one after another (no per-flat log then) |
+| after 1 | streaming, 8 units, prompt v1 | 12 | 69.9 s | 12.3 s | 7.1 to 22.0 s, median 12.2 s; one 55.1 s (`schema:kauce.value.rent_multiple`, then a retry) |
+| after 2 | final: streaming, 8 units, prompt v2 | 12 | 51.4 s | 11.3 s | 7.3 to 18.7 s, median 13.1 s; one 37.6 s (`truncated`, then a retry) |
+
+With streaming, the wall time is about the sources plus the slowest flat. max_listings 5 per source (15 listings) instead of 15 kept the paid calls within the ticket's budget: 52 Featherless calls in all (runs 14 + 13 + 13, diagnosis 10, replay 2), no OpenAI.
+
+## Invalid answers: cause found (perf ticket)
+
+- The 13:48 platform run logged one invalid Qwen answer without a reason. The perf local run reproduced it with the new log: `schema:kauce.value.rent_multiple`. The text said "kauce je ve výši 1 a 1/2 měsíčního nájmu, tj. 37.500,-Kč"; Qwen answered `rent_multiple: 1.5`, and `Charge.rent_multiple` is an integer. The repair retry then answered `rent_multiple: 1`, which is wrong (here `czk` was also stated, and costs use `czk` first, so the deposit came out right by luck).
+- Fix (prompt v2): a float in a charge's `czk` or `rent_multiple` becomes an integer when whole (2.0 → 2) and null when it is a fraction, before validation, so the answer is valid on the first call. The prompt says a fractional multiple is null and `czk` holds the stated amount. `PROMPT_VERSION` is `v2`, so v1 cache entries, which could hold a repair-rounded multiple, are not reused.
+- Not invalid answers, but seen in the same runs: a deposit "ve výši dvou celkových měsíčních plateb" (two total monthly payments) came back as `rent_multiple: 2`, against the prompt rule. `czk` was stated too, so the cost is right. Prompt quality, not fixed here.
+- Second class, seen once in the final local run: `truncated` (finish reason `length`, 2048 completion tokens) on the same listing, whose good answers take 1011 tokens. Two replays of that listing both answered 1011 tokens with `stop`, so it is intermittent, and its content was not captured. A truncated answer is now used when a complete JSON object comes first (for example followed by endless whitespace, a known `json_object` failure); otherwise it is retried as sent, which answered in that run.
+- Not the cause of the 13:48 failure: `max_tokens` 2048. Answers used 450 to 1011 completion tokens, every finish reason was `stop`.
 
 ## Known limits (from the five fixture texts)
 

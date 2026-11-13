@@ -1,6 +1,6 @@
 """Extraction of one listing: cache, provider chain, quote check and confidence threshold."""
 
-import asyncio
+import logging
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -11,14 +11,17 @@ from domovoy.extraction.llm import (
     DEFAULT_OPENAI_MODEL,
     FEATHERLESS_BASE_URL,
     LlmFields,
+    SlotLimiter,
     ask,
     make_client,
     resolve_key,
+    slot_cost,
 )
 from domovoy.extraction.prompt import PROMPT_VERSION, listing_input
 from domovoy.models import Evidence, Extraction, Listing, LlmConfig, Provider
 
 DEFAULT_MIN_CONFIDENCE = 0.5
+log = logging.getLogger(__name__)
 EVIDENCE_FIELDS = tuple(LlmFields.model_fields)
 
 
@@ -109,7 +112,10 @@ def _from_cache(raw: Any) -> tuple[LlmFields, str] | None:
 
 
 class Extractor:
-    """Extracts listings for one run: one cache, one concurrency limit, one client per provider.
+    """Extracts listings for one run: one cache, one slot limit, one client per provider.
+
+    cfg.concurrency is the number of Featherless concurrent units this run may hold at once. A Qwen call takes 1,
+    a DeepSeek-V4-Flash call 4 (llm.MODEL_SLOTS); an OpenAI call takes 1 so the last resort is bounded too.
 
     Clients passed in are used as they are. Clients this object builds from the keys are closed by aclose().
     The cache holds raw model answers. Every read, fresh or cached, goes through to_extraction().
@@ -128,7 +134,7 @@ class Extractor:
         self._cfg = cfg
         self._cache = cache
         self._min_confidence = min_confidence
-        self._gate = asyncio.Semaphore(cfg.concurrency)
+        self._gate = SlotLimiter(cfg.concurrency)
         self._built: list[AsyncOpenAI] = []
         if featherless is not None:
             self._featherless: AsyncOpenAI | None = featherless
@@ -139,6 +145,27 @@ class Extractor:
             self._openai: AsyncOpenAI | None = openai
         else:
             self._openai = self._build("OPENAI_API_KEY", cfg.openai_api_key, None)
+        self._chain = self._make_chain()
+
+    def _make_chain(self) -> list[tuple[AsyncOpenAI, str, Provider, int, int]]:
+        """The provider chain. A Featherless model whose units exceed llm.concurrency is left out, never undercounted."""
+        chain: list[tuple[AsyncOpenAI, str, Provider, int, int]] = []
+        if self._featherless is not None:
+            models = [(self._cfg.model, 2)]
+            if self._cfg.fallback_model is not None:
+                models.append((self._cfg.fallback_model, 1))
+            for model, attempts in models:
+                cost = slot_cost(model)
+                if cost > self._cfg.concurrency:
+                    log.warning(
+                        "%s needs %d Featherless units, more than llm.concurrency %d: left out of the chain",
+                        model, cost, self._cfg.concurrency,
+                    )
+                    continue
+                chain.append((self._featherless, model, "featherless", attempts, cost))
+        if self._openai is not None:
+            chain.append((self._openai, self._openai_model, "openai", 1, 1))
+        return chain
 
     def _build(self, env_name: str, configured: SecretStr | None, base_url: str | None) -> AsyncOpenAI | None:
         key = resolve_key(env_name, configured)
@@ -187,14 +214,7 @@ class Extractor:
 
         The answer records the provider and the model that actually answered.
         """
-        chain: list[tuple[AsyncOpenAI, str, Provider, int]] = []
-        if self._featherless is not None:
-            chain.append((self._featherless, self._cfg.model, "featherless", 2))
-            if self._cfg.fallback_model is not None:
-                chain.append((self._featherless, self._cfg.fallback_model, "featherless", 1))
-        if self._openai is not None:
-            chain.append((self._openai, self._openai_model, "openai", 1))
-        for client, model, provider, attempts in chain:
+        for client, model, provider, attempts, cost in self._chain:
             fields = await ask(
                 client,
                 model=model,
@@ -202,6 +222,7 @@ class Extractor:
                 timeout_sec=self._cfg.timeout_sec,
                 gate=self._gate,
                 attempts=attempts,
+                cost=cost,
             )
             if fields is not None:
                 return fields, provider, model

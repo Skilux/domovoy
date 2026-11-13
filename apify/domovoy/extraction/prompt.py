@@ -7,7 +7,7 @@ import re
 
 from domovoy.models import Listing
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"  # v2: rent_multiple is a whole number; v1 answers could hold a repair-rounded multiple
 
 SYSTEM_PROMPT = """You extract facts from one Czech rental listing from Sreality. Reply with one JSON object and nothing else.
 
@@ -57,7 +57,7 @@ Keys
 
 Charge object: {"czk": integer or null, "rent_multiple": integer or null, "per_person": true, false or null, "included": true, false or null, "vat_extra": true, false or null}
 - czk: the amount in CZK. Use 0 only when the text says there is none ("bez provize", "bez kauce").
-- rent_multiple: N when the text states N months' rent ("1 měsíční nájem", "2 měsíční nájmy"). It counts the monthly rent only. A multiple of anything else, such as the total monthly payment or the fees, is not rent_multiple: then czk and rent_multiple are both null.
+- rent_multiple: N when the text states N months' rent ("1 měsíční nájem", "2 měsíční nájmy"). It counts the monthly rent only. N is a whole number: for a fraction ("1 a 1/2 měsíčního nájmu", "1,5 nájmu") rent_multiple is null, and czk holds the amount when the text states it. A multiple of anything else, such as the total monthly payment or the fees, is not rent_multiple: then czk and rent_multiple are both null.
 - per_person: true when stated per person ("na osobu", "/os."); false when stated per flat ("na byt", "/byt"); null when not stated.
 - included: for services and energy only. true when included in the rent ("v ceně nájmu"). false when charged on top: an amount is stated, or "+ poplatky", or it is billed to the tenant ("převod energií na nájemce"). null when not stated.
 - vat_extra: for commission only. true when VAT is added on top ("+ DPH", "plus DPH", "bez DPH"); false when the text says no VAT is charged ("neplatíte DPH", "včetně DPH"); null otherwise. VAT stated for another item, such as a garage, does not apply.

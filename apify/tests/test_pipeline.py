@@ -1,6 +1,7 @@
 """Pipeline tests, offline. Sources, stage modules and the Actor platform are fakes with the contract signatures;
 the real stages are tested in their own packages. An autouse fixture refuses every socket connect."""
 
+import asyncio
 import json
 import logging
 import socket
@@ -532,7 +533,7 @@ def test_llm_defaults_follow_the_wp4_decisions():
     cfg = llm_config({}, {})
     assert cfg.model == "Qwen/Qwen3-30B-A3B-Instruct-2507"
     assert cfg.fallback_model == "deepseek-ai/DeepSeek-V4-Flash"
-    assert cfg.concurrency == 1
+    assert cfg.concurrency == 8
     assert cfg.timeout_sec == 60
     assert cfg.featherless_api_key is None and cfg.openai_api_key is None
     custom = llm_config({"llm": {"model": "m2", "concurrency": 3, "fallbackModel": "f2", "timeoutSec": 30}}, {})
@@ -649,3 +650,78 @@ async def test_every_failed_requirement_is_counted_in_rejected_by_requirement():
     summary, _ = await run_pipeline(sources, Modules(costs=costs))
     assert summary.match["rejected"] == 2
     assert summary.rejected_by_requirement == {"max_total_monthly": 2, "elevator": 2}
+
+
+async def test_each_flat_reaches_the_dataset_and_notion_while_others_are_still_extracting():
+    """Streaming: flat 1 is pushed and upserted before flat 2's extraction is allowed to finish."""
+    delivered = asyncio.Event()
+    calls: list[str] = []
+
+    async def extract(listing: Listing) -> Extraction:
+        calls.append(listing.source_id)
+        if listing.source_id == "2":
+            await delivered.wait()  # without streaming this never returns: the test times out
+        return extraction_with(rent=listing.rent)
+
+    sink_module, upserts = fake_notion()
+
+    class Sink(sink_module.NotionSink):
+        async def upsert(self, item: Any) -> UpsertResult:
+            result = await super().upsert(item)
+            delivered.set()
+            return result
+
+    sources = {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2")])}
+    modules = Modules(
+        dedup=fake_dedup(), extraction=SimpleNamespace(extract=extract), costs=fake_costs(),
+        notion=SimpleNamespace(NotionSink=Sink),
+    )
+    async with asyncio.timeout(2):
+        summary, platform = await run_pipeline(
+            sources, modules,
+            actor_input={"skipExtraction": False, "notion": {"dataSourceId": "ds"}}, environ={"NOTION_TOKEN": "t"},
+        )
+    assert sorted(calls) == ["1", "2"]
+    assert [item["property_id"] for item in platform.items] == ["p-sreality-1", "p-sreality-2"]
+    assert upserts == ["p-sreality-1", "p-sreality-2"]
+    assert summary.change == {"new": 2, "changed": 0, "unchanged": 0}
+    assert summary.match["strong"] == 2
+    assert summary.notion.created == 2
+    assert summary.extraction_providers["featherless"] == 2
+
+
+async def test_an_unexpected_error_in_one_flat_leaves_it_retryable_and_the_rest_delivered(caplog):
+    """Flat 2's evaluation raises: flat 1 is still pushed and upserted, the run succeeds, and only flat 1 is
+    recorded as seen, so the next run treats flat 2 as new again. The error message is not logged."""
+    caplog.set_level(logging.WARNING)
+    costs = fake_costs()
+    healthy = costs.evaluate
+
+    def evaluate(listing: Listing, ex: Extraction, c: Costs, p: SearchProfile) -> Evaluation:
+        if listing.source_id == "2":
+            raise RuntimeError("costs bug near Vinohradská 12")
+        return healthy(listing, ex, c, p)
+
+    costs.evaluate = evaluate
+    extraction, _ = fake_extraction()
+    sink, upserts = fake_notion()
+    dedup = fake_dedup()
+    platform = FakePlatform()
+    sources = {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2")])}
+    modules = Modules(dedup=dedup, extraction=extraction, costs=costs, notion=sink)
+    run = {"skipExtraction": False, "notion": {"dataSourceId": "ds"}}
+    summary, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform, environ={"NOTION_TOKEN": "t"})
+    assert [item["property_id"] for item in platform.items] == ["p-sreality-1"]
+    assert upserts == ["p-sreality-1"]
+    assert summary.notion.created == 1 and summary.notion.errors == 0
+    [state] = dedup.calls.saved_states
+    assert set(state.flats) == {"p-sreality-1"}
+    assert "flat p-sreality-2 failed: RuntimeError" in caplog.text
+    assert "Vinohradská" not in caplog.text
+
+    costs.evaluate = healthy  # the bug is fixed: the next run delivers flat 2 as new
+    sink2, upserts2 = fake_notion()
+    modules = Modules(dedup=dedup, extraction=extraction, costs=costs, notion=sink2)
+    summary2, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform, environ={"NOTION_TOKEN": "t"})
+    assert summary2.change == {"new": 1, "changed": 0, "unchanged": 1}
+    assert upserts2 == ["p-sreality-2"]
