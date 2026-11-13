@@ -26,7 +26,7 @@ Prepared 13 Nov 2026 from the five supplied exports. Later explicit decisions ov
 - Vladimir's actual criteria, selected listing and permission to display them.
 - Demo realtor role, consent and workable audio setup.
 - Verified Apify, Notion, Calendar, ElevenLabs and optional PostHog/Featherless access; test Calendar target.
-- Trigger transport, result relay and concrete field schema between acquisition, Claude and phone page.
+- Trigger transport and result relay between Claude and the phone page. Field contracts and Notion statuses are proposed in [plan.md](plan.md#contracts); Vladimir confirms they match his Actor output.
 - Working demo/site URL, install/run commands and proof of each integration.
 - Organizer rules and special-prize requirements, including any reuse restrictions.
 
