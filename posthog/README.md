@@ -107,6 +107,7 @@ python3 posthog/calls.py report    # per prompt version: calls, booked, unknowns
 - The score is deterministic: how many of the call's `unknowns` have an answer in `submit_call_result`. `call_finished` carries `unknowns_total`, `unknowns_answered`, `all_unknowns_answered`, `outcome`, `prompt_version`.
 - `prompt_version` is set when the call's ElevenLabs agent version was recorded by `calls.py prompt`. Earlier calls show as `untracked`.
 - Calls shorter than 20 s are skipped as test dials (`--min-seconds`).
+- `sync` skips a call that PostHog already holds, even when the local state file is gone. `report` counts each call once. A call belongs to the first prompt version that listed its ElevenLabs agent version.
 - Needs `ELEVENLABS_API_KEY` and `ELEVENLABS_AGENT_ID` in the env file. It only reads from ElevenLabs.
 - Not built: proposing a prompt change from these scores. Today the report only shows the numbers.
 

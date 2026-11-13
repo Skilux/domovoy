@@ -70,7 +70,7 @@ def prompt_versions():
     for number in range(1, (latest.get("latest_version") or latest.get("version") or 1) + 1):
         version = latest if number == latest.get("version") else api("GET", "llm_prompts/name/%s/?version=%d" % (PROMPT_NAME, number))
         for agent_version in (version.get("config") or {}).get("elevenlabs_version_ids", []):
-            mapping[agent_version] = number
+            mapping.setdefault(agent_version, number)
     return mapping, latest
 
 
@@ -130,6 +130,9 @@ def cmd_sync(args):
         with open(STATE, encoding="utf-8") as f:
             state = json.load(f)
     mapping, _ = prompt_versions()
+    for row in query("select distinct properties.conversation_id as cid from events where event = 'call_finished' "
+                     "and properties.dataset = '%s'" % args.dataset.replace("'", "")):
+        state.setdefault("%s:%s" % (args.dataset, row["cid"]), "already in PostHog")
     listed = eleven("/conversations?agent_id=%s&page_size=100" % agent_id()).get("conversations", [])
     sent, skipped = [], 0
     for item in sorted(listed, key=lambda c: c.get("start_time_unix_secs") or 0):
@@ -217,7 +220,12 @@ def cmd_report(args):
         "properties.unknowns as unknowns, properties.questions_answered as questions_answered, "
         "properties.duration_seconds as duration_seconds, timestamp from events "
         "where event = 'call_finished' and properties.dataset = '%s' order by timestamp" % ds)
-    versions = {}
+    seen, first = set(), []
+    for call in calls:
+        if call["conversation_id"] not in seen:
+            seen.add(call["conversation_id"])
+            first.append(call)
+    calls, versions = first, {}
     for call in calls:
         key = str(int(call["prompt_version"])) if call["prompt_version"] is not None else "untracked"
         v = versions.setdefault(key, {"calls": 0, "booked": 0, "unknowns_total": 0, "unknowns_answered": 0, "no_result": 0})
