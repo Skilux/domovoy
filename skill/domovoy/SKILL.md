@@ -62,20 +62,20 @@ Warnings in the output (`total_monthly` unknown or over the cap) mean the rechec
 
 Trigger: the user has rejected flats in Notion with a `Reason` and asks something like "what should we change?" or "improve my search". This command is separate from the call command; the call command never needs it.
 
-The script is not inside this skill folder. It lives in the repo checkout at `<repo_path>/posthog/loop.py`, where `repo_path` is set in `config.json`. Run every command below from that folder: `cd <repo_path>` first. If `repo_path` is missing or has no `posthog/loop.py`, say so and stop. `loop.py` reads the renter's name from `<repo_path>/skill/domovoy/config.json`, not from the installed copy of this skill.
+The script is not inside this skill folder. It lives in the repo checkout at `<repo_path>/posthog/loop.py`, where `repo_path` is set in `config.json`. Run every command below from that folder: `cd <repo_path>` first. If `repo_path` is missing or has no `posthog/loop.py`, say so and stop. Start every command below with `DOMOVOY_CONFIG=<path of this skill's config.json>`, so `loop.py` reads the same `config.json` as `call.py` (renter's name, Notion data source) and not a second copy in the checkout.
 
 It needs the PostHog keys and `NOTION_TOKEN` in `~/.config/domovoy/.env` (names in `<repo_path>/posthog/README.md`). If a command prints `missing POSTHOG_...`, tell the user which key is missing and stop. Do not ask for keys in chat.
 
-1. `python3 posthog/loop.py sync` sends the shortlist changes to PostHog, each once.
-2. Wait 60 s. PostHog needs 30 to 100 s before queries see new events.
-3. `python3 posthog/loop.py report` prints today's rejections, `already_decided`, and `scout_instructions.body`.
+1. `DOMOVOY_CONFIG=<config> python3 posthog/loop.py sync` sends the shortlist changes to PostHog, each once.
+2. `DOMOVOY_CONFIG=<config> python3 posthog/loop.py report` waits until PostHog shows every event that sync sent (30 to 100 s, at most 150 s), then prints today's rejections, `already_decided`, and `scout_instructions.body`. Tell the user it is waiting for PostHog.
+3. If the output has `"complete": false`, PostHog does not show all events yet: run the report once more. Do not propose anything from an incomplete report.
 4. Follow `scout_instructions.body`: normalize each free-text reason to a short key and group the flats by key.
 5. Only if one key that is not in `already_decided` covers 3 or more flats, propose one change:
-   `python3 posthog/loop.py propose --key KEY --title '<N> of <M> rejected flats: <reason>' --finding '<one sentence>' --change '<JSON>' --ids id1,id2,id3`
+   `DOMOVOY_CONFIG=<config> python3 posthog/loop.py propose --key KEY --title '<N> of <M> rejected flats: <reason>' --finding '<one sentence>' --change '<JSON>' --ids id1,id2,id3`
    `--change` is one of `{"elevator": "required"}`, `{"max_total_monthly": N}`, `{"max_upfront": N}`. `--ids` are the `property_id` values behind the finding.
    With fewer than 3 flats on any undecided key, say so and propose nothing.
 6. Show the user the finding, the proposed change and the `notebook` link from the output, and ask yes or no.
-7. After the answer, and never before it: `python3 posthog/loop.py decide --key KEY --yes` or `--no`. On yes, tell the user which flats moved to Not interested (`moved_to_not_interested` in the output). On no, say nothing was changed.
+7. After the answer, and never before it: `DOMOVOY_CONFIG=<config> python3 posthog/loop.py decide --key KEY --yes` or `--no`. On yes, tell the user which flats moved to Not interested (`moved_to_not_interested` in the output). On no, say nothing was changed.
 
 Rules for this command:
 
