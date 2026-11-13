@@ -122,6 +122,8 @@ def _amount(charge: Charge | None, rent: int | None) -> int | None:
     if charge.czk is not None:
         return charge.czk
     if charge.rent_multiple is not None and rent is not None:
+        # Known gap, accepted for the hackathon: a deposit stated as N × the total monthly payment
+        # (fees included) reads as N × rent. Charge has no base field, so nothing can flag it here.
         return charge.rent_multiple * rent
     return None
 

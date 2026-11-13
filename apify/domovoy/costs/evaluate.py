@@ -1,7 +1,8 @@
 """Requirement verdicts, match, unknowns and risk flags (docs/prd/actor.md: Requirements and match).
 
 Verdicts use the extracted values as they are. An unverified value is still used, and the flat gets
-the "extraction unverified" risk flag so Claude can check it.
+the "extraction unverified" risk flag so Claude can check it. A value over a cap only because of
+estimated energy is unknown (estimated), not a fail, and gets the "over budget (est.)" flag.
 """
 
 from datetime import date
@@ -41,7 +42,7 @@ def evaluate(
         match_reasons=[
             verdict.reason for verdict in verdicts if verdict.verdict == "pass"
         ],
-        risk_flags=_risk_flags(ex, costs),
+        risk_flags=_risk_flags(ex, costs, verdicts),
     )
 
 
@@ -54,6 +55,8 @@ def _verdict(
 def _verdicts(
     listing: Listing, ex: Extraction, costs: Costs, req: Requirements
 ) -> list[Verdict]:
+    # Energy is the only estimate inside total_monthly and upfront.
+    energy_estimate = (costs.energy or 0) if "energy" in costs.estimated else 0
     verdicts = [
         _cap_verdict(
             "max_total_monthly",
@@ -61,6 +64,7 @@ def _verdicts(
             costs.total_monthly,
             req.max_total_monthly,
             "total_monthly" in costs.estimated,
+            energy_estimate,
         )
     ]
     if req.max_upfront is not None:
@@ -71,6 +75,7 @@ def _verdicts(
                 costs.upfront,
                 req.max_upfront,
                 "upfront" in costs.estimated,
+                energy_estimate,
             )
         )
     if req.elevator == "required":
@@ -85,8 +90,18 @@ def _verdicts(
 
 
 def _cap_verdict(
-    name: str, label: str, value: int | None, cap: int, estimated: bool
+    name: str,
+    label: str,
+    value: int | None,
+    cap: int,
+    estimated: bool,
+    energy_estimate: int,
 ) -> Verdict:
+    """`estimated`: the value includes estimated energy, worth `energy_estimate` CZK.
+
+    Over the cap only because of that estimate is unknown, not a fail (decision 13 Nov): the call
+    can ask about energy, so the flat lands in needs_info.
+    """
     if value is None:
         return _verdict(name, "unknown", f"{label} is unknown")
     note = " (estimated)" if estimated else ""
@@ -96,6 +111,13 @@ def _cap_verdict(
             "pass",
             f"{label} {value:,} CZK is within the {cap:,} CZK limit{note}",
             estimated,
+        )
+    if estimated and value - energy_estimate <= cap:
+        return _verdict(
+            name,
+            "unknown",
+            f"{label} {value:,} CZK is over the {cap:,} CZK limit only with estimated energy",
+            True,
         )
     return _verdict(
         name,
@@ -226,7 +248,7 @@ def _unknowns(
     return lines
 
 
-def _risk_flags(ex: Extraction, costs: Costs) -> list[str]:
+def _risk_flags(ex: Extraction, costs: Costs, verdicts: list[Verdict]) -> list[str]:
     flags: list[str] = []
     if ex.lease_type.value == "podnajem":
         flags.append("sublet")
@@ -237,6 +259,9 @@ def _risk_flags(ex: Extraction, costs: Costs) -> list[str]:
         flags.append("possible studio / no permanent residence")
     if ex.commission.value is not None and ex.commission.value.vat_extra:
         flags.append("commission + VAT")
+    # Only a cap check is unknown and estimated: over the cap only because of estimated energy.
+    if any(v.verdict == "unknown" and v.estimated for v in verdicts):
+        flags.append("over budget (est.)")
     if costs.services is None or ex.one_time_fees.value is None:
         flags.append("fees not stated")
     if (

@@ -566,9 +566,17 @@ BASE: dict[str, Any] = {
             {"rent": 28000, "services": Charge(czk=1500), "energy": None, "area": 55.0},
             {},
             "max_total_monthly",
+            "unknown",
+            True,
+            id="over budget only with estimated energy (31,700 CZK): unknown, not a fail",
+        ),
+        pytest.param(
+            {"rent": 31000, "services": Charge(czk=0), "energy": None, "area": 49.0},
+            {},
+            "max_total_monthly",
             "fail",
             True,
-            id="fail depends on the estimated energy (31,700 CZK)",
+            id="over budget even without the estimate (31,000 CZK stated): fail",
         ),
         pytest.param(
             {**BASE},
@@ -605,6 +613,36 @@ BASE: dict[str, Any] = {
             "pass",
             False,
             id="upfront 72,900 under the cap",
+        ),
+        pytest.param(
+            {
+                "services": Charge(czk=3400),
+                "energy": None,
+                "area": 49.0,
+                "kauce": Charge(rent_multiple=1),
+                "commission": Charge(rent_multiple=1, vat_extra=False),
+                "one_time_fees": [OneTimeFee(label="key", czk=500)],
+            },
+            {"max_upfront": 73000},
+            "max_upfront",
+            "unknown",
+            True,
+            id="upfront 74,860 over only with estimated energy (72,900 stated): unknown",
+        ),
+        pytest.param(
+            {
+                "services": Charge(czk=3400),
+                "energy": None,
+                "area": 49.0,
+                "kauce": Charge(rent_multiple=1),
+                "commission": Charge(rent_multiple=1, vat_extra=False),
+                "one_time_fees": [OneTimeFee(label="key", czk=500)],
+            },
+            {"max_upfront": 50000},
+            "max_upfront",
+            "fail",
+            True,
+            id="upfront fails even without the estimate (72,900 stated): fail",
         ),
         pytest.param(
             {**BASE},
@@ -737,6 +775,32 @@ def test_requirement_verdicts(
 def test_only_the_budget_cap_is_checked_when_nothing_else_is_set() -> None:
     result = _assess(**BASE)
     assert [verdict.name for verdict in result.requirements] == ["max_total_monthly"]
+
+
+def test_flat_over_budget_only_by_estimated_energy_is_needs_info() -> None:
+    # Sreality 688549964: rent 28,000 + fees 1,500 + estimated energy 2,200 (55 m² x 40) = 31,700 CZK.
+    flat: dict[str, Any] = {
+        "rent": 28000,
+        "area": 55.0,
+        "services": Charge(czk=1500),
+        "energy": None,
+        "kauce": Charge(rent_multiple=3),
+        "commission": Charge(rent_multiple=1, vat_extra=False),
+    }
+    result = _assess(**flat)
+    total = _verdict(result, "max_total_monthly")
+    assert total is not None
+    assert (total.verdict, total.estimated) == ("unknown", True)
+    assert "only with estimated energy" in total.reason
+    assert result.match == "needs_info"
+    assert "over budget (est.)" in result.risk_flags
+    assert (
+        "Are energy costs included in the rent? If not, what is the monthly energy advance?"
+        in (result.unknowns)
+    )
+    # The same flat with a hard fail elsewhere is rejected.
+    rejected = _assess(**flat, lift=False, requirements={"elevator": "required"})
+    assert rejected.match == "rejected"
 
 
 # Evaluate: match
@@ -911,6 +975,16 @@ CLEAN: dict[str, Any] = {
             {"pets_allowed": _ev(None, verified=False)},
             [],
             id="unverified but unknown: no flag",
+        ),
+        pytest.param(
+            {"rent": 28000, "services": Charge(czk=1500), "energy": None, "area": 55.0},
+            ["over budget (est.)"],
+            id="over budget only with estimated energy",
+        ),
+        pytest.param(
+            {"rent": 31000, "services": Charge(czk=0), "energy": Charge(included=True)},
+            [],
+            id="stated over budget is a fail, not an estimate flag",
         ),
     ],
 )
