@@ -25,6 +25,10 @@ Shape B:
   set_status(cfg, flat_id, status)
   append(cfg, flat_id, text)
 
+Optional in both: a listed row may carry "interested": true, read from the user's "Interested?" column.
+A flat is callable when its Status is Interested, or when its Status is Shortlisted and "interested" is
+true. call.py then sets Calling and the final status, so a finished flat is never called again.
+
 Optional in both: set_viewing_date(cfg, id, start) is called after a booked result that passes the
 recheck, with start as ISO 8601 with offset.
 
@@ -390,20 +394,28 @@ def state_path(page_id):
     return os.path.join(STATE_DIR, "page-%s.json" % re.sub(r"[^\w.-]", "_", str(page_id)))
 
 
+def callable_pages(cfg, backend):
+    statuses = cfg["statuses"]
+    pages = backend.list_pages(cfg, statuses["interested"])
+    if statuses.get("shortlisted"):
+        pages += [p for p in backend.list_pages(cfg, statuses["shortlisted"]) if p.get("interested") is True]
+    return pages
+
+
 def pick_page(cfg, backend, page_id):
     interested = cfg["statuses"]["interested"]
-    pages = backend.list_pages(cfg, interested)
+    pages = callable_pages(cfg, backend)
     if not pages:
-        raise Refusal("no flat has Status = %s; nobody was contacted. Move one flat to %s first."
-                      % (interested, interested))
+        raise Refusal("no flat is marked Interested; nobody was contacted. Set \"Interested?\" to Yes "
+                      "(or Status to %s) on one flat first." % interested)
     if page_id is not None:
         page = next((p for p in pages if p[PAGE_ID] == page_id), None)
         if page is None:
-            raise Refusal("page %s is not in %s; nobody was contacted" % (page_id, interested))
+            raise Refusal("page %s is not marked Interested; nobody was contacted" % page_id)
         return page
     if len(pages) > 1:
-        raise Refusal("%d flats are in %s; ask which one and pass --page ID: %s" % (
-            len(pages), interested, "; ".join("%s %s" % (p[PAGE_ID], p.get("title")) for p in pages)))
+        raise Refusal("%d flats are marked Interested; ask which one and pass --page ID: %s" % (
+            len(pages), "; ".join("%s %s" % (p[PAGE_ID], p.get("title")) for p in pages)))
     return pages[0]
 
 

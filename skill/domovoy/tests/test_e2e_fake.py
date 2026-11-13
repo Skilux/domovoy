@@ -168,6 +168,41 @@ class EndToEndFake(unittest.TestCase):
         page = notion._page(notion._load(), "fake-page-real")
         self.assertEqual((page["status"], page["body"].count("Call result")), ("Viewing booked", 1))
 
+    def mark(self, **fields):
+        db = notion._load()
+        db["pages"][0].update(fields)
+        notion._save(db)
+
+    def test_interested_yes_on_a_shortlisted_flat_triggers_one_call(self):
+        self.mark(interested=True)
+        code, out = self.run_call("check", "--windows", WINDOWS)
+        self.assertEqual((code, out["call_context"]["notion_page_id"]), (0, PAGE))
+        seen = {}
+
+        def answer():
+            deadline = time.time() + 5
+            while self.page()["status"] != "Calling" and time.time() < deadline:
+                time.sleep(0.02)
+            seen["status"] = self.page()["status"]
+            self.post_result(result("conv-Y"))
+
+        thread = threading.Thread(target=answer)
+        thread.start()
+        code, out = self.run_call("run", "--windows", WINDOWS)
+        thread.join()
+        self.assertEqual((seen["status"], out["status"]), ("Calling", "Viewing booked"))
+        fake_phone_server.STATE["pending"] = None
+        code, out = self.run_call("run", "--windows", WINDOWS)
+        self.assertEqual((code, out["refused"]), (2, True))
+        self.assertIsNone(fake_phone_server.STATE["pending"])
+
+    def test_interested_no_or_empty_does_not_trigger(self):
+        for value in (False, None, "Yes"):
+            self.mark(interested=value)
+            code, out = self.run_call("run", "--windows", WINDOWS)
+            self.assertEqual((code, out["refused"]), (2, True), value)
+        self.assertIsNone(fake_phone_server.STATE["pending"])
+
     def test_unreachable_phone_server_leaves_interested(self):
         notion.set_status(self.cfg, PAGE, "Interested")
         self.cfg["phone"]["url"] = "http://127.0.0.1:9"

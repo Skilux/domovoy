@@ -40,7 +40,7 @@ def _page(db, notion_page_id):
 
 
 def list_pages(cfg, status):
-    return [{k: p[k] for k in ("notion_page_id", "title", "url", "listing")}
+    return [dict({k: p[k] for k in ("notion_page_id", "title", "url", "listing")}, interested=p.get("interested"))
             for p in _load()["pages"] if p["status"] == status]
 
 

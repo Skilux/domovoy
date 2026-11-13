@@ -109,3 +109,4 @@ Team decision by Vladimir at 13:00, for the iDNES source (WP3). The organizers o
 | `/admin.api/` locality lookup | May be used if it helps Phase B. It is disallowed by robots.txt; the decision above covers it | "Never call `/admin.api/`" (research note) |
 | Polite rate | At most 3 requests in flight, 0.5 to 1 s between request starts, one retry on 5xx and network errors, stop on 403 or 429. No proxies, no header or fingerprint spoofing, no stealth, no CAPTCHA solving | — |
 | Contacts in the repo | No realtor names, phones or emails in code, fixtures or docs. The repo goes public at 17:30 | — (already a rule in CLAUDE.md) |
+| Call trigger | A flat is callable when `Status` = Interested, or when the user's `Interested?` column is Yes and `Status` is still Shortlisted. `call.py` then sets Calling and the final status, so a finished flat is not called again. `Status` stays the only workflow state. Danila, 13 Nov 2026, issue #80 | `Status` = Interested only |
