@@ -264,3 +264,14 @@ def test_status_is_never_green_with_a_major(harness):
     rnd.findings.append({"severity": "blocker"})
     assert rnd.status() == "BLOCKERS"
     rnd.config.close()
+
+
+def test_round_starts_when_earlier_rounds_saved_page_id_lists(harness):
+    """before-pages.json is a list of page ids; the contact preload must skip it, not crash (found in round 2)."""
+    earlier = run_e2e.DATA / "1"
+    earlier.mkdir(parents=True)
+    (earlier / "before-pages.json").write_text(json.dumps(["417cfb47-2cbd-81ca-a117-f710dfaecb8e"]))
+    (earlier / "L3-pages.json").write_text(json.dumps([{"page_id": "x", "props": {"Contact": NAME}}]))
+    rnd = run_e2e.Round(harness())
+    assert NAME in checks.known_contacts()
+    rnd.config.close()

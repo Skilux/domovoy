@@ -423,6 +423,8 @@ class Round:
 
     def page_contacts(self, pages: list[dict]) -> None:
         for p in pages:
+            if not isinstance(p, dict):  # before-pages.json holds page ids only
+                continue
             for key in ("Contact", "Email", "Phone"):
                 if (p.get("props") or {}).get(key):
                     self.contacts.add(str(p["props"][key]))
