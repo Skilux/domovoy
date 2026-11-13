@@ -273,7 +273,9 @@ def parse_lv(source):
                 if node is None or not any((e.text or "").strip() for e in node):
                     node = s.find("VLA_IDENT/oprav_subjekt")
                 subject = subject_of(node)
-                share = "%s/%s" % (txt(s, "PODIL/citatel"), txt(s, "PODIL/jmenovatel")) if txt(s, "PODIL/citatel") else "1/1"
+                share = "1/1"
+                if txt(s, "PODIL/citatel"):
+                    share = "%s/%s" % (txt(s, "PODIL/citatel"), txt(s, "PODIL/jmenovatel"))
                 owners.append(dict(subject, relation=relation, share=share,
                                    ownership="vlastnick" in fold(relation)))
 
@@ -292,7 +294,8 @@ def parse_lv(source):
         for section in t.findall("JINA_PRAVA/SEKCE_LIST"):
             for jpv in section.findall("JPV_LIST/JPV"):
                 label = txt(jpv, "TYP_PRAVNIHO_VZTAHU")
-                beneficiaries = [subject_of(n) for n in jpv.findall("JPV_OPRAV_PRO_OS/JPV_PRO_OS/PRO_IDENT_OS/oprav_subjekt")]
+                beneficiaries = [subject_of(n) for n in
+                                 jpv.findall("JPV_OPRAV_PRO_OS/JPV_PRO_OS/PRO_IDENT_OS/oprav_subjekt")]
                 rights.append({
                     "section": section.get("SEKCE"),
                     "label": label,
@@ -398,7 +401,8 @@ def assess(parsed, landlord=None, number=None, floor=None, door=None, extra_plom
     if match == "no":
         high.append("the landlord named in the call is not an owner on the LV: this would be a sublease")
     if "cooperative" in kinds:
-        medium.append("a housing co-op owns the flat: renting is a sublease from a member and needs the co-op's consent")
+        medium.append("a housing co-op owns the flat: renting is a sublease from a member "
+                      "and needs the co-op's consent")
     if "company" in kinds:
         medium.append("a company owns the flat: check who may sign for it, or that a sublease is allowed")
     if len(owners) > 2:
@@ -459,8 +463,8 @@ def notion_section(result, parsed, owners, source_line):
     lines.append("Pending change: %s" % (", ".join(result["pending_proceedings"]) or "yes")
                  if result["pending_change"] else "Pending change: none")
     lines.append("Landlord from the call matches an owner: %s" % result["landlord_matches_owner"])
-    lines.append("Lease risk: %s. %s" % (result["lease_risk"], " ".join(r + "." for r in result["risk_reasons"])
-                                         or "Nothing unusual."))
+    reasons = " ".join(r[0].upper() + r[1:] + "." for r in result["risk_reasons"])
+    lines.append("Lease risk: %s. %s" % (result["lease_risk"], reasons or "Nothing unusual."))
     lines.append("Land register data are informative. This is not legal advice.")
     return lines
 
@@ -558,7 +562,8 @@ def resolve_address(address):
 
 def ruian_building(building_code):
     status, data = http_json(RUIAN_LAYER % 3 + "?" + urllib.parse.urlencode({
-        "where": "kod=%d" % int(building_code), "outFields": "isknbudovaid,castobce,cisladomovni,typstavebnihoobjektukod",
+        "where": "kod=%d" % int(building_code),
+        "outFields": "isknbudovaid,castobce,cisladomovni,typstavebnihoobjektukod",
         "returnGeometry": "false", "f": "json"}))
     features = (data or {}).get("features") or []
     return features[0]["attributes"] if status == 200 and len(features) == 1 else None
@@ -751,8 +756,12 @@ def lookup(args, backend_loader=None):
     if backend_loader is None:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import call
-        backend_loader = lambda: (lambda cfg: (cfg, call.load_backend(cfg)))(call.load_config())
+        def backend_loader():
+            cfg = call.load_config()
+            return cfg, call.load_backend(cfg).module
     cfg, backend = backend_loader()
+    if not (hasattr(backend, "get_flat") and hasattr(backend, "append")):
+        raise RuntimeError("the shortlist backend needs get_flat and append (config backend.module)")
     flat = backend.get_flat(cfg, args.page)
     answers = call_answers(flat.get("text"))
     number = args.unit or answers.get("unit")

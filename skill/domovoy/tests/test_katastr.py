@@ -26,8 +26,8 @@ COMPANY = os.path.join(FIX, "lv_synth_company_plomba.xml")
 BUILDING = os.path.join(FIX, "lv_synth_building_owner.xml")
 PAGE = "cccccccc-0000-4000-8000-000000000003"
 # Every invented person or company name in the fixtures. None of them may appear on stdout.
-NAMES = ["Vzorová", "Jana", "Fiktivní Petr", "Petr", "Smyšlený", "Karel", "Smyšlená", "Eva", "Testovací nemovitosti",
-         "Fiktivní banka", "Vzorový", "Tomáš", "Lenka", "Nájemná", "Alena", "Pokusný", "Ondřej"]
+NAMES = ["Vzorová", "Jana", "Fiktivní Petr", "Petr", "Smyšlený", "Karel", "Smyšlená", "Eva",
+         "Testovací nemovitosti", "Fiktivní banka", "Vzorový", "Tomáš", "Lenka", "Nájemná", "Alena", "Pokusný", "Ondřej"]
 LIVE = {"CUZK_API_KN_KEY": "test-key", "WSDP_USERNAME": "test-user", "WSDP_PASSWORD": "test-pass",
         "WSDP_ENV": "prod", "WSDP_MAX_BILLED_PER_DAY": "10"}
 
@@ -68,7 +68,8 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(result["owner_types"], ["person"])
         self.assertEqual(result["owner_count"], 1)
         self.assertEqual([(r["section"], r["type"]) for r in result["restrictions"]],
-                         [("C", "mortgage"), ("C", "ban_on_sale"), ("C", "easement"), ("C", "mortgage"), ("D", "other")])
+                         [("C", "mortgage"), ("C", "ban_on_sale"), ("C", "easement"), ("C", "mortgage"),
+                          ("D", "other")])
         self.assertFalse(result["pending_change"])
         self.assertEqual(result["as_of"], "2026-11-01T00:00:00+01:00")
         self.assertEqual(result["lease_risk"], "medium")          # ban on sale + no landlord name
