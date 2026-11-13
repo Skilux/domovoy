@@ -890,7 +890,8 @@ class FetchTest(unittest.TestCase):
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
-        self.payload = open(MORTGAGE, "rb").read()
+        with open(MORTGAGE, "rb") as f:
+            self.payload = f.read()
 
     def fake_wsdp(self, creds, service, operation, body):
         self.ops.append((operation, body))
@@ -935,6 +936,96 @@ class FetchTest(unittest.TestCase):
             code, out = run(["fetch", "--area", "999901", "--lv", "90001", "--confirm-billed"])
         self.assertEqual(code, 2)
         self.assertIn("git checkout", json.loads(out)["refused"])
+        self.assertEqual(self.ops, [])
+
+    # Reuse of an LV already ordered today (stage flow: bought once before, not again on stage)
+
+    def today(self):
+        return katastr.prague_now().date().isoformat()
+
+    def place(self, name, data=None):
+        os.makedirs(self.lv_dir, exist_ok=True)
+        path = os.path.join(self.lv_dir, name)
+        with open(path, "wb") as f:
+            f.write(self.payload if data is None else data)
+        return path
+
+    def billed_count(self):
+        if not os.path.exists(katastr.BILLING_FILE):
+            return 0
+        with open(katastr.BILLING_FILE) as f:
+            return sum(json.load(f).values())
+
+    def test_reuse_hit_calls_no_wsdp_and_counts_nothing(self):
+        code, out = run(["fetch", "--area", "999901", "--lv", "90001", "--confirm-billed"])
+        first = json.loads(out)
+        self.assertEqual((code, first["reused"], first["billed"], self.billed_count()), (0, False, True, 1))
+        ops = len(self.ops)
+        code, out = run(["fetch", "--area", "999901", "--lv", "90001", "--confirm-billed"])
+        data = json.loads(out)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(self.ops), ops)                       # no WSDP call
+        self.assertEqual(self.billed_count(), 1)                   # counter unchanged
+        self.assertTrue(data["reused"])
+        self.assertFalse(data["billed"])
+        self.assertIsNone(data["billing"])
+        self.assertEqual((data["file"], data["path"]), (first["file"], first["file"]))
+        self.assertEqual(data["bytes"], len(self.payload))
+        self.assertRegex(data["ordered_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$")
+        self.assertEqual(set(first) - {"reused", "billed", "ordered_at", "path"},
+                         set(data) - {"reused", "billed", "ordered_at", "path"})   # same JSON shape
+        self.assertEqual(leaked_names(out), [])
+
+    def test_reuse_hit_needs_no_confirmation_and_no_credentials(self):
+        path = self.place("LV_999901_90001_%s.xml" % self.today())
+        self.place("LV_999901_90001_%s-3.xml" % self.today())
+        self.place("LV_999901_90001_%s-2.xml" % self.today())
+        env = {"KATASTR_LV_DIR": self.lv_dir}
+        with mock.patch.object(katastr, "settings", lambda names: {n: env.get(n, "") for n in names}):
+            code, out = run(["fetch", "--area", "999901", "--lv", "90001"])
+        data = json.loads(out)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(data["reused"])
+        self.assertEqual(data["path"], path.replace(".xml", "-3.xml"))   # the newest of today
+        self.assertIsNone(data["wsdp_env"])
+        self.assertEqual(self.ops, [])
+        self.assertFalse(os.path.exists(katastr.BILLING_FILE))
+
+    def test_reuse_miss_orders_as_before(self):
+        self.place("LV_999901_90001_2020-01-01.xml")                           # an older day
+        self.place("LV_999901_90002_%s.xml" % self.today())                     # another LV
+        self.place("LV_999901_90001_%s.pdf" % self.today(), b"%PDF-1.7")        # another format
+        self.place("LV_999901_90001_%s-2.xml" % self.today(), b"")              # empty: not a file to reuse
+        code, out = run(["fetch", "--area", "999901", "--lv", "90001", "--confirm-billed"])
+        data = json.loads(out)
+        self.assertEqual(code, 0, out)
+        self.assertFalse(data["reused"])
+        self.assertTrue(data["billed"])
+        self.assertEqual(data["billing"], {"billed_today": 1, "cap": 10})
+        self.assertEqual(self.ops[0][0], "generujLVZjednodusene")
+        self.assertEqual(data["path"], os.path.join(self.lv_dir, "LV_999901_90001_%s.xml" % self.today()))
+
+    def test_reuse_miss_still_needs_confirmation(self):
+        self.place("LV_999901_90001_2020-01-01.xml")
+        code, out = run(["fetch", "--area", "999901", "--lv", "90001"])
+        self.assertEqual(code, 2)
+        self.assertEqual(self.ops, [])
+
+    def test_force_new_buys_again(self):
+        old = self.place("LV_999901_90001_%s.xml" % self.today())
+        code, out = run(["fetch", "--area", "999901", "--lv", "90001", "--confirm-billed", "--force-new"])
+        data = json.loads(out)
+        self.assertEqual(code, 0, out)
+        self.assertFalse(data["reused"])
+        self.assertTrue(data["billed"])
+        self.assertEqual(self.billed_count(), 1)
+        self.assertEqual([o for o, _ in self.ops][0], "generujLVZjednodusene")
+        self.assertEqual(data["path"], old.replace(".xml", "-2.xml"))
+
+    def test_force_new_without_confirmation_is_refused(self):
+        self.place("LV_999901_90001_%s.xml" % self.today())
+        code, out = run(["fetch", "--area", "999901", "--lv", "90001", "--force-new"])
+        self.assertEqual(code, 2)
         self.assertEqual(self.ops, [])
 
 
