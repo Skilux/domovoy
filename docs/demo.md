@@ -9,6 +9,8 @@ Three-minute hard stop; also rehearse a 60–90 second cut. Times below are elap
 | 1:45–2:45 | If ready: PostHog report on rejection reasons → Vladimir says yes → visible rerank |
 | 2:45–3:00 | "Install the skill in your own agent", one sentence on agencies, repository and demo links |
 
+The spoken script, beat by beat, is [demo-script.md](demo-script.md).
+
 If PostHog is not ready, the core gets its minute. Never rush past the receipt.
 
 ## Required gates
