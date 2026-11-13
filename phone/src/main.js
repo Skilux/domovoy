@@ -78,17 +78,17 @@ function startWaiting() {
 async function poll() {
   if (phone.dataset.screen !== 'waiting') return;
   try {
-    const { context } = await getJson('/api/pending');
+    const { context, call_token: callToken } = await getJson('/api/pending');
     if (context && typeof context === 'object' && phone.dataset.screen === 'waiting') {
-      ring(context);
+      ring(context, callToken);
       return;
     }
   } catch {}
   pollTimer = setTimeout(poll, 1000);
 }
 
-function ring(context) {
-  call = { context, conversation: null, conversationId: null, result: null, finished: false, hungUp: false, startedAt: 0, endTimer: null };
+function ring(context, callToken) {
+  call = { context, callToken, conversation: null, conversationId: null, result: null, finished: false, hungUp: false, startedAt: 0, endTimer: null };
   showError('');
   setAddress(typeof context.address === 'string' ? context.address : 'Unknown address');
   const rent = document.querySelector('[data-rent]');
@@ -180,7 +180,7 @@ async function accept() {
 
   let signedUrl;
   try {
-    signedUrl = (await getJson('/api/signed-url')).signed_url;
+    signedUrl = (await getJson(`/api/signed-url?call_token=${encodeURIComponent(current.callToken || '')}`)).signed_url;
     if (!signedUrl) throw new Error('empty signed URL');
   } catch (err) {
     showError(`Could not start the call: ${err.message}`);

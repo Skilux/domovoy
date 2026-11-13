@@ -11,7 +11,7 @@ A phone page that waits, rings when Claude sends a flat, runs a live English con
 - [ ] Accept starts a live ElevenLabs session. The agent knows the flat, the unknowns to ask about and the free windows.
 - [ ] The agent asks about the unknowns, agrees a viewing time inside a free window, then calls `submit_call_result` and ends the call.
 - [ ] `GET /api/result/{property_id}` returns that result to Claude.
-- [ ] The ElevenLabs API key exists only on the server. The agent's allowlist has the Vercel domain.
+- [ ] The ElevenLabs API key exists only on the server. The agent accepts only signed URLs (`enable_auth`), and the server issues one only for a call Claude started.
 - [ ] A hand-written context works end to end by 14:00, before the Actor lane is ready.
 - [ ] Rehearsed on Vladimir's laptop with the venue's audio and Wi-Fi.
 
@@ -38,7 +38,7 @@ sequenceDiagram
   P->>S: GET /api/pending (poll every 1 s)
   S-->>P: call_context
   Note over P: Ring, wait for Accept
-  P->>S: GET /api/signed-url
+  P->>S: GET /api/signed-url?call_token=...
   S->>E: Request signed URL (API key)
   S-->>P: signed URL
   P->>E: startSession(signedUrl, dynamicVariables)
@@ -54,15 +54,15 @@ sequenceDiagram
 
 | Route | Caller | Does |
 | --- | --- | --- |
-| `POST /api/call` | Claude | Validates and stores the `call_context` as the pending call. Requires header `x-domovoy-secret`. |
-| `GET /api/pending` | Page | Returns the pending context once, then clears it. |
-| `GET /api/signed-url` | Page | Returns a short-lived ElevenLabs signed URL. |
+| `POST /api/call` | Claude | Stores the `call_context` as the pending call and clears any stored result for its `property_id`. Rejects only a context without `property_id` or `address`; every other field passes through. Requires header `x-domovoy-secret`. |
+| `GET /api/pending` | Page | Returns `{context, call_token}` once, then clears it; both are `null` when nothing is pending. |
+| `GET /api/signed-url?call_token=` | Page | Returns a short-lived ElevenLabs signed URL. Needs the one-time `call_token` from `/api/pending`, else 403. |
 | `POST /api/result` | Page | Stores the result by `property_id`. A repeated `conversation_id` is ignored. |
 | `GET /api/result/{property_id}` | Claude | Returns the result, or 404 while the call is running. Requires the secret header. |
 
 Contracts for `call_context` and `submit_call_result` are in [plan.md](../plan.md#contracts).
 
-Vercel functions share no memory, so pending calls and results need a small store. Recommended: Upstash Redis from the Vercel Marketplace, with a 1-hour expiry on every key.
+Vercel functions share no memory, so pending calls and results need a small store. Built: Upstash Redis (free plan) from the Vercel Marketplace, behind `phone/lib/store.js`, with a 1-hour expiry on every key.
 
 ### Page
 
@@ -72,8 +72,10 @@ Vercel functions share no memory, so pending calls and results need a small stor
 
 ### ElevenLabs agent
 
+- Created from `phone/agent/` with `sync-agent.mjs`. Auth: signed URLs only, no allowlist, because the ElevenLabs auth guide says not to configure both on one agent.
 - English. One client tool, `submit_call_result`, plus the built-in end-call. No other tools.
-- Dynamic variables: the `call_context` fields. `available_windows` and `unknowns` are passed as readable text.
+- Dynamic variables: the `call_context` fields. `available_windows` and `unknowns` are passed as readable text, and `context_text` carries every field as `key: value` lines. The prompt names only `user_name`, `realtor_name`, `address`, `unknowns`, `available_windows` and `context_text`, so other fields can be renamed without touching the agent.
+- The page adds `property_id` and `conversation_id` to the result; the agent does not pass them.
 - Prompt rules: say it is an AI assistant calling for the renter; ask each unknown once; propose times only from the free windows; confirm the agreed time back before saving; call `submit_call_result` exactly once; never agree to payments or anything beyond a viewing.
 - `outcome` is `booked` only after the realtor explicitly agrees to a time inside a window. Anything else is `not_booked`.
 
@@ -87,4 +89,4 @@ Vercel functions share no memory, so pending calls and results need a small stor
 
 ## Open items
 
-From [open-items.md](../open-items.md): 9 (voice, persona, first message, `agent_id`, allowlist). New for this lane: confirm the store choice above; pick the value of `x-domovoy-secret` and share it with the Skill lane.
+From [open-items.md](../open-items.md): 9 (voice and persona are first picks, to be judged in the spoken rehearsal; the agent exists and the allowlist is not used). Settled for this lane: the store choice above; `x-domovoy-secret`, `PHONE_URL` and `ELEVENLABS_AGENT_ID` live in the shared local env file outside the repo.

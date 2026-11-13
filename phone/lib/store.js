@@ -2,6 +2,7 @@ const TTL = 3600;
 const PENDING = 'domovoy:pending';
 const resultKey = (propertyId) => `domovoy:result:${propertyId}`;
 const seenKey = (conversationId) => `domovoy:seen:${conversationId}`;
+const tokenKey = (token) => `domovoy:calltoken:${token}`;
 
 async function redis(...command) {
   const url = process.env.KV_REST_API_URL;
@@ -19,13 +20,18 @@ async function redis(...command) {
 
 const parse = (value) => (value === null || value === undefined ? null : JSON.parse(value));
 
-export async function setPending(context) {
+export async function setPending(context, callToken) {
   await redis('DEL', resultKey(context.property_id));
-  await redis('SET', PENDING, JSON.stringify(context), 'EX', TTL);
+  await redis('SET', tokenKey(callToken), '1', 'EX', TTL);
+  await redis('SET', PENDING, JSON.stringify({ context, callToken }), 'EX', TTL);
 }
 
 export async function takePending() {
   return parse(await redis('GETDEL', PENDING));
+}
+
+export async function takeCallToken(callToken) {
+  return (await redis('GETDEL', tokenKey(callToken))) !== null;
 }
 
 export async function setResult(result) {
