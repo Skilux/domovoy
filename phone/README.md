@@ -7,6 +7,7 @@ Vercel app at https://domovoy-phone.vercel.app. Spec: [docs/prd/voice.md](../doc
 - `src/main.js` + `public/`: the page. `npm run build` bundles it into `public/app.js`.
 - `public/prompt.txt`: the install prompt, the only copy to edit. `/start` shows it and the terminal one-liner on that page fetches it. `public/qr.svg` is a static QR for `https://domovoy-phone.vercel.app/start`, made once with `npx qrcode@1.5.4 -t svg`; it never carries the `?k=` key.
 - `agent/`: ElevenLabs agent prompt and config. Recreate or update with `set -a; . ~/.config/domovoy/.env; set +a; node phone/agent/sync-agent.mjs`. After every sync, also run `python3 posthog/calls.py prompt` from the repo root: it records the deployed prompt as a version of `domovoy-voice-agent` in PostHog, so call traces carry the prompt version. If that command fails, the prompt deploy still counts.
+- `public/stage.html`: the stage rail for the demo, at `/stage`. A narrow window shows only the rail (FIND, APPROVE, CALL, BOOK, LEARN); a wide window shows the title, the close and labeled placeholders with sample data. Right arrow, Space or click = next, Left arrow = back, digits jump. `?rail=1` or `?full=1` forces a mode. Edit the `STATUS` object at the top of its script to change a status chip. It calls no API.
 
 Env in Vercel: `DOMOVOY_SECRET`, `DOMOVOY_RECEIVER_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
 
