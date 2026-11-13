@@ -13,7 +13,7 @@ Test without any network: `python3 -m unittest discover -s tests` (fake phone se
 
 1. Copy `config.example.json` to `config.json` and fill it in. `config.json` is never committed.
 2. Phone server URL and secret: put `PHONE_URL=...` and `DOMOVOY_SECRET=...` in the file named by `phone.env_file` (default `~/.config/domovoy/.env`, mode 600), or export them, or set `phone.url` and `phone.secret` in `config.json`. Never print or commit the secret.
-3. `backend.module` in `config.json` names the script that reaches the Notion shortlist: `scripts/notion.py`. `tests/fake_notion_backend.py` is a local fake for tests only.
+3. `backend.module` in `config.json` names the script that reaches the Notion shortlist: `scripts/notion.py`. `tests/fake_notion_backend.py` is a local fake for tests only. `scripts/notion.py` needs `notion.data_source_id` in `config.json` (printed by `python3 scripts/notion.py setup`) and `NOTION_TOKEN` in the same env file.
 4. `repo_path` in `config.json` is the folder of the `Skilux/domovoy` checkout on this machine. Only the improve command needs it, because `posthog/` is outside this skill folder. Everything the call command needs is inside the skill folder.
 
 All names that may change live in one place: status names, the backend, viewing hours, the renter's values and the search profiles in `config.json`; contract fields in `reference/*.schema.json`. `budget_cap` is the active profile's `requirements.max_total_monthly`.

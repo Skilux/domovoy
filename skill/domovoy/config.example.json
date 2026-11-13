@@ -3,6 +3,9 @@
   "backend": {
     "module": "scripts/notion.py"
   },
+  "notion": {
+    "data_source_id": ""
+  },
   "statuses": {
     "interested": "Interested",
     "calling": "Calling",
