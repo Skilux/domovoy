@@ -8,6 +8,7 @@ These documents describe intended behavior, not completed features. They are the
 | --- | --- |
 | [plan.md](plan.md) | Scope, ownership, flow, boundaries, Notion shortlist, contracts, repo layout |
 | [demo.md](demo.md) | Stage sequence, gates, fallback, submission |
+| [demo-script.md](demo-script.md) | The 3-minute stage script: words, screens, call plan, fallbacks, 75 s cut |
 | [qa-checklist.md](qa-checklist.md) | The walk-through on Vladimir's laptop before the demo, stage by stage, with a result log |
 | [prd/](prd/README.md) | Build spec: main PRD plus one doc per lane (actor, voice, skill, posthog) |
 | [packaging.md](packaging.md) | Setup for a new user, prerequisites, cost per 100 cases, how to swap each service |
