@@ -6,6 +6,9 @@
   "notion": {
     "data_source_id": ""
   },
+  "apify": {
+    "actor_id": "vladb~domovoy"
+  },
   "statuses": {
     "interested": "Interested",
     "calling": "Calling",

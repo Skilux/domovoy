@@ -16,6 +16,8 @@ Test without any network: `python3 -m unittest discover -s tests` (fake phone se
 3. `backend.module` in `config.json` names the script that reaches the Notion shortlist: `scripts/notion.py`. `tests/fake_notion_backend.py` is a local fake for tests only. `scripts/notion.py` needs `notion.data_source_id` in `config.json` (printed by `python3 scripts/notion.py setup`) and `NOTION_TOKEN` in the same env file.
 4. `repo_path` in `config.json` is the folder of the `Skilux/domovoy` checkout on this machine. Only the improve command needs it, because `posthog/` is outside this skill folder. Everything the call command needs is inside the skill folder.
 
+Check the whole setup at any time: `python3 scripts/doctor.py check` (add `--json` to read it yourself). It is read-only, prints PASS, FAIL, WARN or SKIP for each integration with one fix line, and never prints a key. When a command fails on a missing key or id, run it and tell the user the fix of the first FAIL.
+
 All names that may change live in one place: status names, the backend, viewing hours, the renter's values and the search profiles in `config.json`; contract fields in `reference/*.schema.json`. `budget_cap` is the active profile's `requirements.max_total_monthly`.
 
 ## Rules that always hold
