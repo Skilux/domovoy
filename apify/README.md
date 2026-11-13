@@ -69,7 +69,7 @@ The summary is the key `OUTPUT` in `storage/key_value_stores/default/` (a JSON f
 
 ## Not done yet
 
-The dataset schema in `.actor/dataset_schema.json` is still an empty placeholder. Phase 2: `katastr_lookup` and the PostHog events.
+Phase 2: `katastr_lookup` and the PostHog events.
 
 ## Fixtures
 
