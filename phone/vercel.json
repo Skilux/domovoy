@@ -3,5 +3,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": "public",
   "cleanUrls": true,
-  "regions": ["fra1"]
+  "regions": ["fra1"],
+  "rewrites": [{ "source": "/phone", "destination": "/index.html" }]
 }

@@ -2,6 +2,24 @@
 
 Vercel app at https://domovoy-phone.vercel.app. Spec: [docs/prd/voice.md](../docs/prd/voice.md).
 
+## Which URL when
+
+| URL | Shows | Use it for |
+| --- | --- | --- |
+| `/start` | Home: pitch, install prompt, QR, and the live phone on the right. The phone unfolds over the pitch on Accept. | The submission form, judges, a new user, and the stage screen |
+| `/phone` (same page as `/`) | The phone alone | A screen that should show only the phone |
+| `/stage` | The stage rail, 8 states | The stage, next to Claude Code |
+| `/prompt.txt` | The install prompt as plain text | `claude "$(curl -fsSL https://domovoy-phone.vercel.app/prompt.txt)"` |
+
+Pairing is per browser. Open `/start?k=<DOMOVOY_RECEIVER_KEY>`, `/phone?k=` or `/?k=` once; after that every phone page in that browser is paired, and the key is gone from the address bar. A visitor without the key sees "Demo phone. Calls ring only on the paired device." and links to the other pages; the phone never rings for them.
+
+- Rehearsal: one tab, `/start`, in the paired browser. Click Ready on the phone. Close the tab when done.
+- Stage, Vladimir's laptop: tab 1 `/start` (paired, Ready clicked), tab 2 `/stage`, plus Claude Code and Notion.
+- Keep exactly one phone page open in a paired browser. Two open pages are two phones, and only one of them gets the call.
+- Submission form: `https://domovoy-phone.vercel.app/start`.
+
+## Layout
+
 - `api/`: the 5 routes from the spec. `lib/store.js` is the only file that knows the store (Upstash Redis REST, pending calls expire after 1 hour, results after 24 hours).
 - `lib/context.js`: the only place with `call_context` field names. Required: `property_id`, `address`. Every other field passes through to the agent as a dynamic variable and as a line in `context_text`.
 - `src/main.js` + `public/`: the page. `npm run build` bundles it into `public/app.js`.
