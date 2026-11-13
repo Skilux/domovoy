@@ -17,7 +17,7 @@
     "url_env": "PHONE_URL",
     "secret_env": "DOMOVOY_SECRET",
     "poll_seconds": 3,
-    "timeout_seconds": 300
+    "timeout_seconds": 420
   },
   "call_context": {
     "user_name": "Alex",

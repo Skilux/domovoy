@@ -54,13 +54,13 @@ Ran on 13 Nov 2026, all local, no network:
 - `apply.py build` on the synthetic answers, then `apply.py check`: 15 of 15 checks pass.
 - `apply.py rehearse`: the unchanged core `call.py` on the generated config, against the core's fake phone server. 4 of 4 steps pass: not approved is refused; a qualified renter ends in Viewing booked with an event to create; a broken rule ends in Not booked; a booking outside the windows is turned into Not booked by the core recheck. The full run is `examples/synthetic-agency/rehearsal.json`.
 - `phone/agent/sync-agent.mjs --dry-run` on a scratch copy next to the generated `prompt.md` and `agent.json`: it builds a `POST /v1/convai/agents/create` request with both client tools. Nothing was sent.
-- The 5 tests here pass, and the 79 core skill tests still pass.
+- The 5 tests here pass, and the 191 core skill tests still pass (1 skipped), on `main` as of 15:30.
 
 Not run: a spoken call with the generated prompt, a real ElevenLabs agent, the Vercel page, a real calendar, a language other than English, a real agency's answers.
 
 ## Needed in core
 
-The business edition works around each of these today. None is patched in the core.
+The business edition works around each of these today. None is patched in the core. The core added `DOMOVOY_STATE_DIR` and `DOMOVOY_ENV_FILE` on 13 Nov; set `DOMOVOY_STATE_DIR` to keep an agency's call state out of the core skill folder.
 
 | # | Needed in the core | Why | Workaround today |
 | --- | --- | --- | --- |
@@ -75,7 +75,6 @@ The business edition works around each of these today. None is patched in the co
 | 9 | Time zone and viewing length from the context | `Europe/Prague` and 30 minutes are fixed in `phone/lib/context.js` and the core prompt | The build refuses another time zone; the viewing length is written into the generated prompt |
 | 10 | `notion.py` takes the contract path and database title from config, and a `Lead` property | A Notion board of enquiries needs its own statuses and the renter's first name | Enquiries live in `leads.json` |
 | 11 | `posthog/loop.py` event names and change types for enquiries | The loop speaks of rejected flats and search criteria | `leads.py report` gives counts and reasons locally |
-| 12 | `call.py` state folder from the environment | `.state/` sits in the core skill folder, shared by every config on the machine | Conversation ids are unique, so the shared file is harmless |
 
 ## Rules kept from the core
 

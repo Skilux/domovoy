@@ -9,7 +9,7 @@
       "exit_code": 2,
       "call_py_output": {
         "refused": true,
-        "reason": "no flat has Status = Call approved; nobody was contacted. Move one flat to Call approved first."
+        "reason": "no flat is marked Interested; nobody was contacted. Set \"Interested?\" to Yes (or Status to Call approved) on one flat first."
       },
       "enquiry_status": "New enquiry"
     },

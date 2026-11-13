@@ -37,7 +37,7 @@
       },
       "tts": {
         "model_id": "eleven_v4_turbo",
-        "voice_id": "cjVigY5qzO86Huf0OWal"
+        "voice_id": "UgBBYS2sOqTuMpoF3BR0"
       },
       "turn": {
         "turn_timeout": 7,
