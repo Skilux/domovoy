@@ -152,6 +152,9 @@ def flags(distinct_id, env=None):
     return result
 
 
+_MCP_SESSION = {}
+
+
 def mcp(tool, arguments, env=None):
     """Call one PostHog MCP tool over HTTP with the personal key. Returns the text result."""
     env = env or load_env()
@@ -162,14 +165,14 @@ def mcp(tool, arguments, env=None):
         "x-posthog-project-id": need(env, "POSTHOG_PROJECT_ID"),
         "User-Agent": "domovoy-posthog/1",
     }
-    session = {}
+    session = _MCP_SESSION
 
     def rpc(method, params, notify=False):
         body = {"jsonrpc": "2.0", "method": method, "params": params}
         if not notify:
             body["id"] = 1
         h = dict(headers)
-        if session.get("id"):
+        if session.get("id") and session["id"] != "stateless":
             h["Mcp-Session-Id"] = session["id"]
         req = urllib.request.Request(MCP_URL, data=json.dumps(body).encode("utf-8"), headers=h, method="POST")
         try:
@@ -191,8 +194,10 @@ def mcp(tool, arguments, env=None):
                     pass
         return out
 
-    rpc("initialize", {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "domovoy", "version": "1"}})
-    rpc("notifications/initialized", {}, notify=True)
+    if not session.get("id"):
+        rpc("initialize", {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "domovoy", "version": "1"}})
+        rpc("notifications/initialized", {}, notify=True)
+        session.setdefault("id", "stateless")
     out = rpc("tools/call", {"name": "exec", "arguments": {"command": "call %s %s" % (tool, json.dumps(arguments))}})
     result = (out or {}).get("result") or {}
     text = "\n".join(c.get("text", "") for c in result.get("content") or [])
