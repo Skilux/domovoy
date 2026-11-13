@@ -37,14 +37,9 @@ PROFILE = {
     "household": {"occupants": 1},
     "requirements": {"max_total_monthly": 30000, "elevator": "required"},
 }
-OUTPUT = {
-    "profile_id": "test-2kk-30k",
-    "sources": [{"name": "sreality", "status": "ok", "found": 12, "fetched": 12, "failed": 0},
-                {"name": "bezrealitky", "status": "failed", "found": 0, "fetched": 0, "failed": 0}],
-    "change": {"new": 3, "changed": 1, "unchanged": 8},
-    "match": {"strong": 2, "needs_info": 1, "rejected": 1, "rejected_by_requirement": {"elevator": 1}},
-    "notion": {"created": 3, "updated": 1, "errors": 0},
-}
+# The Actor's own RunSummary, serialized by apify/domovoy/models.py (generated, not hand-written).
+with open(os.path.join(HERE, "fixtures", "run_summary_example.json"), encoding="utf-8") as f:
+    OUTPUT = json.load(f)
 
 
 def run_object(status):
@@ -175,10 +170,17 @@ class SearchTest(unittest.TestCase):
         self.assertEqual(out["profile"], PROFILE["id"])
         self.assertEqual(out["missing_summary_fields"], [])
         summary = out["summary"]
+        self.assertEqual(set(summary), {"sources", "change", "match", "rejected_by_requirement", "notion",
+                                        "extraction_providers"})
         self.assertEqual(summary["change"], {"new": 3, "changed": 1, "unchanged": 8})
-        self.assertEqual(summary["match"]["rejected_by_requirement"], {"elevator": 1})
+        self.assertEqual(summary["match"], {"strong": 2, "needs_info": 1, "rejected": 1})
+        self.assertEqual(summary["rejected_by_requirement"], {"elevator": 1})
+        self.assertEqual(set(summary["sources"][0]), {"portal", "status", "found", "fetched", "failed", "error"})
+        self.assertEqual(summary["sources"][1]["portal"], "bezrealitky")
         self.assertEqual(summary["sources"][1]["status"], "failed")
+        self.assertEqual(summary["sources"][1]["error"], "source not registered")
         self.assertEqual(summary["notion"], {"created": 3, "updated": 1, "errors": 0})
+        self.assertEqual(summary["extraction_providers"], {"featherless": 4, "openai": 0, "cache": 8})
         [start] = self.fake.calls("POST", "/runs")
         self.assertEqual(start[2], "Bearer " + TOKEN)
         body = start[3]
@@ -346,6 +348,26 @@ class SearchTest(unittest.TestCase):
         self.assertIsNone(out["summary"]["sources"])
         self.assertIn("change.changed", out["missing_summary_fields"])
         self.assertIn("sources", out["missing_summary_fields"])
+        self.assertIsNone(out["summary"]["rejected_by_requirement"])
+        self.assertIn("rejected_by_requirement", out["missing_summary_fields"])
+        self.assertIsNone(out["summary"]["extraction_providers"]["cache"])
+        self.assertIn("extraction_providers.cache", out["missing_summary_fields"])
+
+    def test_summary_fields_sit_where_the_run_summary_puts_them(self):
+        # sources is a list of SourceStatus objects; rejected_by_requirement is top-level, not under match.
+        self.fake.output = dict(OUTPUT, sources={"sreality": {"portal": "sreality", "status": "ok"}})
+        code, out, raw, _ = self.cli("status", "--run", RUN_ID)
+        self.assertEqual(code, 0, raw)
+        self.assertIsNone(out["summary"]["sources"])
+        self.assertIn("sources", out["missing_summary_fields"])
+        moved = {k: v for k, v in OUTPUT.items() if k != "rejected_by_requirement"}
+        moved["match"] = dict(OUTPUT["match"], rejected_by_requirement=OUTPUT["rejected_by_requirement"])
+        self.fake.output = moved
+        code, out, raw, _ = self.cli("status", "--run", RUN_ID)
+        self.assertEqual(code, 0, raw)
+        self.assertIsNone(out["summary"]["rejected_by_requirement"])
+        self.assertIn("rejected_by_requirement", out["missing_summary_fields"])
+        self.assertEqual(out["summary"]["match"], {"strong": 2, "needs_info": 1, "rejected": 1})
 
     def test_a_succeeded_run_without_output_exits_1(self):
         self.fake.output = None

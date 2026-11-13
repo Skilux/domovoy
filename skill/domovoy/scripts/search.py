@@ -14,7 +14,8 @@ from the environment or the env file. APIFY_API_BASE replaces https://api.apify.
 The Notion token is never sent: the Actor reads its own secret on the platform.
 
 The run input is {"mode": "search", "profile": ..., "notion": {"dataSourceId": ...}}. The summary is the run's
-key-value record OUTPUT. Its counts are read by name (see summarize); a count that is absent prints as null.
+key-value record OUTPUT, the Actor's RunSummary (apify/domovoy/models.py). summarize copies its fields by name;
+a field that is absent or of the wrong shape prints as null.
 """
 import argparse
 import copy
@@ -33,10 +34,7 @@ DEFAULT_ENV_FILE = "~/.config/domovoy/.env"
 OUTPUT_KEY = "OUTPUT"
 TERMINAL = ("SUCCEEDED", "FAILED", "TIMED-OUT", "ABORTED")
 REQUEST_TIMEOUT = 30  # seconds per HTTP request; a poll also gets no more than the time left before the deadline
-GROUPS = {"change": ("new", "changed", "unchanged"),
-          "match": ("strong", "needs_info", "rejected"),
-          "notion": ("created", "updated", "errors")}
-SOURCE_FIELDS = ("name", "status", "found", "fetched", "failed")
+SOURCE_FIELDS = ("portal", "status", "found", "fetched", "failed", "error")  # SourceStatus, apify/domovoy/models.py
 SECRETS = set()  # the Apify token; scrubbed from everything printed
 TYPES = {
     "string": lambda v: isinstance(v, str),
@@ -286,31 +284,38 @@ def read_output(api, store_id):
 
 
 def summarize(output):
-    """Pick the counts out of the OUTPUT record by name. An absent count is null, never 0."""
+    """Copy the fields of the Actor's RunSummary out of the OUTPUT record, by name, in the model's order.
+    A field that is absent or of the wrong shape prints as null, never 0, and its path is listed in missing."""
     missing = []
-    sources = output.get("sources")
-    if isinstance(sources, dict):  # also accept {name: {...}}
-        sources = [dict(v, name=k) for k, v in sources.items() if isinstance(v, dict)]
-    if not isinstance(sources, list):
-        sources = None
-        missing.append("sources")
-    summary = {"sources": None if sources is None else
-               [{k: s.get(k) for k in SOURCE_FIELDS} for s in sources if isinstance(s, dict)]}
-    for group, keys in GROUPS.items():
+
+    def counts(group, keys):
         block = output.get(group) if isinstance(output.get(group), dict) else {}
-        summary[group] = {}
+        picked = {}
         for key in keys:
             value = block.get(key)
             if isinstance(value, bool) or not isinstance(value, int):
                 value = None
                 missing.append("%s.%s" % (group, key))
-            summary[group][key] = value
-    match = output.get("match") if isinstance(output.get("match"), dict) else {}
-    reasons = match.get("rejected_by_requirement")
+            picked[key] = value
+        return picked
+
+    sources = output.get("sources")
+    if not isinstance(sources, list):
+        sources = None
+        missing.append("sources")
+    reasons = output.get("rejected_by_requirement")
     if not isinstance(reasons, dict):
         reasons = None
-        missing.append("match.rejected_by_requirement")
-    summary["match"]["rejected_by_requirement"] = reasons
+        missing.append("rejected_by_requirement")
+    summary = {
+        "sources": None if sources is None else
+                   [{k: s.get(k) for k in SOURCE_FIELDS} for s in sources if isinstance(s, dict)],
+        "change": counts("change", ("new", "changed", "unchanged")),
+        "match": counts("match", ("strong", "needs_info", "rejected")),
+        "rejected_by_requirement": reasons,
+        "notion": counts("notion", ("created", "updated", "errors")),
+        "extraction_providers": counts("extraction_providers", ("featherless", "openai", "cache")),
+    }
     return summary, missing
 
 
