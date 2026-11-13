@@ -5,7 +5,8 @@
                                               [--offline-items F --offline-summary F]
 
 Writes ~/.config/domovoy/e2e-reports/<round>/report.md and findings.json (no contacts). Raw datasets, which hold
-realtor contacts, go to ~/.config/domovoy/e2e-data/<round>/ only. Exit 1 when any blocker was found, 2 when refused.
+realtor contacts, go to ~/.config/domovoy/e2e-data/<round>/ only. Exit 0 green, 1 blocker, 2 refused, 3 harness error,
+4 incomplete (L4/L5 had no candidate pages).
 
 Safety: the config (DOMOVOY_CONFIG, default ~/.config/domovoy/config.e2e.json) must point at the database titled
 "DOMOVOY shortlist (e2e)", never the demo shortlist; every page write checks the page's parent first. Platform runs
@@ -14,13 +15,18 @@ file into child processes only and never printed. See README.md.
 """
 
 import argparse
+import contextlib
 import datetime as dt
+import fcntl
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -46,6 +52,7 @@ HEAVY_DIR = Path("/Users/vladimir/Documents/domovoy-actor-orchestration/heavy")
 UA = "apify-agent-skills/apify-actor-development"
 DEMO_DATA_SOURCE = "03e7d4e2-76c9-49d2-a141-c162e4f3c1fe"
 E2E_TITLE = "DOMOVOY shortlist (e2e)"
+DEMO_TITLE = "DOMOVOY shortlist"
 PROFILE_ID = "e2e-vinohrady"
 MAX_PLATFORM_RUNS = 6
 RUN_BUDGET_SEC = 600
@@ -110,18 +117,16 @@ class Notion:
             return r.json()
         raise RuntimeError("Notion %s %s: retries exhausted" % (method, path))
 
-    def guard(self) -> None:
-        if not self.ds or self.ds.replace("-", "") == DEMO_DATA_SOURCE.replace("-", ""):
-            raise Refused("the config points at the demo shortlist (or nowhere); refusing")
+    def guard(self, expected_database_id: str | None) -> None:
+        """Enable writes only when the target is the e2e database (see check_target)."""
+        self.writable = False
+        check_target(self.ds, None, None, expected_database_id)  # id checks before any request
         source = self.call("GET", "/data_sources/%s" % self.ds)
-        titles = {"".join(t.get("plain_text", "") for t in source.get("title") or [])}
         parent = source.get("parent") or source.get("database_parent") or {}
-        if parent.get("database_id"):
-            db = self.call("GET", "/databases/%s" % parent["database_id"])
-            titles.add("".join(t.get("plain_text", "") for t in db.get("title") or []))
-        if E2E_TITLE not in titles:
-            raise Refused("data source %s is not %r (titles %s); refusing" % (self.ds, E2E_TITLE, sorted(titles)))
+        database = self.call("GET", "/databases/%s" % parent["database_id"]) if parent.get("database_id") else None
+        check_target(self.ds, source, database, expected_database_id)
         self.properties = source.get("properties") or {}
+        self.writable = True
 
     def pages(self) -> list[dict]:
         out, cursor = [], None
@@ -152,18 +157,49 @@ class Notion:
                 return "\n".join(line for line in lines if line.strip())
             cursor = reply["next_cursor"]
 
-    def write_page(self, page_id: str, properties: dict) -> None:
+    def _own_page(self, page_id: str) -> None:
+        if not getattr(self, "writable", False):
+            raise Refused("writes are not enabled: the target was not verified as the e2e database")
         page = self.call("GET", "/pages/%s" % page_id)
         if (page.get("parent") or {}).get("data_source_id", "").replace("-", "") != self.ds.replace("-", ""):
             raise Refused("page %s is not in the e2e data source; refusing to write" % page_id)
+
+    def write_page(self, page_id: str, properties: dict) -> None:
+        self._own_page(page_id)
         self.call("PATCH", "/pages/%s" % page_id, {"properties": properties})
 
     def append(self, page_id: str, text: str) -> None:
-        page = self.call("GET", "/pages/%s" % page_id)
-        if (page.get("parent") or {}).get("data_source_id", "").replace("-", "") != self.ds.replace("-", ""):
-            raise Refused("page %s is not in the e2e data source; refusing to write" % page_id)
+        self._own_page(page_id)
         self.call("PATCH", "/blocks/%s/children" % page_id, {"children": [{"object": "block", "type": "paragraph",
                   "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}}]}}]})
+
+
+def _title(obj: dict | None) -> str:
+    return "".join(t.get("plain_text", "") for t in (obj or {}).get("title") or []).strip()
+
+
+def check_target(ds_id: str, source: dict | None, database: dict | None, expected_database_id: str | None) -> None:
+    """Refuse unless the data source is the e2e one: not the demo id, neither the source nor its parent database
+    titled like the demo shortlist, a parent database titled "DOMOVOY shortlist (e2e)", and that parent's id equal to
+    the config's notion.database_id. source/database None: only the id checks (before any request)."""
+    norm = lambda value: (value or "").replace("-", "").lower()
+    if not ds_id or norm(ds_id) == norm(DEMO_DATA_SOURCE):
+        raise Refused("the config points at the demo shortlist (or nowhere); refusing")
+    if not expected_database_id:
+        raise Refused("config notion.database_id (the e2e database) is not set; refusing")
+    if source is None:
+        return
+    parent = source.get("parent") or source.get("database_parent") or {}
+    if _title(source) == DEMO_TITLE or (database is not None and _title(database) == DEMO_TITLE):
+        raise Refused("the data source or its parent database is titled %r (the demo shortlist); refusing" % DEMO_TITLE)
+    if database is None or not parent.get("database_id"):
+        raise Refused("data source %s has no parent database; refusing" % ds_id)
+    if _title(database) != E2E_TITLE:
+        raise Refused("the parent database is titled %r, not %r; refusing" % (_title(database), E2E_TITLE))
+    if _title(source) not in ("", E2E_TITLE):
+        raise Refused("the data source is titled %r, not %r; refusing" % (_title(source), E2E_TITLE))
+    if norm(parent["database_id"]) != norm(expected_database_id) or norm(database.get("id")) != norm(expected_database_id):
+        raise Refused("the parent database is not the e2e database %s; refusing" % expected_database_id)
 
 
 def plain(items: Any) -> str:
@@ -200,16 +236,103 @@ def child_env(env: dict[str, str], keys: tuple[str, ...], extra: dict | None = N
     return out
 
 
-def run_logged(cmd: list[str], logfile: Path, *, cwd: Path, env: dict, timeout: float, heavy: str | None = None) -> tuple[int, float]:
+def run_logged(cmd: list[str], raw: Path, *, cwd: Path, env: dict, timeout: float, heavy: str | None = None) -> tuple[int, float]:
+    """Run a child; its output goes to raw (the private data folder), never to the reports. publish() writes the
+    sanitized copy."""
     if heavy:
         cmd = [str(HEAVY), "--dir", str(HEAVY_DIR), "--label", "e2e-" + heavy, "--"] + cmd
     start = time.monotonic()
-    with open(logfile, "w") as f:
+    with open(raw, "w") as f:
         try:
             code = subprocess.run(cmd, cwd=cwd, env=env, stdout=f, stderr=subprocess.STDOUT, timeout=timeout).returncode
         except subprocess.TimeoutExpired:
             code = -9
     return code, time.monotonic() - start
+
+
+def publish(raw: Path | str, dest: Path) -> str:
+    """Write the sanitized text of raw (a path or the text itself) to dest in the reports; return that text."""
+    text = raw.read_text(errors="replace") if isinstance(raw, Path) else raw
+    clean = checks.sanitize(text)
+    dest.write_text(clean)
+    return clean
+
+
+def write_private(path: Path, value: Any) -> None:
+    """JSON readable by the user only (0600), written atomically."""
+    fd, tmp = tempfile.mkstemp(prefix=".tmp-", dir=path.parent)
+    with os.fdopen(fd, "w") as f:
+        json.dump(value, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+# Platform-run cap: one locked check-and-reserve, written atomically before the launch
+
+
+@contextlib.contextmanager
+def _locked_counter(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(str(path) + ".lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            entries = load_json(path) or []
+            yield entries
+            fd, tmp = tempfile.mkstemp(prefix=".platform_runs-", dir=path.parent)
+            with os.fdopen(fd, "w") as f:
+                json.dump(entries, f, indent=2)
+            os.replace(tmp, path)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def reserve_platform_run(path: Path, round_name: str, label: str, cap: int = MAX_PLATFORM_RUNS) -> str:
+    """Reserve one platform run under the lock, or refuse when cap entries exist. Returns the reservation id."""
+    with _locked_counter(path) as entries:
+        if len(entries) >= cap:
+            raise Refused("the platform run cap (%d) is reached; see %s" % (cap, path))
+        rid = uuid.uuid4().hex
+        entries.append({"id": rid, "round": round_name, "label": label, "run_id": None,
+                        "at": dt.datetime.now(PRAGUE).isoformat()})
+        return rid
+
+
+def update_reservation(path: Path, rid: str, run_id: str | None) -> None:
+    with _locked_counter(path) as entries:
+        for entry in entries:
+            if entry.get("id") == rid:
+                entry["run_id"] = run_id
+
+
+class ConfigSnapshot:
+    """The validated config, frozen in a private file (0600) at round start. Children get this path, never the
+    user's file; verify() runs at every launch and refuses when either file changed or the target moved."""
+
+    def __init__(self, source: Path, private_dir: Path):
+        self.source = Path(source)
+        raw = self.source.read_bytes()
+        self.digest = hashlib.sha256(raw).hexdigest()
+        self.cfg = json.loads(raw)
+        fd, path = tempfile.mkstemp(prefix="config-snapshot-", suffix=".json", dir=private_dir)
+        with os.fdopen(fd, "wb") as f:
+            f.write(raw)
+        os.chmod(path, 0o600)
+        self.path = Path(path)
+
+    def target(self) -> str:
+        return (self.cfg.get("notion") or {}).get("data_source_id") or ""
+
+    def verify(self, data_source_id: str) -> None:
+        if hashlib.sha256(self.path.read_bytes()).hexdigest() != self.digest:
+            raise Refused("the config snapshot changed during the round; refusing to launch")
+        if not self.source.is_file() or hashlib.sha256(self.source.read_bytes()).hexdigest() != self.digest:
+            raise Refused("the config %s was edited during the round; refusing to launch" % self.source)
+        if self.target() != data_source_id:
+            raise Refused("the config targets %s, the round verified %s; refusing to launch"
+                          % (self.target(), data_source_id))
+
+    def close(self) -> None:
+        with contextlib.suppress(OSError):
+            self.path.unlink()
 
 
 def save_json(path: Path, value: Any) -> None:
@@ -231,7 +354,13 @@ class Round:
             d.mkdir(parents=True, exist_ok=True)
             os.chmod(d, 0o700)
         self.env = read_env()
-        self.cfg = json.loads(Path(args.config).read_text())
+        for key, value in self.env.items():  # registered before anything is written
+            if key in SECRET_KEYS or re.search(r"KEY|TOKEN|SECRET|PASSWORD", key):
+                checks.register_secret(value)
+        self.config = ConfigSnapshot(Path(args.config), self.data)  # children only ever see this frozen copy
+        self.cfg = self.config.cfg
+        self.counter = REPORTS / "platform_runs.json"
+        self.incomplete: list[str] = []
         self.profile = json.loads((HERE / "profile_e2e.json").read_text())
         self.findings: list[dict] = []
         self.results: dict[str, str] = {}
@@ -241,6 +370,12 @@ class Round:
         self.notion: Notion | None = None
         self.only = set(args.only.split(",")) if args.only else None
         self.contacts: set[str] = set()
+        for f in sorted(DATA.glob("*/*-items.json")):  # contacts of earlier rounds are scrubbed too
+            with contextlib.suppress(ValueError, OSError):
+                self.collect_contacts(json.loads(f.read_text()) or [])
+        for f in sorted(DATA.glob("*/*-pages.json")):
+            with contextlib.suppress(ValueError, OSError):
+                self.page_contacts(json.loads(f.read_text()) or [])
 
     # bookkeeping
 
@@ -262,22 +397,19 @@ class Round:
             self.results[check_id] = "skipped: " + why
             self.skipped.add(check_id)
 
-    def platform_run_allowed(self) -> bool:
-        counter = load_json(REPORTS / "platform_runs.json") or []
-        return len(counter) < MAX_PLATFORM_RUNS
-
-    def count_platform_run(self, label: str, run_id: str | None) -> None:
-        counter = load_json(REPORTS / "platform_runs.json") or []
-        counter.append({"round": self.name, "label": label, "run_id": run_id, "at": dt.datetime.now(PRAGUE).isoformat()})
-        save_json(REPORTS / "platform_runs.json", counter)
-
     def open_notion(self) -> Notion:
         if self.notion is None:
             version = json.loads((SKILL_DIR / "reference" / "notion_contract.json").read_text())["notion_api_version"]
-            ds = (self.cfg.get("notion") or {}).get("data_source_id") or ""
-            self.notion = Notion(self.env["NOTION_TOKEN"], ds, version)
-            self.notion.guard()
+            self.notion = Notion(self.env["NOTION_TOKEN"], self.config.target(), version)
+            self.notion.guard((self.cfg.get("notion") or {}).get("database_id"))
         return self.notion
+
+    def launch_check(self) -> Notion:
+        """At every launch boundary: the config is unchanged since round start and Notion still says e2e."""
+        n = self.open_notion()
+        self.config.verify(n.ds)
+        n.guard((self.cfg.get("notion") or {}).get("database_id"))
+        return n
 
     def snapshot(self, bodies_for: set[str] | None = None, all_bodies: bool = False) -> list[dict]:
         n = self.open_notion()
@@ -285,11 +417,15 @@ class Round:
         for page in n.pages():
             want = all_bodies or (bodies_for is not None and page["id"] in bodies_for)
             pages.append(simple_page(page, n.body(page["id"]) if want else None))
+        self.page_contacts(pages)
+        return pages
+
+    def page_contacts(self, pages: list[dict]) -> None:
         for p in pages:
             for key in ("Contact", "Email", "Phone"):
-                if p["props"].get(key):
+                if (p.get("props") or {}).get(key):
                     self.contacts.add(str(p["props"][key]))
-        return pages
+                    checks.register_contact(str(p["props"][key]))
 
     def collect_contacts(self, items: list[dict]) -> None:
         for item in items:
@@ -298,6 +434,7 @@ class Round:
                     value = (source.get("contact") or {}).get(key)
                     if value:
                         self.contacts.add(str(value))
+                        checks.register_contact(str(value))
 
     # layers
 
@@ -308,9 +445,9 @@ class Round:
         ):
             if not self.wanted(cid):
                 continue
-            logfile = self.reports / ("%s.log" % cid)
-            code, secs = run_logged(cmd, logfile, cwd=cwd, env=child_env({}, ()), timeout=900)
-            text = logfile.read_text()
+            raw = self.data / ("%s.log" % cid)
+            code, secs = run_logged(cmd, raw, cwd=cwd, env=child_env({}, ()), timeout=900)
+            text = publish(raw, self.reports / raw.name)
             found = []
             if code != 0:
                 failing = sorted(set(re.findall(r"(?:FAILED|ERROR) tests/(test_\w+)\.py", text)
@@ -326,18 +463,18 @@ class Round:
 
     def l1(self) -> None:
         cids = ["L1.exit_zero", "L1.summary_valid", "L1.sources_ok", "L1.time_budget", "L1.notion_errors"]
-        n = self.open_notion()
+        n = self.launch_check()
         storage = APIFY_DIR / "storage"
         shutil.rmtree(storage / "datasets" / "default", ignore_errors=True)
         for f in (storage / "key_value_stores" / "default").glob("OUTPUT*"):
             f.unlink()
         input_file = self.data / "L1-input.json"
-        save_json(input_file, {"mode": "search", "profile": self.profile, "notion": {"dataSourceId": n.ds},
-                               "includeUnchanged": True})
+        write_private(input_file, {"mode": "search", "profile": self.profile, "notion": {"dataSourceId": n.ds},
+                                   "includeUnchanged": True})
         cmd = ["apify", "run", "--input-file", str(input_file), "--user-agent", UA]
-        logfile = self.reports / "L1-local-run.log"
+        raw = self.data / "L1-local-run.log"
         log("L1: local apify run (budget %d s)" % RUN_BUDGET_SEC)
-        code, secs = run_logged(cmd, logfile, cwd=APIFY_DIR, timeout=RUN_BUDGET_SEC * 1.5, heavy="l1-local",
+        code, secs = run_logged(cmd, raw, cwd=APIFY_DIR, timeout=RUN_BUDGET_SEC * 1.5, heavy="l1-local",
                                 env=child_env(self.env, ("NOTION_TOKEN", "FEATHERLESS_API_KEY", "OPENAI_API_KEY")))
         summary = None
         outputs = sorted((storage / "key_value_stores" / "default").glob("OUTPUT*"))
@@ -353,36 +490,32 @@ class Round:
         self.runs.append({"layer": "L1", "kind": "local", "run_id": run_id, "exit": code, "seconds": round(secs),
                           "items": len(items)})
         how = "exit %d" % code + (" (killed after %d s)" % secs if code == -9 else "")
-        tail = "\n".join(logfile.read_text().splitlines()[-5:])
+        tail = "\n".join(publish(raw, self.reports / raw.name).splitlines()[-5:])  # after the contacts are known
         self.record(cids, checks.check_run("L1", run_id=run_id, ok=code == 0, how=how + "\n" + tail, elapsed=secs,
                                            budget=RUN_BUDGET_SEC, summary=summary))
 
     def platform_run(self, label: str, include_unchanged: bool) -> tuple[dict | None, list[dict], dict | None, float]:
-        if not self.platform_run_allowed():
-            raise Refused("the platform run cap (%d) is reached; see %s" % (MAX_PLATFORM_RUNS, REPORTS / "platform_runs.json"))
+        self.launch_check()
+        rid = reserve_platform_run(self.counter, self.name, label)  # locked check-and-reserve before the launch
         cmd = ["python3", str(SKILL_DIR / "scripts" / "search.py"), "run"]
         if include_unchanged:
             cmd.append("--include-unchanged")
-        logfile = self.reports / ("%s-search.log" % label)
-        self.count_platform_run(label, None)
-        log("%s: platform run via search.py (counted %d/%d)" % (label, len(load_json(REPORTS / "platform_runs.json")),
-                                                                 MAX_PLATFORM_RUNS))
-        out_file = self.data / ("%s-search.json" % label)
+        log("%s: platform run via search.py (reserved %d/%d)" % (label, len(load_json(self.counter) or []),
+                                                                  MAX_PLATFORM_RUNS))
+        out_file, err_file = self.data / ("%s-search.json" % label), self.data / ("%s-search.log" % label)
         start = time.monotonic()
-        with open(out_file, "w") as out, open(logfile, "w") as err:
+        with open(out_file, "w") as out, open(err_file, "w") as err:
             heavy = [str(HEAVY), "--dir", str(HEAVY_DIR), "--label", "e2e-" + label, "--"]
             code = subprocess.run(heavy + cmd, cwd=REPO, stdout=out, stderr=err, timeout=1800,
-                                  env=child_env(self.env, ("APIFY_TOKEN",), {"DOMOVOY_CONFIG": str(self.args.config)})).returncode
+                                  env=child_env(self.env, ("APIFY_TOKEN",), {"DOMOVOY_CONFIG": str(self.config.path)})).returncode
         secs = time.monotonic() - start
         try:
             printed = json.loads(out_file.read_text())
         except ValueError:
             printed = {"error": "search.py printed no JSON (exit %d)" % code}
-        shutil.copy(out_file, self.reports / out_file.name)  # search.py output holds no contacts
         run_id = printed.get("run_id")
-        counter = load_json(REPORTS / "platform_runs.json")
-        counter[-1]["run_id"] = run_id
-        save_json(REPORTS / "platform_runs.json", counter)
+        update_reservation(self.counter, rid, run_id)
+        platform_log = None
         summary, items = None, []
         if run_id:
             api = httpx.Client(timeout=60, headers={"Authorization": "Bearer " + self.env["APIFY_TOKEN"]})
@@ -390,11 +523,15 @@ class Round:
             r = api.get("%s/key-value-stores/%s/records/OUTPUT" % (APIFY, run["defaultKeyValueStoreId"]))
             summary = r.json() if r.status_code == 200 else None
             items = api.get("%s/datasets/%s/items" % (APIFY, run["defaultDatasetId"]), params={"clean": 1, "format": "json"}).json()
-            (self.reports / ("%s-platform.log" % label)).write_text(api.get("%s/actor-runs/%s/log" % (APIFY, run_id)).text)
+            platform_log = self.data / ("%s-platform.log" % label)
+            platform_log.write_text(api.get("%s/actor-runs/%s/log" % (APIFY, run_id)).text)
             printed["build"] = run.get("buildNumber")
         save_json(self.data / ("%s-items.json" % label), items)
         save_json(self.data / ("%s-summary.json" % label), summary)
         self.collect_contacts(items)
+        for raw in (out_file, err_file, platform_log):  # sanitized copies, once this run's contacts are known
+            if raw is not None:
+                publish(raw, self.reports / raw.name)
         self.runs.append({"layer": label, "kind": "platform", "run_id": run_id, "status": printed.get("status"),
                           "exit": code, "seconds": round(secs), "items": len(items), "build": printed.get("build")})
         return printed, items, summary, secs
@@ -436,7 +573,9 @@ class Round:
                 found += checks.check_counts(items, summary, run_id, include_unchanged=True)
         label, items, summary = sets[-1]
         run_id = (summary or {}).get("run_id") or label
-        if self.wanted("L3.quotes_verified"):
+        if self.args.offline_items:
+            self.skip("L3.quotes_verified", "offline (no portal requests)")
+        elif self.wanted("L3.quotes_verified"):
             verified = skipped = 0
             for item in items[:15]:
                 texts = refetch_texts(item)
@@ -449,6 +588,7 @@ class Round:
         if self.args.offline_items:
             for cid in cids[7:]:
                 self.skip(cid, "offline")
+            self.skip("L3.summary_counts", "offline")
         else:
             pages = self.snapshot()
             new_ids = {p["page_id"] for p in pages if p["page_id"] not in before_ids}
@@ -461,13 +601,14 @@ class Round:
 
     def l4(self) -> None:
         cids = ["L4.no_new_pages", "L4.unchanged_reported", "L4.edits_kept", "L4.property_ids_stable", "L2b.run_succeeded"]
-        n = self.open_notion()
+        n = self.launch_check()
         pages = self.snapshot()
         candidates = sorted((p for p in pages if p["status"] == "Shortlisted" and p["property_id"]),
                             key=lambda p: p["property_id"])
         if not candidates:
             for cid in cids:
                 self.skip(cid, "no Shortlisted page to edit")
+            self.incomplete.append("L4 had no Shortlisted page to edit")
             return
         target = candidates[0]
         edited = {"page_id": target["page_id"], "status": "Not interested", "reason": "e2e round %s edit" % self.args.round,
@@ -493,7 +634,7 @@ class Round:
 
     def l5(self) -> None:
         cids = ["L5.context_schema", "L5.context_matches_page", "L5.budget_cap", "L5.interested_trigger", "L5.fake_phone_run"]
-        n = self.open_notion()
+        n = self.launch_check()
         pages = self.snapshot()
         edited = (load_json(self.data / "L4-edited.json") or {}).get("page_id")
         cap = self.profile["requirements"]["max_total_monthly"]
@@ -503,6 +644,7 @@ class Round:
         if len(pool) < 2:
             for cid in cids:
                 self.skip(cid, "fewer than 2 Shortlisted pages")
+            self.incomplete.append("L5 had %d of 2 Shortlisted pages" % len(pool))
             return
         work = self.data / "L5"
         shutil.rmtree(work, ignore_errors=True)
@@ -514,7 +656,7 @@ class Round:
         cfg.setdefault("call_context", {}).update({"user_name": "E2E Tester", "realtor_name": "Demo Realtor"})
         cfg["call_context"].pop("budget_cap", None)
         cfg_path = work / "config.l5.json"
-        save_json(cfg_path, cfg)
+        write_private(cfg_path, cfg)
         secret = uuid.uuid4().hex
         env = child_env(self.env, ("NOTION_TOKEN",), {"DOMOVOY_CONFIG": str(cfg_path), "E2E_PHONE_URL":
                         "http://127.0.0.1:%d" % PHONE_PORT, "E2E_PHONE_SECRET": secret, "DOMOVOY_SECRET": secret})
@@ -537,12 +679,13 @@ class Round:
                 self.notes.append("L5: page %s (property %s) marked via %s" % (page["page_id"], page["property_id"],
                                   "Interested? = Yes" if via_select else "Status = Interested"))
                 call = ["python3", str(work / "skill" / "scripts" / "call.py")]
+                self.launch_check()
                 check = subprocess.run(call + ["check", "--windows", windows, "--page", page["page_id"]], env=env,
                                        capture_output=True, text=True, timeout=120)
                 try:
                     out = json.loads(check.stdout)
                 except ValueError:
-                    out = {"error": "no JSON (exit %d): %s" % (check.returncode, check.stderr[-200:])}
+                    out = {"error": "call.py printed no JSON (exit %d)" % check.returncode}
                 context = out.get("call_context")
                 if context is None:
                     cid = "L5.interested_trigger" if via_select and out.get("refused") else "L5.context_schema"
@@ -550,7 +693,7 @@ class Round:
                     found.append(checks.finding(cid, "major" if via_select else "blocker",
                                                 "call.py check built no call_context (exit %d)" % check.returncode, path,
                                                 checks.rerun("L5"), property_id=page["property_id"], page_id=page["page_id"],
-                                                excerpt=json.dumps(out)[:300]))
+                                                excerpt=checks.pick(out, ("refused", "reason", "error", "valid"))))
                     continue
                 errors = [e.message for e in jsonschema.Draft202012Validator(schema).iter_errors(context)]
                 found += checks.check_call_context(context, page, cap, errors)
@@ -561,6 +704,7 @@ class Round:
 
     def fake_call(self, call: list[str], windows: str, page: dict, env: dict, secret: str) -> list[dict]:
         base = "http://127.0.0.1:%d" % PHONE_PORT
+        self.launch_check()
         proc = subprocess.Popen(call + ["run", "--windows", windows, "--page", page["page_id"]], env=env,
                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         pending = None
@@ -592,16 +736,15 @@ class Round:
         status = simple_page(self.open_notion().call("GET", "/pages/%s" % page["page_id"]))["status"]
         if proc.returncode != 0 or out.get("status") != "Not booked" or status != "Not booked":
             return fail("call.py run: exit %d, reported %r, page Status %r (expected Not booked)"
-                        % (proc.returncode, out.get("status"), status), json.dumps(out)[:300])
+                        % (proc.returncode, out.get("status"), status),
+                        checks.pick(out, ("status", "booked", "reason", "error", "refused", "already_handled")))
         return []
 
     def l6(self) -> None:
         cids = ["L6.no_secrets", "L6.no_contacts_reports", "L6.no_contacts_repo", "L6.fixture_scrub"]
-        secrets = [self.env[k] for k in SECRET_KEYS if self.env.get(k)]
-        contacts = sorted(self.contacts)
         for label in ("L1", "L2a", "L2b"):
             self.collect_contacts(load_json(self.data / ("%s-items.json" % label)) or [])
-        contacts = sorted(self.contacts)
+        secrets, contacts = checks.known_secrets(), checks.known_contacts()
         found = []
         allow = ("noreply@anthropic.com", "example.com", "example.org")
         for f in sorted(REPORTS.rglob("*")):
@@ -639,12 +782,25 @@ class Round:
 
     # report
 
+    def status(self) -> str:
+        if any(f["severity"] == "blocker" for f in self.findings):
+            return "BLOCKERS"
+        if self.incomplete:
+            return "INCOMPLETE (%s)" % "; ".join(self.incomplete)
+        return "GREEN" if self.args.only is None and self.args.layers is None else "PASS (partial: %s)" % (
+            self.args.only or self.args.layers)
+
     def write_report(self, started: dt.datetime) -> None:
+        for f in sorted(self.reports.iterdir()):  # logs written earlier get every contact known by now
+            if f.is_file() and f.name not in ("report.md", "findings.json"):
+                publish(f, f)
+        self.findings = checks.sanitize_tree(self.findings)
+        self.notes = [checks.sanitize(n) for n in self.notes]
         for i, f in enumerate(self.findings, 1):
             f["id"] = "r%s-%03d" % (self.name, i)
-        save_json(self.reports / "findings.json", self.findings)
+        (self.reports / "findings.json").write_text(checks.sanitize(json.dumps(self.findings, indent=2, ensure_ascii=False)))
         sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
-        lines = ["# DOMOVOY e2e round %s" % self.name, "",
+        lines = ["# DOMOVOY e2e round %s" % self.name, "", "**Status: %s**" % self.status(), "",
                  "Started %s, finished %s. Repo %s at %s. Profile `%s`. Data source %s." % (
                      started.isoformat(timespec="seconds"), dt.datetime.now(PRAGUE).isoformat(timespec="seconds"), REPO.name,
                      sha, PROFILE_ID, (self.cfg.get("notion") or {}).get("data_source_id")), "",
@@ -652,7 +808,7 @@ class Round:
         for r in self.runs:
             lines.append("| %s | %s | %s | %s | %s | %s | %s |" % (r["layer"], r["kind"], r.get("run_id"),
                          r.get("status") or r.get("exit"), r["seconds"], r["items"], r.get("build") or ""))
-        counter = load_json(REPORTS / "platform_runs.json") or []
+        counter = load_json(self.counter) or []
         lines += ["", "Platform runs used so far: %d of %d." % (len(counter), MAX_PLATFORM_RUNS), "", "## Checks", "",
                   "| Check | Result |", "| --- | --- |"]
         lines += ["| `%s` | %s |" % (cid, res) for cid, res in self.results.items()]
@@ -667,7 +823,7 @@ class Round:
                 lines.append("- **%s** `%s` [%s] %s. run %s, property %s, page %s. Path `%s`. Repro: `%s`%s" % (
                     f["id"], f["check_id"], f["owner_wp"], f["summary"], e["run_id"], e["property_id"], e["notion_page_id"],
                     f["suspected_path"], f["repro"], ("\n  - excerpt: `%s`" % e["log_excerpt"].replace("`", "'").replace("\n", " ⏎ ")) if e["log_excerpt"] else ""))
-        (self.reports / "report.md").write_text("\n".join(lines) + "\n")
+        (self.reports / "report.md").write_text(checks.sanitize("\n".join(lines) + "\n"))
 
 
 def refetch_texts(item: dict) -> list[str] | None:
@@ -724,7 +880,11 @@ def main(argv: list[str] | None = None) -> int:
         layers = sorted({c.split(".")[0].replace("L2b", "L4") for c in args.only.split(",")})
     else:
         layers = list(LAYERS)
-    rnd = Round(args)
+    try:
+        rnd = Round(args)
+    except (OSError, ValueError, Refused) as e:
+        log("REFUSED before the round started: %s" % e)
+        return 2
     started = dt.datetime.now(PRAGUE)
     code = 0
     try:
@@ -754,19 +914,25 @@ def main(argv: list[str] | None = None) -> int:
     except Refused as e:
         log("REFUSED: %s" % e)
         rnd.notes.append("refused: %s" % e)
+        rnd.incomplete.append("refused: %s" % e)
         code = 2
     except Exception as e:  # the report is still written
         log("harness error: %s: %s" % (type(e).__name__, e))
         rnd.notes.append("harness error: %s: %s" % (type(e).__name__, checks.scrub(e)))
+        rnd.incomplete.append("harness error")
         code = 3
+    finally:
+        rnd.config.close()
     rnd.write_report(started)
     blockers = [f for f in rnd.findings if f["severity"] == "blocker"]
     majors = [f for f in rnd.findings if f["severity"] == "major"]
-    log("round %s: %d blockers, %d majors, %d findings; report %s" % (rnd.name, len(blockers), len(majors),
-                                                                       len(rnd.findings), rnd.reports / "report.md"))
+    log("round %s: %s; %d blockers, %d majors, %d findings; report %s" % (
+        rnd.name, rnd.status(), len(blockers), len(majors), len(rnd.findings), rnd.reports / "report.md"))
     if code:
         return code
-    return 1 if blockers else 0
+    if blockers:
+        return 1
+    return 4 if rnd.incomplete else 0  # an incomplete round is never green
 
 
 if __name__ == "__main__":

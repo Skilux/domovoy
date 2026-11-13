@@ -15,7 +15,7 @@ import unicodedata
 from datetime import datetime
 from typing import Any
 
-EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b")
+EMAIL = re.compile(r"[\w.+-]*\w@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b")  # local part ends in a word char
 # Czech numbers as people write them: +420/00420 prefixed, or grouped in threes ("ddd ddd ddd"). A bare 9-digit run is not
 # matched: Sreality ids and prices look the same. The exact contact strings seen in the datasets are checked too.
 PHONE = re.compile(r"(?<![\w/.=-])(?:(?:\+|00)420[\s-]?\d{3}[\s-]?\d{3}[\s-]?\d{3}|[1-9]\d{2}[ -]\d{3}[ -]\d{3})(?![\w/-])")
@@ -56,15 +56,82 @@ def owner_of(path: str) -> str:
     return "WP8"
 
 
-def scrub(text: Any, limit: int = 400) -> str:
-    """No contacts in evidence: emails and phone numbers are replaced, URLs kept."""
+# Exact values that must never be written: secret values from the env file and realtor contacts (names, emails,
+# phones) seen in this or earlier rounds. Filled by register_secret / register_contact before anything is written.
+_SECRETS: set[str] = set()
+_CONTACTS: set[str] = set()
+_PHONE_PATTERNS: dict[str, re.Pattern] = {}
+
+
+def register_secret(value: Any) -> None:
+    if isinstance(value, str) and len(value.strip()) >= 6:
+        _SECRETS.add(value.strip())
+
+
+def register_contact(value: Any) -> None:
+    """A contact string; a phone number also matches with any spacing (the last 9 digits)."""
+    if not isinstance(value, str) or len(value.strip()) < 3:
+        return
+    value = value.strip()
+    _CONTACTS.add(value)
+    digits = re.sub(r"\D", "", value)
+    if len(digits) >= 9 and digits not in _PHONE_PATTERNS:
+        _PHONE_PATTERNS[digits] = re.compile(r"[\s-]?".join(digits[-9:]))
+
+
+def clear_sensitive() -> None:
+    _SECRETS.clear()
+    _CONTACTS.clear()
+    _PHONE_PATTERNS.clear()
+
+
+def known_secrets() -> list[str]:
+    return sorted(_SECRETS)
+
+
+def known_contacts() -> list[str]:
+    return sorted(_CONTACTS)
+
+
+def sanitize(text: Any, limit: int | None = None) -> str:
+    """The one scrubber for everything written or printed: registered secrets and contacts (exact match, longest
+    first), registered phone numbers in any spacing, then email and phone patterns. URLs are kept."""
     text = str(text)
+    for secret in sorted(_SECRETS, key=len, reverse=True):
+        text = text.replace(secret, "<secret>")
+    for contact in sorted(_CONTACTS, key=len, reverse=True):
+        text = text.replace(contact, "<contact>")
+    for pattern in _PHONE_PATTERNS.values():
+        text = pattern.sub("<phone>", text)
     text = EMAIL.sub("<email>", text)
     urls = URL.findall(text)
     text = PHONE.sub("<phone>", URL.sub("\x00", text))
     for url in urls:
         text = text.replace("\x00", url, 1)
-    return text[:limit]
+    return text if limit is None else text[:limit]
+
+
+def scrub(text: Any, limit: int = 400) -> str:
+    """sanitize() capped for excerpts and summaries."""
+    return sanitize(text, limit)
+
+
+def sanitize_tree(value: Any) -> Any:
+    """sanitize() every string in a JSON-like value (findings before they are written)."""
+    if isinstance(value, str):
+        return sanitize(value)
+    if isinstance(value, dict):
+        return {k: sanitize_tree(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [sanitize_tree(v) for v in value]
+    return value
+
+
+def pick(value: Any, keys: tuple[str, ...]) -> str:
+    """Allowlisted evidence: only these keys of a child's JSON output, as JSON."""
+    if not isinstance(value, dict):
+        return "(not a JSON object)"
+    return json.dumps({k: value.get(k) for k in keys if k in value}, ensure_ascii=False)
 
 
 def finding(check_id: str, severity: str, summary: str, path: str, repro: str, *, run_id: str | None = None,
@@ -106,7 +173,7 @@ def check_run(layer: str, *, run_id: str | None, ok: bool, how: str, elapsed: fl
         if "summary" not in readable or missing:
             out.append(finding("L2.summary_readable", "major", "search.py printed no complete summary; missing: %s"
                                % missing, "skill/domovoy/scripts/search.py", rerun("L2.summary_readable"),
-                               run_id=run_id, excerpt=json.dumps(readable)[:300]))
+                               run_id=run_id, excerpt=pick(readable, ("run_id", "status", "missing_summary_fields", "error"))))
     if summary is None:
         if ok:
             out.append(finding("%s.summary_valid" % layer, "blocker", "no OUTPUT RunSummary",
@@ -127,14 +194,14 @@ def check_run(layer: str, *, run_id: str | None, ok: bool, how: str, elapsed: fl
             continue
         if source.get("status") == "ok":
             out.append(finding(cid, "major", "%s: ok but found 0 listings" % portal, path, rerun(cid),
-                               run_id=run_id, excerpt=json.dumps(source)))
+                               run_id=run_id, excerpt=pick(source, ("portal", "status", "found", "fetched", "failed", "error"))))
         elif source.get("error"):
             sev = "major" if source.get("status") == "failed" else "minor"
             out.append(finding(cid, sev, "%s: %s with a named error" % (portal, source.get("status")), path,
-                               rerun(cid), run_id=run_id, excerpt=json.dumps(source)))
+                               rerun(cid), run_id=run_id, excerpt=pick(source, ("portal", "status", "found", "fetched", "failed", "error"))))
         else:
             out.append(finding(cid, "major", "%s: %s without a named error" % (portal, source.get("status")), path,
-                               rerun(cid), run_id=run_id, excerpt=json.dumps(source)))
+                               rerun(cid), run_id=run_id, excerpt=pick(source, ("portal", "status", "found", "fetched", "failed", "error"))))
     errors = (summary.get("notion") or {}).get("errors") or 0
     if errors:
         out.append(finding("%s.notion_errors" % layer, "blocker", "%d Notion write(s) failed" % errors,

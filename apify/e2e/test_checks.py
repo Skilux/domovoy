@@ -55,6 +55,7 @@ def test_quotes_must_be_in_the_refetched_text():
     assert [f["severity"] for f in checks.check_quotes(two, ["Nájem 25 000 Kč"], "r")] == ["major"]
     assert [f["severity"] for f in checks.check_quotes(two, ["edited text"], "r")] == ["minor"]
     assert checks.scan_text("/opt/homebrew/Cellar/python@3.15/lib", [], []) == []
+    assert checks.scan_text("+@contextlib.contextmanager", [], []) == []
 
 
 def flat(pid, portal, street="Korunní", number="12", area=55.0, rent=25000):

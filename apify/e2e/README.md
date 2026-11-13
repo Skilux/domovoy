@@ -9,25 +9,34 @@ no real call happens. The tester owns this folder and nothing else: a failing ch
     apify/.venv/bin/python apify/e2e/run_e2e.py --round 1                 # L0-L6, unattended
     apify/.venv/bin/python apify/e2e/run_e2e.py --round 1 --only L3.money_int   # one check again
     apify/.venv/bin/python apify/e2e/run_e2e.py --round dry --layers L0,L3,L6 \
-        --offline-items items.json --offline-summary summary.json          # offline, on a recorded dataset
+        --offline-items items.json --offline-summary summary.json          # offline, recorded dataset, no portal requests
 
-Exit 0: no blocker. 1: at least one blocker. 2: refused (safety guard). 3: harness error. A report is written in
-every case.
+Exit 0: green (or a passing partial run). 1: at least one blocker. 2: refused (safety guard). 3: harness error.
+4: incomplete, e.g. L4 or L5 found no candidate pages; an incomplete round is never green. A report with a
+**Status** line is written in every case.
 
 `--only` takes check ids or layers. L3 checks reuse the round's recorded datasets from L1/L2; L4 always makes a new
-platform run. Offline unit tests of the checks: `cd apify && .venv/bin/python -m pytest -q --rootdir=e2e e2e/test_checks.py`.
+platform run. Offline tests of the checks and the safety rails: `cd apify && .venv/bin/python -m pytest -q --rootdir=e2e e2e/`.
 
 ## Isolation and safety
 
-- Config: `DOMOVOY_CONFIG`, default `~/.config/domovoy/config.e2e.json`. Its `notion.data_source_id` must belong to
-  the database titled **DOMOVOY shortlist (e2e)**. The demo shortlist's data source is refused by id and by title, and
-  every page write first checks that the page sits in the e2e data source.
+- Config: `DOMOVOY_CONFIG`, default `~/.config/domovoy/config.e2e.json`, with `notion.data_source_id` and
+  `notion.database_id` (the e2e database). Writes are enabled only when the data source's parent database is that id
+  and is titled **DOMOVOY shortlist (e2e)**; the demo data source id and the title "DOMOVOY shortlist" on either the
+  data source or its parent are refused. Every page write also checks that the page sits in the e2e data source.
+- The config is frozen at round start into a private snapshot (0600) in the round's data folder. `search.py` and
+  `call.py` get only the snapshot path, and every launch (apify run, search.py, call.py) re-checks that neither file
+  changed and that Notion still says e2e; otherwise the launch is refused.
 - Profile: `profile_e2e.json`, id `e2e-vinohrady`, `max_listings` 5 (the cap applies per portal). The config's active
   profile must equal this file.
-- Platform runs (L2 and L4) are counted in `~/.config/domovoy/e2e-reports/platform_runs.json`; the 7th is refused.
+- Platform runs (L2 and L4) are reserved in `~/.config/domovoy/e2e-reports/platform_runs.json` under an `flock`, with
+  an atomic write, before the launch; the 7th reservation is refused. Each reservation has an id, and the run id is
+  filled in by that id.
 - Secrets are read from `/Users/vladimir/.config/domovoy/.env` into child processes only, never printed.
-- Reports (`~/.config/domovoy/e2e-reports/<round>/report.md`, `findings.json`, run logs) cite property ids, page ids
-  and run ids only. Raw datasets, which hold realtor contacts, stay in `~/.config/domovoy/e2e-data/<round>/` (0700).
+- Child output, run logs, datasets and page snapshots are written raw only to `~/.config/domovoy/e2e-data/<round>/`
+  (0700). Everything in `~/.config/domovoy/e2e-reports/<round>/` (logs, `report.md`, `findings.json`) goes through
+  one sanitizer first: exact secret values from the env file, exact contact names, emails and phones seen in any
+  round's datasets or pages, then email and phone patterns. Evidence from child JSON output is allowlisted keys only.
 - Heavy jobs (`apify run`, `search.py run`) go through the orchestration `heavy.sh` slots.
 
 ## Layers and checks
