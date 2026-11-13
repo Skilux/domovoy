@@ -31,7 +31,19 @@ All names that may change live in one place: status names, the backend, viewing 
 
 ## Setup and research commands
 
-> **STUB. Owner: Vladimir (Actor lane).** Not written yet. Setup will run `scripts/notion.py setup`. Research will write or pick the search profile, run `scripts/search.py`, and tell the user how many flats are new in Notion. Until they land, say that research is not available in this copy of the skill.
+**Setup**, once:
+
+1. `python3 scripts/notion.py setup` creates the **DOMOVOY shortlist** database. Put the data source id it prints in `config.json` as `notion.data_source_id`. Running it again changes nothing.
+2. Set `apify.actor_id` in `config.json` (`vladb~domovoy`). Put `APIFY_TOKEN=...` in the env file, or export it. Never print it.
+
+**Research**, when the user asks to find flats or refresh the shortlist:
+
+1. Turn the request into a search profile. `filters` are hard filters, applied at scrape time. `requirements` are checked after extraction. `household.occupants` is how many people will live there. Write the profile to `profiles[]` in `config.json`, set `active_profile` to its `id`, and never change a hard filter without a yes from the user.
+2. Run `python3 scripts/search.py run`. It starts the Actor run, waits for it (up to `apify.timeout_seconds`, 15 minutes by default) and prints one JSON object. Add `--max-listings N` only when the user asks.
+3. Read the JSON:
+   - Exit 0: tell the user how many flats are new in Notion (`summary.notion.created`) and how many were updated (`summary.notion.updated`), and mention `summary.notion.errors` when it is not 0. Describe `summary.change` (new, changed, unchanged) as what this run found, not as Notion totals. Say how many were rejected (`summary.match.rejected`) and why (`summary.rejected_by_requirement`). Name any entry in `summary.sources` whose `status` is `degraded` or `failed`, with its `portal` and `error`. A null count was not reported; say so. Flats arrive as **Shortlisted**. Only the user moves one to **Interested**.
+   - `"refused": true` (exit 2): nothing was started. Tell the user the `reason`.
+   - `"error"` (exit 1): tell the user what failed and give the `console_url`. Do not start another run without asking. If the run is still going, `python3 scripts/search.py status --run RUN_ID` waits for it and prints the same summary. It is safe to repeat.
 
 ## Call command
 

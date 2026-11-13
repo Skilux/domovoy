@@ -1,0 +1,55 @@
+{
+  "run_id": "example-run-0001",
+  "profile_id": "test-2kk-30k",
+  "started_at": "2026-11-13T12:00:00+01:00",
+  "finished_at": "2026-11-13T12:09:00+01:00",
+  "sources": [
+    {
+      "portal": "sreality",
+      "status": "ok",
+      "found": 12,
+      "fetched": 12,
+      "failed": 0,
+      "error": null
+    },
+    {
+      "portal": "bezrealitky",
+      "status": "failed",
+      "found": 0,
+      "fetched": 0,
+      "failed": 0,
+      "error": "source not registered"
+    },
+    {
+      "portal": "idnes",
+      "status": "degraded",
+      "found": 5,
+      "fetched": 4,
+      "failed": 1,
+      "error": "1 listing page failed"
+    }
+  ],
+  "change": {
+    "new": 3,
+    "changed": 1,
+    "unchanged": 8
+  },
+  "match": {
+    "strong": 2,
+    "needs_info": 1,
+    "rejected": 1
+  },
+  "rejected_by_requirement": {
+    "elevator": 1
+  },
+  "notion": {
+    "created": 3,
+    "updated": 1,
+    "errors": 0
+  },
+  "extraction_providers": {
+    "featherless": 4,
+    "openai": 0,
+    "cache": 8
+  }
+}
