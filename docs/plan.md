@@ -62,7 +62,7 @@ Money is integer CZK. Times are ISO 8601 with offset, timezone `Europe/Prague`. 
 
 ### `call_context` (Claude → phone page → ElevenLabs dynamic variables)
 
-`notion_page_id` replaced `issue_number` on 13 Nov with the switch to Notion. This contract change needs Danila's OK.
+`notion_page_id` replaced `issue_number` on 13 Nov with the switch to Notion. Danila accepted the change the same day.
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ Claude rechecks the agent's `outcome`. A `booked` time outside `available_window
 ```
 skill/domovoy/
   SKILL.md            workflow instructions Claude Code loads
-  scripts/            search (start Actor run, poll), notion (setup, status, append), call, calendar
+  scripts/            search (start Actor run, poll), notion (setup, status, append), call
   reference/          JSON Schemas for the contracts above, profile.schema.json, notion_contract.json
 phone/                Vercel app: waiting page, signed-URL route, result relay
 apify/                Vladimir's Actor: sources, Featherless extraction, dedup, costs, Notion writes
