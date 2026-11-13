@@ -206,7 +206,7 @@ Each table value gets a comment saying where it comes from and that it's an assu
 - **API version:** confirm the current Notion API version and the data source model in Notion's docs before writing calls.
 - **`notion.py`:** stdlib plus `requests` only. It reads `NOTION_TOKEN` from the environment or `~/.config/domovoy/.env`, and Notion IDs from `config.json`. It has two jobs:
   - **CLI:** `setup` creates the database from the contract, adds missing properties, and prints the data source ID for `config.json`. Running it again changes nothing.
-  - **Shortlist backend:** `call.py` loads it through `backend.module` in `config.json`. It implements the same functions as Danila's `tests/gh_test_backend.py`: `list_flats(cfg, status=None)`, `get_flat(cfg, flat_id)` (returns `{id, title, url, listing, text}`, with `listing` holding the `call_context` fields read from page properties), `set_status(cfg, flat_id, status)`, `append(cfg, flat_id, text)` and `set_viewing_date(cfg, flat_id, start)`. `flat_id` is the Notion page ID, which `call.py` sends as `notion_page_id`. Check against `call.py` and `tests/test_call.py` before writing.
+  - **Shortlist backend:** `call.py` loads it through `backend.module` in `config.json`. It implements shape B of the shortlist interface in the `skill/domovoy/scripts/call.py` module docstring, the same functions as the fake in `skill/domovoy/tests/fake_notion_backend_flats.py`: `list_flats(cfg, status=None)`, `get_flat(cfg, flat_id)` (returns `{id, title, url, listing, text}`, with `listing` holding the `call_context` fields read from page properties), `set_status(cfg, flat_id, status)`, `append(cfg, flat_id, text)` and `set_viewing_date(cfg, flat_id, start)`. `flat_id` is the Notion page ID, which `call.py` sends as `notion_page_id`. Check against `call.py` and `tests/test_call.py` before writing.
 - **`sink.py`:**
   - checks the live schema against the contract and fails before scraping
   - upserts by `Property ID`
@@ -251,7 +251,7 @@ Each table value gets a comment saying where it comes from and that it's an assu
 
 ## 7. Cross-lane items for Danila
 
-- Danila already put `call.py` behind a shortlist backend (#18). `config.example.json` points `backend.module` at `scripts/notion.py` with `id_field = notion_page_id`, and holds `profiles[]` and `active_profile`. WP7 only has to implement that backend. Nothing in his files has to change.
+- Danila already put `call.py` behind a shortlist backend (#18). `config.example.json` points `backend.module` at `scripts/notion.py` (the page id is read from `id` or `notion_page_id`, no config key), and holds `profiles[]` and `active_profile`. WP7 only has to implement that backend. Nothing in his files has to change.
 - `config.example.json` still needs `notion` (`data_source_id`) and `apify` (`actor_id`) blocks for `notion.py` and `search.py`. This is a shared file, so it goes in a small PR he approves.
 
 ## 8. Risks
