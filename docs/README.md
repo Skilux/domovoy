@@ -8,6 +8,7 @@ These documents describe intended behavior, not completed features. They are the
 | --- | --- |
 | [plan.md](plan.md) | Scope, ownership, flow, boundaries, Notion shortlist, contracts, repo layout |
 | [demo.md](demo.md) | Stage sequence, gates, fallback, submission |
+| [qa-checklist.md](qa-checklist.md) | The walk-through on Vladimir's laptop before the demo, stage by stage, with a result log |
 | [prd/](prd/README.md) | Build spec: main PRD plus one doc per lane (actor, voice, skill, posthog) |
 | [packaging.md](packaging.md) | Setup for a new user, prerequisites, cost per 100 cases, how to swap each service |
 | [other-cities.md](other-cities.md) | What to change to run it in another city or country. A guide, not a tested path |
