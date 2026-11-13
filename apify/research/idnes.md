@@ -10,7 +10,7 @@ Labels: **observed** = seen in the sample; **inferred** = my reading, not yet te
 - **Playwright:** not needed. Phase B uses plain HTTP and an HTML parser. Keep the plain Python Docker image.
 - **Pagination is incomplete.** The header count (`N inzerátů`) is not the number of reachable cards: Praha 2 shows 30 of 56, Praha 3 shows 53 of 79. Phase B must page until the server redirects, and test splits before claiming completeness.
 - **No Vinohrady facet.** Filter on the citypart name in the address text.
-- **Robots:** `*/admin.api/*` is disallowed, and the page's own locality autocomplete calls it. The Actor must not call it. Never combine `page=` with `sort=`.
+- **Robots:** `*/admin.api/*` is disallowed, and the page's own locality autocomplete calls it. Team decision (13 Nov, 13:00): robots.txt does not block this work, so the locality lookup may be used if it helps. Never combine `page=` with `sort=` (our choice, not a robots rule).
 - **Terms:** the site footer prohibits use of texts and photos without MAFRA's consent. Needs a team decision before texts or photos go into Notion or the public repo (section 10).
 
 ## 2. Search URLs and pagination
@@ -131,7 +131,7 @@ Sample: Korunní, Praha 2 (observed).
 | `ownership` | `dt` `Vlastnictví` → `osobní` | `personal` | `družstevní` = cooperative |
 | `is_owner_listing` | `og:description` names the offering agency (`Nabízí realitní kancelář …`) | `false` | owner listing not observed |
 | `contact` | `div.b-author` block | — | section 9 |
-| `photos`, `image_url` | gallery images with `/sta/compile/thumbs/` | 14 photos; `image_url` = first (equals `og:image`) | section 8 |
+| `photos`, `image_url` | gallery images with `/sta/compile/thumbs/` | 12 photos on the Korunní page (14 and 21 on the other two sample pages); `image_url` = first (equals `og:image`) | section 8 |
 | `poi` | no structured distances | `null` | description names metro and tram in words only |
 
 Other rows on the page, not in the Listing schema: `Stav bytu` (condition, `velmi dobrý stav`), `Konstrukce budovy` (brick), `Počet podlaží budovy` (6), `Balkon` (1 m²), `Sklep` (present), `Internet` (present), `Plyn` (`nezaveden`, gas not connected). **`PENB G` is the energy performance class, not running costs.** Never map it to energy costs.
@@ -150,7 +150,7 @@ Other rows on the page, not in the Listing schema: `Stav bytu` (condition, `velm
 
 - Format: `https://sta-reality2.1gr.cz/sta/compile/thumbs/<c0>/<c1>/<c2>/<rest>.<ext>`. The path is a 32-character hex digest split as 3 characters and 29 characters (checked on all 200 distinct photo URLs in the saved pages). Extension: `webp` (188) or `jpg` (12).
 - One size only. Cards (420×260 display) and the gallery (1018×600 display) use the same URL. Nothing in the URL selects a size.
-- Gallery: the first photo has `src`. Lazy photos carry the real URL in `data-lazy` and a placeholder in `src`. Skip `no-image-gallery` and `logo-reality-idnes` URLs. Sample: 14 listing photos.
+- Gallery: the first photo has `src`. Lazy photos carry the real URL in `data-lazy` and a placeholder in `src`. Skip `no-image-gallery` and `logo-reality-idnes` URLs. Sample: 12, 14 and 21 listing photos on the three pages.
 - Notion cover: an external image URL should suffice (no download). Confirm during WP7.
 
 ## 9. Contact data (structure only)
@@ -160,7 +160,7 @@ Other rows on the page, not in the Listing schema: `Stav bytu` (condition, `velm
   - an agent name in `h2.b-author__title`;
   - an agency link;
   - a **phone** row: `a` with an `href` using the `tel:` scheme, present in static HTML;
-  - an **email** row: `a` with an `onclick` handler (about 185 characters) and an `href`. I did not finish classifying the href. Treat email as possibly click-revealed until Phase B checks it;
+  - an **email** row: `a` with `href` `mailto:` followed by the address and a query string; the `onclick` is an analytics call. Checked in Phase B on 8 live listings: an address is present on all 8 (values not recorded);
   - an office-address row (marker icon).
 - **Enquiry form** (`form.form-contact`, reCAPTCHA): never submit. Not used.
 - Storage: contacts only in the private Notion shortlist (CLAUDE.md). I did not copy any value into this file, a fixture or a summary. Raw HTML in `research-evidence/idnes/` contains them; that folder stays outside the repo.
@@ -171,13 +171,13 @@ Other rows on the page, not in the Listing schema: `Stav bytu` (condition, `velm
 - `Disallow: /s/*page=*sort=`: do not combine `page` with `sort`.
 - `Disallow: /s/*;` and `/s/*|*`: avoid `;` and `|` in URLs.
 - `Disallow: /s/*cena-nad-*`, `/s/*cena-do*sort=`, `/s/*/do-*sort=`, `/s/*priceMin*sort=`, `/s/*priceMax*sort=`: no price filters with sort.
-- `Disallow: */admin.api/*`: the page's locality autocomplete (`/admin.api/autocomplete-locality`) is disallowed. **The Actor must not call it.**
+- `Disallow: */admin.api/*`: the page's locality autocomplete (`/admin.api/autocomplete-locality`) is disallowed. Team decision (13 Nov, 13:00): the locality lookup may be used if it helps Phase B.
 - Also disallowed: `*s-localitySelector-locality`, `*addRemoveLocality`, `*s-result-openPopup`, `*popupManager-popups`, `/s/*openHouse`, `/broker-evaluation/*`, `*inquiryFilter`, `*watchdogFilter`, `*estateType*`, `/s/*s-rd` (with an allow for `s-rd=3`).
 
 The planned URLs (`/s/pronajem/byty/<disp>/praha-<n>/?page=<n>` and `/detail/...`) match none of these rules.
 
 **Terms:**
-- Site footer, on every page checked (Czech): use of content, including taking over, distributing or further making available texts and photos, is prohibited without MAFRA a.s.'s consent. Storing listing texts or photos, or committing them to the repo, needs a decision.
+- Site footer, on every page checked (Czech): use of content, including taking over, distributing or further making available texts and photos, is prohibited without MAFRA a.s.'s consent. Team decision (13 Nov, 13:00): texts and photos may be used in Notion and in scrubbed fixtures; robots.txt and the terms do not block this hackathon work.
 - General terms for advertising on Reality.iDNES.cz (valid 1 Feb 2026; read from the PDF). They govern advertisers. I searched the decoded text for automation, scraping, crawling, download, database and API wording. The only hits concern the advertiser's admin interface and copyright in listing content. **No explicit anti-scraping clause found.** A legal read is still needed before the repo goes public.
 - Privacy: agent names, phones and emails are personal data. Keep them out of the repo.
 
@@ -190,7 +190,7 @@ The planned URLs (`/s/pronajem/byty/<disp>/praha-<n>/?page=<n>` and `/detail/...
 
 ## 12. Access decision for Phase B
 
-- Plain HTTP (one client, at most 3 concurrent, 0.5 to 1 s delay), HTML parser (lxml or selectolax). No Playwright, no Crawlee. The integrator's Docker decision: plain Python image.
+- Plain HTTP, one request at a time with 0.5 to 1 s between starts (at most 3 in flight by cap). HTML parser: BeautifulSoup with `html.parser` (bs4 is already pinned). No Playwright, no Crawlee. The integrator's Docker decision: plain Python image.
 - If the site starts requiring JS or challenges plain clients, stop and report, as the brief says. Run the live smoke test before each checkpoint.
 
 ## 13. REA usage and failures
@@ -215,14 +215,14 @@ REA failures and quirks:
 1. Full listing set: test `sort` on page 1, and splits by disposition, district and facets (`vybaveni`, `vlastnictvi`). Compare each reachable count with its header count. Then choose the query plan.
 2. Owner listing sample (`is_owner_listing`).
 3. An exact-address listing, to confirm `precision`.
-4. Classify the email row (`onclick` against `href`).
+4. Done in Phase B: the email row is a `mailto:` link (section 9).
 5. Browser versus plain parity on a detail page (only list pages compared).
-6. Photo count and sizes on other listings (14 seen once).
+6. Photo counts and sizes on other listings (12, 14 and 21 seen on three pages).
 7. Page 4 for Praha 3, to confirm the paging end.
+8. Live run (8 listings, all from Praha 2): 7 of 8 have a map centre. The cause of the missing one is not checked, and precision is `street` from the street name in both cases.
 
 ## 15. Team decisions and flags
 
-- **Content reuse (section 10):** decide whether Notion pages may hold iDNES texts and photos, or only links and derived fields. Suggested default: links and derived fields, no verbatim descriptions, no photo bytes.
-- **Public repo at 17:30:** fixtures must be synthetic. No iDNES descriptions, photos or contacts. This file contains none of them.
-- **Robots:** keep `/admin.api/*` out of the code.
+- **Content reuse and robots (decided 13 Nov, 13:00, see `docs/decisions.md`):** texts and photos may be used in Notion and in scrubbed fixtures. robots.txt and the terms do not block this work, and the locality lookup may be used. Polite rates still apply.
+- **Public repo at 17:30:** fixtures are scrubbed; contacts are placeholders (`<name>`, `<agency>`, `<phone>`, `<email>`). This file contains no contact values.
 - **Forms:** the Actor never submits the enquiry form.
