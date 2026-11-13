@@ -17,14 +17,14 @@ Owner: Vladimir (Actor lane). Status: draft, 13 Nov 2026, 12:20. This plan deliv
 
 | # | Item | Who | Blocks |
 | --- | --- | --- | --- |
-| P1 | `.env` in the repo root of the main checkout (`/Users/vladimir/Documents/hackathon3/.env`) with `FEATHERLESS_API_KEY`, `OPENAI_API_KEY`, `NOTION_TOKEN`, `NOTION_PARENT_PAGE_ID` | Vladimir | WP4 live tests, WP7 |
+| P1 | `~/.config/domovoy/.env` filled from [`.env.example`](../../.env.example): `FEATHERLESS_API_KEY`, `OPENAI_API_KEY`, `NOTION_TOKEN`, `NOTION_PARENT_PAGE_ID`, `APIFY_TOKEN` | Vladimir | WP4 live tests, WP7, WP8 |
 | P2 | Notion internal integration "DOMOVOY" created and connected to a parent page "DOMOVOY" | Vladimir | WP7 |
 | P3 | Featherless plan concurrency limit | Vladimir | WP4 default `llm.concurrency` |
 | P4 | Apify CLI logged in (done: `vladb`) | — | Deploy |
 | P5 | REA and Apify skills copied to `~/.claude/skills/` (they were removed from the repo upstream, and agent worktrees start from `origin/main`) | Integrator | Portal agents |
 | P6 | REA MCP server reachable from subagents (check with one call before spawning) | Integrator | Portal agents |
 
-Agents never copy `.env` into a worktree. They read it by absolute path.
+There is one env file for everyone: `~/.config/domovoy/.env`. Danila's `call.py` already reads it. It sits outside the repo, so agent worktrees reach it by absolute path and nothing is ever copied into a worktree. On the Apify platform the same values come from secret inputs.
 
 ## 2. Code layout and ownership
 
@@ -57,7 +57,7 @@ apify/
 skill/domovoy/
   reference/profile.schema.json                                                                     [WP0]
   reference/notion_contract.json                                                                    [WP7]
-  scripts/notion.py        setup + drop-in replacement for board.py                                 [WP7]
+  scripts/notion.py        setup + the shortlist backend call.py loads (config backend.module)      [WP7]
   scripts/search.py        start the Actor run with the active profile, poll, print summary          [WP8]
 ```
 
@@ -128,7 +128,7 @@ These let WP4–WP7 start without any portal code.
 | WP4 | **Extraction** | WP0 | `extraction/`: Featherless client, prompt, quote check, cache, OpenAI fallback; model choice written up in `research/featherless.md` | All 5 fixture texts give valid `Extraction` with verified quotes; a re-run hits the cache; a forced Featherless failure falls back to OpenAI; median latency and the chosen model recorded | 13:35 |
 | WP5 | **Costs** | WP0 | `costs/`: tables (assumptions written in comments), cost math, requirement verdicts, match, unknowns, risk flags | Table-driven tests: kauce as N× rent, commission with VAT, energy included / missing / per person, missing furniture, each requirement's pass / fail / unknown, estimated flags | 13:20 |
 | WP6 | **Dedup** | WP0 | `dedup/`: cross-portal matcher, stable `property_id` map (named key-value store), per-profile state | Synthetic tests: same flat on 2 portals → 1 `Flat`; area or rent outside tolerance → 2 flats; stable ID across runs; new / changed / unchanged | 14:30 |
-| WP7 | **Notion** | WP0, P1, P2 | `notion_contract.json`, `scripts/notion.py` (setup, list, set-status, append; drop-in for `board.py`), `notion/sink.py` | `notion.py setup` creates the database, and a second run changes nothing; the sink creates a page from the fixture `FlatItem`, and a second upsert updates owned properties only, leaving `Status`, `Reason` and the body untouched; drift test fails on a renamed property | 13:40 |
+| WP7 | **Notion** | WP0, P1, P2 | `notion_contract.json`, `scripts/notion.py` (`setup` plus the shortlist backend `call.py` loads), `notion/sink.py` | `notion.py setup` creates the database, and a second run changes nothing; the sink creates a page from the fixture `FlatItem`, and a second upsert updates owned properties only, leaving `Status`, `Reason` and the body untouched; drift test fails on a renamed property | 13:40 |
 | WP8 | Integrator (me) | each WP as it lands | `main.py` pipeline, `.actor/` schemas, Dockerfile, `search.py`, deploy, platform runs, fallback export | Each checkpoint above | Continuous |
 
 Seven agents run in parallel: three portals plus extraction, costs, dedup and Notion. That's within the agreed limit of 10.
@@ -204,9 +204,9 @@ Each table value gets a comment saying where it comes from and that it's an assu
 
 - **Contract:** `notion_contract.json` is built from the property table in [actor.md](actor.md#notion) and the statuses in [plan.md](../plan.md). Each property has `type`, `owner` (`actor`, `vladimir` or `claude`) and `options`.
 - **API version:** confirm the current Notion API version and the data source model in Notion's docs before writing calls.
-- **`notion.py`:** stdlib plus `requests` only, reading config like `board.py`. Subcommands: `setup`, `list --status`, `set-status`, `append`.
-  - **Drop-in for `board.py`:** it exposes the same functions (`load_config`, `list_cards`, `set_status`, `comment`) plus `get_flat(cfg, page_id)`, which returns the structured fields `call.py` needs, so no body parsing is required.
-  - **Card dicts:** keep the shape `board.py` returns, with `page_id` in place of `issue_number`.
+- **`notion.py`:** stdlib plus `requests` only. It reads `NOTION_TOKEN` from the environment or `~/.config/domovoy/.env`, and Notion IDs from `config.json`. It has two jobs:
+  - **CLI:** `setup` creates the database from the contract, adds missing properties, and prints the data source ID for `config.json`. Running it again changes nothing.
+  - **Shortlist backend:** `call.py` loads it through `backend.module` in `config.json`. It implements the same functions as Danila's `tests/gh_test_backend.py`: `list_flats(cfg, status=None)`, `get_flat(cfg, flat_id)` (returns `{id, title, url, listing, text}`, with `listing` holding the `call_context` fields read from page properties), `set_status(cfg, flat_id, status)`, `append(cfg, flat_id, text)` and `set_viewing_date(cfg, flat_id, start)`. `flat_id` is the Notion page ID, which `call.py` sends as `notion_page_id`. Check against `call.py` and `tests/test_call.py` before writing.
 - **`sink.py`:**
   - checks the live schema against the contract and fails before scraping
   - upserts by `Property ID`
@@ -238,7 +238,7 @@ Each table value gets a comment saying where it comes from and that it's an assu
 ## 6. Rules for every agent
 
 - **Scope:** edit only your own paths. Request changes to `models.py`, `requirements.txt`, `main.py` or `.actor/` in your report.
-- **Secrets:** read `/Users/vladimir/Documents/hackathon3/.env` by absolute path. Never print, log or commit keys.
+- **Secrets:** read `~/.config/domovoy/.env` (`/Users/vladimir/.config/domovoy/.env`). Never print, log or commit keys. New variables go into `.env.example` through the integrator.
 - **Fixtures:** the repo goes public at 17:30. Before committing, remove realtor names, phones and emails from contact fields, and replace emails and phone numbers inside descriptions with `<email>` and `<phone>`. REA evidence bundles stay outside the repo.
 - **Polite scraping:**
   - concurrency of at most 3 per portal, with a 0.5–1 s delay, and respect `max_listings`
@@ -251,8 +251,8 @@ Each table value gets a comment saying where it comes from and that it's an assu
 
 ## 7. Cross-lane items for Danila
 
-- `call.py` imports `board.py`, which is GitHub-based and predates the switch to Notion. WP7 ships `notion.py` as a drop-in. Switching `call.py` over (the import, `issue_number` → `notion_page_id`, reading fields with `get_flat` instead of parsing the issue body) is Danila's file, so it goes in a PR he approves.
-- `config.example.json` needs `notion` (`data_source_id`, token env), `apify` (`actor_id`, token env), `profiles[]` and `active_profile`. Its `github` and `board` sections go. This is a shared file, so it goes in the same PR.
+- Danila already put `call.py` behind a shortlist backend (#18). `config.example.json` points `backend.module` at `scripts/notion.py` with `id_field = notion_page_id`, and holds `profiles[]` and `active_profile`. WP7 only has to implement that backend. Nothing in his files has to change.
+- `config.example.json` still needs `notion` (`data_source_id`) and `apify` (`actor_id`) blocks for `notion.py` and `search.py`. This is a shared file, so it goes in a small PR he approves.
 
 ## 8. Risks
 
