@@ -4,5 +4,5 @@
   "outputDirectory": "public",
   "cleanUrls": true,
   "regions": ["fra1"],
-  "rewrites": [{ "source": "/phone", "destination": "/index.html" }]
+  "redirects": [{ "source": "/", "destination": "/start", "permanent": false }]
 }
