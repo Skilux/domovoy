@@ -2,6 +2,7 @@ import { Conversation } from '@elevenlabs/client';
 import { openQuestions, toDynamicVariables } from '../lib/context.js';
 import { confetti, renderCalendar, smsBeep } from './booked.js';
 import { renderChecklist, tickQuestion } from './checklist.js';
+import { startClock, syncFrame } from './frame.js';
 import { typeText } from './lcd.js';
 import { createWave } from './wave.js';
 
@@ -25,6 +26,7 @@ let audioContext = null;
 
 function show(screen) {
   phone.dataset.screen = screen;
+  syncFrame(phone);
 }
 
 function showError(text) {
@@ -371,6 +373,9 @@ if (window.ResizeObserver) {
     transcript.scrollTop = transcript.scrollHeight;
   }).observe(transcript);
 }
+
+startClock($('clock'));
+syncFrame(phone);
 
 if (!receiverKey) showUnpaired();
 
