@@ -11,8 +11,9 @@ import call  # noqa: E402
 
 with open(os.path.join(HERE, "..", "config.example.json")) as f:
     CFG = json.load(f)
-with open(os.path.join(HERE, "synthetic_issue.md")) as f:
-    ISSUE = {"number": 7, "body": f.read(), "url": "https://example.com/issue/7", "comments": []}
+with open(os.path.join(HERE, "synthetic_flat.md")) as f:
+    LISTING = json.loads(f.read().split("```json")[1].split("```")[0])
+ISSUE = {"id": "page-7", "title": "t", "url": "https://example.com/flat/7", "listing": LISTING, "text": ""}
 WINDOWS = [{"start": "2026-11-16T17:00:00+01:00", "end": "2026-11-16T18:00:00+01:00"},
            {"start": "2026-11-17T18:00:00+01:00", "end": "2026-11-17T19:00:00+01:00"}]
 RESULT = {"property_id": "synthetic-test-001", "conversation_id": "conv_1", "outcome": "booked",
@@ -31,8 +32,8 @@ class CallTest(unittest.TestCase):
 
     def test_context_is_valid_and_complete(self):
         self.assertEqual(call.validate(self.context, call.load_schema("call_context")), [])
-        self.assertEqual(self.context["issue_number"], 7)
-        self.assertEqual(self.context["budget_cap"], CFG["call_context"]["budget_cap"])
+        self.assertEqual(self.context["notion_page_id"], "page-7")
+        self.assertEqual(self.context["budget_cap"], CFG["profiles"][0]["requirements"]["max_total_monthly"])
         self.assertIsNone(self.context["commission"])
 
     def test_unknown_listing_fields_pass_through(self):
@@ -54,10 +55,11 @@ class CallTest(unittest.TestCase):
         with self.assertRaises(call.Refusal):
             call.build_context(CFG, ISSUE, [{"start": "2026-11-16T17:00:00", "end": "2026-11-16T18:00:00"}])
         with self.assertRaises(call.Refusal):
-            call.build_context(CFG, ISSUE, WINDOWS, json.dumps({"property_id": "wrong", "address": "A",
-                                                                 "url": "u", "collected_at": "t"}))
+            call.build_context(CFG, ISSUE, WINDOWS, json.dumps([{"property_id": "wrong"}]))
         with self.assertRaises(call.Refusal):
-            call.build_context(CFG, {"number": 1, "body": "no data"}, WINDOWS)
+            call.build_context(CFG, {"id": "p", "listing": None, "text": ""}, WINDOWS)
+        with self.assertRaises(call.Refusal):
+            call.build_context(dict(CFG, active_profile="none", profiles=CFG["profiles"] * 2), ISSUE, WINDOWS)
 
     def test_booked_inside_window_and_budget(self):
         self.assertEqual(call.recheck(self.context, result()), (True, None))
@@ -90,7 +92,8 @@ class CallTest(unittest.TestCase):
         self.assertIn(call.MARKER % "conv_1", body)
         for leaked in ("777", "example.com", "<!-- x", "@someone"):
             self.assertNotIn(leaked, body)
-        self.assertEqual(call.seen_conversations({"comments": [{"body": body}]}), {"conv_1"})
+        call.STATE_DIR = os.path.join(HERE, "no-such-dir")
+        self.assertEqual(call.seen_conversations({"text": body}), {"conv_1"})
 
 
 if __name__ == "__main__":
