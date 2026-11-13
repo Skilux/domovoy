@@ -1,5 +1,610 @@
 {
   "actorSpecification": 1,
-  "fields": {},
-  "views": {}
+  "fields": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "description": "One item per deduplicated flat (FlatItem). Every key is always present. null means unknown, never zero. Money is integer CZK. Times are ISO 8601 with offset, Europe/Prague.",
+    "properties": {
+      "property_id": {
+        "type": "string",
+        "description": "Id of the flat, stable across runs and portals: p- and 10 characters. A tmp- prefix marks the dedup fallback, one id per listing.",
+        "example": "p-EXAMPLE234"
+      },
+      "profile_id": {
+        "type": "string",
+        "description": "Id of the search profile that produced the item.",
+        "example": "example-profile"
+      },
+      "run_id": {
+        "type": "string",
+        "description": "Apify run that wrote the item. A local run gets local- and 8 hex characters.",
+        "example": "ExampleRun0000001"
+      },
+      "change": {
+        "type": "string",
+        "enum": ["new", "changed", "unchanged"],
+        "description": "new: not seen before. changed: seen before, but the flat or the search profile changed since the last run. unchanged: seen before, nothing changed.",
+        "example": "new"
+      },
+      "match": {
+        "type": "string",
+        "enum": ["strong", "needs_info", "rejected"],
+        "description": "strong: meets every requirement. needs_info: no requirement fails, but something is unknown. rejected: a requirement fails.",
+        "example": "needs_info"
+      },
+      "url": {
+        "type": "string",
+        "description": "URL of the primary listing, the source the flat's fields are taken from.",
+        "example": "https://www.sreality.cz/api/v1/estates/1000000001"
+      },
+      "collected_at": {
+        "type": "string",
+        "description": "When the primary listing was collected. ISO 8601 with offset, Europe/Prague.",
+        "example": "2026-11-13T12:00:00+01:00"
+      },
+      "title": {
+        "type": "string",
+        "description": "Listing title as the portal shows it.",
+        "example": "Example listing, 2+kk"
+      },
+      "address": {
+        "type": "string",
+        "description": "Address as listed. Always a string.",
+        "example": "Example street 1, Praha 2"
+      },
+      "address_detail": {
+        "type": "object",
+        "description": "Address parts. Each part is null when unknown.",
+        "properties": {
+          "street": {
+            "type": "string",
+            "nullable": true,
+            "description": "Street name.",
+            "example": "Example street"
+          },
+          "house_number": {
+            "type": "string",
+            "nullable": true,
+            "description": "House number.",
+            "example": "1"
+          },
+          "citypart": {
+            "type": "string",
+            "nullable": true,
+            "description": "City part.",
+            "example": "Vinohrady"
+          },
+          "district": {
+            "type": "string",
+            "nullable": true,
+            "description": "District.",
+            "example": "Praha 2"
+          },
+          "gps": {
+            "type": "object",
+            "nullable": true,
+            "description": "Coordinates, when known.",
+            "properties": {
+              "lat": {
+                "type": "number",
+                "description": "Latitude.",
+                "example": 50.0755
+              },
+              "lon": {
+                "type": "number",
+                "description": "Longitude.",
+                "example": 14.4378
+              }
+            },
+            "required": [],
+            "additionalProperties": true,
+            "example": { "lat": 50.0755, "lon": 14.4378 }
+          },
+          "precision": {
+            "type": "string",
+            "enum": ["exact", "street", "district"],
+            "nullable": true,
+            "description": "How exact the location is.",
+            "example": "district"
+          }
+        },
+        "required": [],
+        "additionalProperties": true,
+        "example": {
+          "street": "Example street",
+          "house_number": "1",
+          "citypart": "Vinohrady",
+          "district": "Praha 2",
+          "gps": null,
+          "precision": "district"
+        }
+      },
+      "disposition": {
+        "type": "string",
+        "nullable": true,
+        "description": "Layout, e.g. 2+kk or 3+1.",
+        "example": "2+kk"
+      },
+      "area_m2": {
+        "type": "number",
+        "nullable": true,
+        "description": "Floor area in square metres.",
+        "example": 54.0
+      },
+      "floor": {
+        "type": "integer",
+        "nullable": true,
+        "description": "Floor number, as listed.",
+        "example": 3
+      },
+      "elevator": {
+        "type": "boolean",
+        "nullable": true,
+        "description": "Whether the building has a lift.",
+        "example": true
+      },
+      "furnished": {
+        "type": "string",
+        "enum": ["full", "partial", "none"],
+        "nullable": true,
+        "description": "How furnished the flat is.",
+        "example": "partial"
+      },
+      "rent": {
+        "type": "integer",
+        "minimum": 0,
+        "nullable": true,
+        "description": "Monthly rent, integer CZK. null = unknown.",
+        "example": 24000
+      },
+      "services": {
+        "type": "integer",
+        "minimum": 0,
+        "nullable": true,
+        "description": "Monthly service charges, integer CZK. null = unknown.",
+        "example": 2000
+      },
+      "energy": {
+        "type": "integer",
+        "minimum": 0,
+        "nullable": true,
+        "description": "Monthly energy costs, integer CZK. Estimated from a per-m2 table when not included or not stated; then listed in estimated.",
+        "example": 1500
+      },
+      "total_monthly": {
+        "type": "integer",
+        "minimum": 0,
+        "nullable": true,
+        "description": "Monthly total: rent + services + energy, integer CZK. null = unknown.",
+        "example": 27500
+      },
+      "estimated": {
+        "type": "array",
+        "description": "Names of the fields that contain an estimate, e.g. energy, total_monthly, move_in_cost.",
+        "items": { "type": "string" },
+        "example": ["energy", "total_monthly", "move_in_cost"]
+      },
+      "kauce": {
+        "type": "integer",
+        "minimum": 0,
+        "nullable": true,
+        "description": "Security deposit, integer CZK. 0 only when the listing states none. null = unknown.",
+        "example": 24000
+      },
+      "commission": {
+        "type": "integer",
+        "minimum": 0,
+        "nullable": true,
+        "description": "Agency commission, integer CZK: N x rent or the stated amount, times 1.21 when VAT is added. 0 when stated as none. null = unknown.",
+        "example": 0
+      },
+      "one_time_fees": {
+        "type": "integer",
+        "minimum": 0,
+        "nullable": true,
+        "description": "One-time fees stated in the listing, integer CZK. null = unknown.",
+        "example": 500
+      },
+      "first_payment": {
+        "type": "integer",
+        "minimum": 0,
+        "nullable": true,
+        "description": "First monthly payment, integer CZK. Equals total_monthly. null = unknown.",
+        "example": 27500
+      },
+      "move_in_cost": {
+        "type": "integer",
+        "minimum": 0,
+        "nullable": true,
+        "description": "Cash needed on move-in day, integer CZK: the known parts summed, estimates included. Parts not stated are left out and named in move_in_note. null when rent is unknown.",
+        "example": 60000
+      },
+      "move_in_note": {
+        "type": "string",
+        "nullable": true,
+        "description": "Plain English: which parts move_in_cost leaves out, and which it estimates.",
+        "example": "Excludes commission (not stated). Includes estimated energy and furniture."
+      },
+      "missing_furniture": {
+        "type": "array",
+        "description": "Furniture the flat lacks, from a fixed list: bed, wardrobe, fridge, washing machine, stove, sofa, dining table, desk.",
+        "items": { "type": "string" },
+        "example": ["washing machine"]
+      },
+      "missing_furniture_cost": {
+        "type": "integer",
+        "minimum": 0,
+        "nullable": true,
+        "description": "Price of the missing furniture from a fixed CZK table, integer CZK. null = unknown.",
+        "example": 8000
+      },
+      "move_in_date": {
+        "type": "string",
+        "nullable": true,
+        "description": "Date the flat can be moved into, as an ISO date (YYYY-MM-DD).",
+        "example": "2027-01-01"
+      },
+      "lease_type": {
+        "type": "string",
+        "enum": ["najem", "podnajem"],
+        "nullable": true,
+        "description": "najem: a lease. podnajem: a sublease.",
+        "example": "najem"
+      },
+      "lease_length_months": {
+        "type": "integer",
+        "nullable": true,
+        "description": "Lease length in months, when stated.",
+        "example": 12
+      },
+      "pets_allowed": {
+        "type": "boolean",
+        "nullable": true,
+        "description": "Whether pets are allowed, when stated.",
+        "example": false
+      },
+      "permanent_residence": {
+        "type": "boolean",
+        "nullable": true,
+        "description": "Whether a permanent residence registration is allowed, when stated.",
+        "example": true
+      },
+      "unit_type_hint": {
+        "type": "string",
+        "enum": ["flat", "studio", "non-residential"],
+        "nullable": true,
+        "description": "Unit type as the listing describes it.",
+        "example": "flat"
+      },
+      "evidence": {
+        "type": "array",
+        "description": "One entry per extracted field: the field name, the quote from the listing text and the confidence.",
+        "items": {
+          "type": "object",
+          "description": "Evidence for one field.",
+          "properties": {
+            "field": {
+              "type": "string",
+              "description": "Name of the field the quote supports.",
+              "example": "rent"
+            },
+            "quote": {
+              "type": "string",
+              "nullable": true,
+              "description": "Quote from the listing text. null when there is none.",
+              "example": "Example quote for rent"
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Confidence of the extraction, from 0 to 1.",
+              "example": 0.9
+            }
+          },
+          "required": [],
+          "additionalProperties": true
+        },
+        "example": [{ "field": "rent", "quote": "Example quote for rent", "confidence": 0.9 }]
+      },
+      "unknowns": {
+        "type": "array",
+        "description": "Null fields worth asking the agency or landlord about.",
+        "items": { "type": "string" },
+        "example": ["Are energy costs included in the rent?"]
+      },
+      "match_reasons": {
+        "type": "array",
+        "description": "Why the flat matches, in plain English.",
+        "items": { "type": "string" },
+        "example": ["Rent is within the budget cap"]
+      },
+      "requirements": {
+        "type": "array",
+        "description": "One verdict per requirement of the search profile.",
+        "items": {
+          "type": "object",
+          "description": "Verdict on one requirement.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Requirement name, e.g. max_total_monthly.",
+              "example": "max_total_monthly"
+            },
+            "verdict": {
+              "type": "string",
+              "enum": ["pass", "fail", "unknown"],
+              "description": "pass, fail, or unknown when the value is not known.",
+              "example": "pass"
+            },
+            "estimated": {
+              "type": "boolean",
+              "description": "True when the verdict rests on an estimated value.",
+              "example": true
+            },
+            "reason": {
+              "type": "string",
+              "description": "Plain English reason for the verdict.",
+              "example": "Energy is estimated"
+            }
+          },
+          "required": [],
+          "additionalProperties": true
+        },
+        "example": [{ "name": "max_total_monthly", "verdict": "pass", "estimated": true, "reason": "Energy is estimated" }]
+      },
+      "risk_flags": {
+        "type": "array",
+        "description": "Risks to check before a viewing, e.g. fees not stated, or cheaper on another portal.",
+        "items": { "type": "string" },
+        "example": ["fees not stated"]
+      },
+      "sources": {
+        "type": "array",
+        "description": "Every portal listing merged into this flat. The first one is the primary listing.",
+        "items": {
+          "type": "object",
+          "description": "One listing of the flat on one portal.",
+          "properties": {
+            "portal": {
+              "type": "string",
+              "enum": ["sreality", "bezrealitky", "idnes"],
+              "description": "Portal the listing is on.",
+              "example": "sreality"
+            },
+            "source_id": {
+              "type": "string",
+              "description": "Id of the listing on its portal.",
+              "example": "1000000001"
+            },
+            "url": {
+              "type": "string",
+              "description": "URL of the listing on its portal.",
+              "example": "https://www.sreality.cz/api/v1/estates/1000000001"
+            },
+            "rent": {
+              "type": "integer",
+              "minimum": 0,
+              "nullable": true,
+              "description": "Monthly rent on this portal, integer CZK. null = unknown.",
+              "example": 24000
+            },
+            "commission": {
+              "type": "integer",
+              "minimum": 0,
+              "nullable": true,
+              "description": "Commission on this portal, integer CZK. null = unknown.",
+              "example": 0
+            },
+            "is_owner_listing": {
+              "type": "boolean",
+              "nullable": true,
+              "description": "True when the owner lists the flat directly. null = unknown.",
+              "example": false
+            },
+            "collected_at": {
+              "type": "string",
+              "description": "When this listing was collected. ISO 8601 with offset, Europe/Prague.",
+              "example": "2026-11-13T12:00:00+01:00"
+            },
+            "contact": {
+              "type": "object",
+              "nullable": true,
+              "description": "Contact as the portal publishes it. null when the portal shows none.",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "Contact name.",
+                  "example": "Example Agent"
+                },
+                "agency": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "Agency name.",
+                  "example": "Example Realty"
+                },
+                "ico": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "Company registration number, as published.",
+                  "example": "00000000"
+                },
+                "email": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "Email address, as published.",
+                  "example": null
+                },
+                "phone": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "Phone number, as published.",
+                  "example": null
+                },
+                "form_url": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "URL of the portal's contact form.",
+                  "example": "https://www.example.com/contact"
+                }
+              },
+              "required": [],
+              "additionalProperties": true,
+              "example": { "name": "Example Agent", "agency": "Example Realty", "ico": "00000000", "email": null, "phone": null, "form_url": "https://www.example.com/contact" }
+            }
+          },
+          "required": [],
+          "additionalProperties": true
+        },
+        "example": [
+          {
+            "portal": "sreality",
+            "source_id": "1000000001",
+            "url": "https://www.sreality.cz/api/v1/estates/1000000001",
+            "rent": 24000,
+            "commission": 0,
+            "is_owner_listing": false,
+            "collected_at": "2026-11-13T12:00:00+01:00",
+            "contact": { "name": "Example Agent", "agency": null, "ico": null, "email": null, "phone": null, "form_url": null }
+          }
+        ]
+      },
+      "cross_source": {
+        "type": "object",
+        "description": "Comparison across the portals that list this flat. Each figure is null unless every source has the value it needs; all are null for a flat with one source.",
+        "properties": {
+          "cheapest_portal": {
+            "type": "string",
+            "enum": ["sreality", "bezrealitky", "idnes"],
+            "nullable": true,
+            "description": "Portal with the lowest rent.",
+            "example": "bezrealitky"
+          },
+          "commission_savings": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true,
+            "description": "Highest minus lowest commission across the portals, integer CZK.",
+            "example": 24000
+          },
+          "price_spread": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true,
+            "description": "Highest minus lowest rent across the portals, integer CZK.",
+            "example": 1000
+          }
+        },
+        "required": [],
+        "additionalProperties": true,
+        "example": { "cheapest_portal": "bezrealitky", "commission_savings": 24000, "price_spread": 1000 }
+      },
+      "image_url": {
+        "type": "string",
+        "nullable": true,
+        "description": "First photo of the primary listing, an absolute https URL, when there is one.",
+        "example": "https://example.com/photos/1.jpg"
+      },
+      "photos": {
+        "type": "array",
+        "description": "Absolute https URLs of the listing photos.",
+        "items": { "type": "string" },
+        "example": ["https://example.com/photos/1.jpg", "https://example.com/photos/2.jpg"]
+      },
+      "poi": {
+        "type": "object",
+        "nullable": true,
+        "description": "Distances in metres to the nearest metro station, tram stop and shop.",
+        "properties": {
+          "metro_m": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Metres to the nearest metro station.",
+            "example": 300
+          },
+          "tram_m": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Metres to the nearest tram stop.",
+            "example": 120
+          },
+          "shop_m": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Metres to the nearest shop.",
+            "example": 80
+          }
+        },
+        "required": [],
+        "additionalProperties": true,
+        "example": { "metro_m": 300, "tram_m": 120, "shop_m": 80 }
+      },
+      "extraction": {
+        "type": "object",
+        "nullable": true,
+        "description": "How the listing text was read: provider, model and status. null when extraction did not run.",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": ["featherless", "openai", "cache"],
+            "nullable": true,
+            "description": "Where the answer came from. null when no provider answered.",
+            "example": "openai"
+          },
+          "model": {
+            "type": "string",
+            "nullable": true,
+            "description": "Model id of the answer. null when no model answered.",
+            "example": "example-model"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "partial", "failed", "timeout"],
+            "description": "ok, partial, failed, or timeout when the per-flat time budget ran out.",
+            "example": "partial"
+          }
+        },
+        "required": [],
+        "additionalProperties": true,
+        "example": { "provider": "openai", "model": "example-model", "status": "partial" }
+      },
+      "first_seen": {
+        "type": "string",
+        "description": "When this flat was first seen. ISO 8601 with offset, Europe/Prague.",
+        "example": "2026-11-13T12:00:00+01:00"
+      },
+      "last_seen": {
+        "type": "string",
+        "description": "When this flat was last seen in a run. ISO 8601 with offset, Europe/Prague.",
+        "example": "2026-11-13T12:00:00+01:00"
+      }
+    },
+    "required": [],
+    "additionalProperties": true
+  },
+  "views": {
+    "overview": {
+      "title": "Overview",
+      "description": "Flats at a glance: rent, total monthly cost, move-in cost and match verdict.",
+      "transformation": {
+        "fields": ["property_id", "title", "address", "disposition", "area_m2", "rent", "total_monthly", "move_in_cost", "match", "url"]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "property_id": { "label": "Property ID", "format": "text" },
+          "title": { "label": "Title", "format": "text" },
+          "address": { "label": "Address", "format": "text" },
+          "disposition": { "label": "Layout", "format": "text" },
+          "area_m2": { "label": "Area (m2)", "format": "number" },
+          "rent": { "label": "Rent (CZK)", "format": "number" },
+          "total_monthly": { "label": "Total monthly (CZK)", "format": "number" },
+          "move_in_cost": { "label": "Move-in cost (CZK)", "format": "number" },
+          "match": { "label": "Match", "format": "text" },
+          "url": { "label": "Listing", "format": "link" }
+        }
+      }
+    }
+  }
 }
