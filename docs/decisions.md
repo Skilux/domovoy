@@ -95,3 +95,4 @@ Made by Danila for the call half of the Skill lane.
 | Where an approved change lives | In the feature flag's payload. `search.py` merges approved flags into the profile's `requirements` (issue #43) | Saving the change to the profile in `config.json` |
 | Stage timing | `sync` runs before the PostHog minute (after rejections, and in the background at the start of the call command); `report` returns at once when the events are in | A fixed 60 s wait inside the improve command |
 | Local event log | None. A report is complete from PostHog or marked incomplete | "A local event log may back up the report" |
+| `notion.py` and `call.py` | `scripts/notion.py` (#53) loads through `backend.module` with no change to `call.py`; run on a synthetic Notion test database on 13 Nov 2026 | Open item 14 |
