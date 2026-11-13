@@ -1,0 +1,58 @@
+{
+  "_label": "SYNTHETIC example. Not a real agency, person, address or listing.",
+  "repo_path": "~/domovoy",
+  "backend": {
+    "module": "../../business/skill/domovoy-business/scripts/leads.py"
+  },
+  "statuses": {
+    "interested": "Call approved",
+    "calling": "Calling",
+    "booked": "Viewing booked",
+    "not_booked": "Not booked"
+  },
+  "phone": {
+    "url": "",
+    "secret": "",
+    "env_file": "~/.config/domovoy-synthetic-agency/.env",
+    "url_env": "PHONE_URL",
+    "secret_env": "DOMOVOY_SECRET",
+    "poll_seconds": 3,
+    "timeout_seconds": 300
+  },
+  "call_context": {
+    "user_name": "Alex",
+    "budget_cap": 1000000000
+  },
+  "calendar": {
+    "calendar_id": "primary",
+    "timezone": "Europe/Prague",
+    "viewing_weekdays": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri"
+    ],
+    "viewing_from": "09:00",
+    "viewing_to": "18:00",
+    "days_ahead": 7,
+    "window_minutes": 60,
+    "max_windows": 5,
+    "event_title": "Viewing: {address}"
+  },
+  "business": {
+    "edition": "viewing-desk",
+    "agency_name": "Synthetic Homes Example",
+    "leads_file": "leads.json",
+    "statuses": {
+      "new": "New enquiry",
+      "closed": "Closed"
+    },
+    "qualifying_questions": [
+      "When do you want to move in?",
+      "How many people will live in the flat?",
+      "Do you have pets?",
+      "How long do you plan to stay?"
+    ]
+  }
+}
