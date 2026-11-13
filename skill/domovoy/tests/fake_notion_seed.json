@@ -1,0 +1,30 @@
+{
+  "_note": "SYNTHETIC seed for the fake Notion backend. Not a real listing, address or person.",
+  "pages": [
+    {
+      "notion_page_id": "fake-page-001",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 1, Testville",
+      "url": "https://example.com/fake-notion/fake-page-001",
+      "status": "Shortlisted",
+      "listing": {
+        "property_id": "synthetic-test-001",
+        "url": "https://example.com/synthetic-listing-001",
+        "collected_at": "2026-11-13T12:00:00+01:00",
+        "address": "Synthetic Street 1, Testville",
+        "rent": 22000,
+        "total_monthly": 24500,
+        "upfront": null,
+        "kauce": 22000,
+        "commission": null,
+        "move_in_date": null,
+        "lease_type": "najem",
+        "missing_furniture_cost": null,
+        "unknowns": [
+          "commission",
+          "move_in_date"
+        ]
+      },
+      "body": ""
+    }
+  ]
+}
