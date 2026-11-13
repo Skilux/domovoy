@@ -6,8 +6,9 @@ build the FlatItem, push it to the dataset and upsert new and changed flats (not
 property-id map and the profile state are saved only when every Notion write of the run succeeded, so a
 failed write is never recorded as seen.
 
-A stage that is not importable is replaced by a fallback, and the log says which are active. A failing
-source, extraction or Notion write is counted in the run summary; it never stops the run.
+The extraction stage (WP4) is an Extractor opened inside the Actor run by open_extractor(), because its
+cache is an Apify store. A stage that is not importable is replaced by a fallback, and the log says which
+are active. A failing source, extraction or Notion write is counted in the run summary; it never stops the run.
 """
 
 from __future__ import annotations
@@ -46,9 +47,10 @@ from domovoy.models import (
 from domovoy.sources.base import Source, SourceContext, SourceError
 
 DEFAULT_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"  # decided in #35
-DEFAULT_FALLBACK_MODEL = "gpt-4.1-mini"
-DEFAULT_CONCURRENCY = 2
+DEFAULT_FALLBACK_MODEL = "deepseek-ai/DeepSeek-V4-Flash"  # Featherless; takes 4 concurrency slots
+DEFAULT_CONCURRENCY = 1
 DEFAULT_TIMEOUT_SEC = 60
+CONFIDENCE_THRESHOLD = 0.5  # Extractor(min_confidence=...): answers below it become unknown (open item 7)
 NO_EXTRACTION_PROMPT_VERSION = "none"
 DEDUP_NAMES = (
     "PROPERTY_IDS_STORE",
@@ -62,10 +64,11 @@ DEDUP_NAMES = (
     "record_run",
     "cross_source",
 )
-EXTRACTION_NAMES = ("extract",)
 COSTS_NAMES = ("compute_costs", "evaluate")
 NOTION_NAMES = ("NotionSink",)
-EVIDENCE_FIELDS = tuple(name for name in Extraction.model_fields if name not in {"provider", "model", "prompt_version", "status"})
+EVIDENCE_FIELDS = tuple(
+    name for name in Extraction.model_fields if name not in {"provider", "model", "prompt_version", "status"}
+)
 
 
 class KeyValue(Protocol):
@@ -83,10 +86,10 @@ class Platform(Protocol):
 
 @dataclass
 class Modules:
-    """Stage namespaces from other work packages. None means that stage's fallback is used."""
+    """Stage objects from other work packages. None means that stage's fallback is used."""
 
     dedup: Any = None  # WP6: DEDUP_NAMES
-    extraction: Any = None  # WP4: extract(listing, cfg)
+    extraction: Any = None  # WP4 Extractor, opened inside the run by open_extractor()
     costs: Any = None  # WP5: compute_costs(listing, ex, profile), evaluate(listing, ex, costs, profile)
     notion: Any = None  # WP7: NotionSink(token=, data_source_id=) with validate() and upsert(item)
 
@@ -102,7 +105,6 @@ def resolve_modules(log: Logger) -> Modules:
     """Import each stage when a run starts. A stage that is not importable is logged and replaced by a fallback."""
     return Modules(
         dedup=_import_stage("dedup", "domovoy.dedup", DEDUP_NAMES, log),
-        extraction=_import_stage("extraction", "domovoy.extraction.extract", EXTRACTION_NAMES, log),
         costs=_import_stage("costs", "domovoy.costs", COSTS_NAMES, log),
         notion=_import_stage("notion", "domovoy.notion.sink", NOTION_NAMES, log),
     )
@@ -136,6 +138,34 @@ def llm_config(actor_input: Mapping[str, Any], environ: Mapping[str, str]) -> Ll
         featherless_api_key=SecretStr(featherless) if featherless else None,
         openai_api_key=SecretStr(openai_key) if openai_key else None,
     )
+
+
+async def open_extractor(actor_input: Mapping[str, Any], environ: Mapping[str, str], log: Logger) -> Any | None:
+    """The extraction stage, opened inside the Actor run: an Extractor over the Apify cache.
+
+    Returns None, the fallback, when skipExtraction is set or domovoy.extraction is not importable yet.
+    The log says whether each key is set, never the key itself. The caller closes the result with aclose().
+    """
+    if actor_input.get("skipExtraction"):
+        log.info("skipExtraction: extraction is off; costs and requirements run on unknown fields")
+        return None
+    try:
+        extraction = importlib.import_module("domovoy.extraction")
+        extractor_cls = extraction.Extractor
+        open_cache = extraction.open_apify_cache
+    except (ImportError, AttributeError) as exc:
+        log.warning("stage extraction: fallback in use (%s: %s)", type(exc).__name__, exc)
+        return None
+    cfg = llm_config(actor_input, environ)
+    log.info(
+        "stage extraction: active (model %s, fallback %s); Featherless key %s; OpenAI last-resort key %s",
+        cfg.model,
+        cfg.fallback_model,
+        "set" if cfg.featherless_api_key else "not set",
+        "set" if cfg.openai_api_key else "not set",
+    )
+    cache = await open_cache()
+    return extractor_cls(cfg, cache, min_confidence=CONFIDENCE_THRESHOLD)
 
 
 async def open_notion(
@@ -193,10 +223,11 @@ async def _collect_one(
             portal, len(collected), type(exc).__name__, text, exc_info=not isinstance(exc, SourceError),
         )
         return SourceStatus(portal=portal, status="failed", found=len(collected), fetched=len(collected), error=text), collected
-    status = status_from_stats(portal, getattr(source, "last_stats", None), len(collected))
+    stats = getattr(source, "last_stats", None)
+    status = status_from_stats(portal, stats, len(collected))
     log.info(
-        "source %s: %s, found %d, fetched %d, failed %d, skipped %s",
-        portal, status.status, status.found, status.fetched, status.failed, _stat(getattr(source, "last_stats", None), "skipped", 0),
+        "source %s: %s, found %d, fetched %d, failed %d, skipped %d",
+        portal, status.status, status.found, status.fetched, status.failed, _stat(stats, "skipped", 0),
     )
     return status, collected
 
@@ -280,21 +311,22 @@ def commissions_for(flat: Flat, costs: Costs) -> dict[str, int | None]:
 
 
 async def analyse(
-    flats: list[Flat], modules: Modules, cfg: LlmConfig | None, profile: SearchProfile, log: Logger
+    flats: list[Flat], extractor: Any | None, profile: SearchProfile, modules: Modules, log: Logger
 ) -> list[Analysis]:
-    """Extraction for every flat (concurrency from llm.concurrency), then costs. Unchanged flats are included,
-    because cross_source needs their commissions before diff; the extraction cache makes them cheap."""
-    gate = asyncio.Semaphore(cfg.concurrency if cfg is not None else 1)
+    """Extraction for every flat, then costs. The Extractor's own gate sets the concurrency (llm.concurrency).
+
+    Unchanged flats are included too: cross_source needs their commissions before diff, and the extraction
+    cache makes them cheap.
+    """
 
     async def extract_one(flat: Flat) -> tuple[Extraction, bool]:
-        if cfg is None or modules.extraction is None:
+        if extractor is None:
             return empty_extraction(), False
-        async with gate:
-            try:
-                return await modules.extraction.extract(flat.primary, cfg), True
-            except Exception as exc:  # the flat goes on with every field unknown
-                log.warning("extraction failed for %s: %s: %s", flat.property_id, type(exc).__name__, exc)
-                return empty_extraction(), False
+        try:
+            return await extractor.extract(flat.primary), True
+        except Exception as exc:  # the flat goes on with every field unknown
+            log.warning("extraction failed for %s: %s: %s", flat.property_id, type(exc).__name__, exc)
+            return empty_extraction(), False
 
     extracted = await asyncio.gather(*(extract_one(flat) for flat in flats))
     analyses: list[Analysis] = []
@@ -334,8 +366,6 @@ async def run_search(
     run_id = environ.get("APIFY_ACTOR_RUN_ID") or f"local-{uuid4().hex[:8]}"
     include_unchanged = bool(actor_input.get("includeUnchanged"))
     skip_extraction = bool(actor_input.get("skipExtraction"))
-    if skip_extraction:
-        log.info("skipExtraction: extraction is off; costs and requirements run on unknown fields")
 
     sink = await open_notion(actor_input, modules, environ, log)  # before any portal is contacted
     statuses, listings = await collect_listings(profile, sources, log)
@@ -355,8 +385,8 @@ async def run_search(
     else:
         flats = [passthrough_flat(listing) for listing in listings]  # no state I/O in the fallback
 
-    cfg = llm_config(actor_input, environ) if flats and modules.extraction is not None and not skip_extraction else None
-    analyses = await analyse(flats, modules, cfg, profile, log)
+    extractor = None if skip_extraction else modules.extraction
+    analyses = await analyse(flats, extractor, profile, modules, log)
 
     providers = {"featherless": 0, "openai": 0, "cache": 0}
     for analysis in analyses:

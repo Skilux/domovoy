@@ -2,6 +2,7 @@
 
 katastr_lookup returns NOT_IMPLEMENTED. search runs the pipeline in domovoy.pipeline and writes its RunSummary to
 the key OUTPUT. Sources register themselves when domovoy.sources is imported (see domovoy/sources/__init__.py).
+The extractor is opened by __main__ inside the Actor run and passed in; None means the extraction fallback.
 """
 
 from logging import Logger
@@ -14,7 +15,9 @@ from domovoy.sources import SOURCES
 OUTPUT_KEY = "OUTPUT"
 
 
-async def run(actor_input: dict[str, Any], store: Platform, log: Logger) -> dict[str, Any]:
+async def run(
+    actor_input: dict[str, Any], store: Platform, log: Logger, *, extractor: Any | None = None
+) -> dict[str, Any]:
     mode = actor_input.get("mode", "search")
     if mode == "katastr_lookup":
         result: dict[str, Any] = {"status": "NOT_IMPLEMENTED"}
@@ -25,9 +28,9 @@ async def run(actor_input: dict[str, Any], store: Platform, log: Logger) -> dict
     if "profile" not in actor_input:
         raise ValueError("input.profile is required for mode 'search'")
     profile = load_profile(actor_input["profile"])
-    summary = await run_search(
-        profile, actor_input, store, log, sources=SOURCES, modules=resolve_modules(log)
-    )
+    modules = resolve_modules(log)
+    modules.extraction = extractor
+    summary = await run_search(profile, actor_input, store, log, sources=SOURCES, modules=modules)
     result = summary.model_dump(mode="json")
     await store.set_value(OUTPUT_KEY, result)
     return result

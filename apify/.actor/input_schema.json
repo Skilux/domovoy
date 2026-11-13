@@ -6,7 +6,7 @@
     "mode": {
       "title": "Mode",
       "type": "string",
-      "description": "search collects listings from the portal sources in profile.filters.sources (Sreality is registered; Bezrealitky and iDNES follow). katastr_lookup returns NOT_IMPLEMENTED.",
+      "description": "search collects listings from the portal sources in profile.filters.sources (Sreality and Bezrealitky are registered; iDNES follows). katastr_lookup returns NOT_IMPLEMENTED.",
       "editor": "select",
       "enum": [
         "search",
@@ -47,20 +47,26 @@
     "llm": {
       "title": "LLM settings",
       "type": "object",
-      "description": "Featherless extraction settings. Used by the extraction stage.",
+      "description": "Featherless extraction settings. Each listing is tried on the model, then on the fallback model; OpenAI is a last resort set in code (gpt-4o-mini).",
       "editor": "schemaBased",
       "properties": {
         "model": {
           "title": "Model",
           "type": "string",
-          "description": "Featherless model id.",
+          "description": "Primary Featherless model id (Qwen). Tried with two attempts before the fallback.",
           "default": "Qwen/Qwen3-30B-A3B-Instruct-2507"
+        },
+        "fallbackModel": {
+          "title": "Fallback model",
+          "type": "string",
+          "description": "Featherless fallback model, tried once when the primary model fails. Not OpenAI. DeepSeek-V4-Flash takes 4 concurrency slots.",
+          "default": "deepseek-ai/DeepSeek-V4-Flash"
         },
         "concurrency": {
           "title": "Concurrency",
           "type": "integer",
-          "description": "Parallel LLM calls. Matches the Featherless plan limit.",
-          "default": 2,
+          "description": "Parallel extraction calls. Keep at 1: the DeepSeek fallback takes 4 slots of the Featherless plan.",
+          "default": 1,
           "minimum": 1
         },
         "timeoutSec": {
@@ -69,26 +75,20 @@
           "description": "Timeout per LLM call.",
           "default": 60,
           "minimum": 1
-        },
-        "fallbackModel": {
-          "title": "Fallback model",
-          "type": "string",
-          "description": "OpenAI model id, used when Featherless fails.",
-          "default": "gpt-4.1-mini"
         }
       }
     },
     "featherlessApiKey": {
       "title": "Featherless API key",
       "type": "string",
-      "description": "Featherless API key. Falls back to the environment variable FEATHERLESS_API_KEY (Apify secret featherlessApiKey).",
+      "description": "Featherless API key for the primary and fallback models. Falls back to the environment variable FEATHERLESS_API_KEY (Apify secret featherlessApiKey).",
       "editor": "textfield",
       "isSecret": true
     },
     "openaiApiKey": {
       "title": "OpenAI API key",
       "type": "string",
-      "description": "OpenAI API key for the extraction fallback. Falls back to the environment variable OPENAI_API_KEY (Apify secret openaiApiKey).",
+      "description": "OpenAI API key for the last resort only: gpt-4o-mini, set in code, tried when both Featherless models fail. Falls back to the environment variable OPENAI_API_KEY (Apify secret openaiApiKey).",
       "editor": "textfield",
       "isSecret": true
     },

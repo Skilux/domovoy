@@ -4,6 +4,7 @@ the real stages are tested in their own packages. An autouse fixture refuses eve
 import json
 import logging
 import socket
+import sys
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,7 +26,7 @@ from domovoy.models import (
     UpsertResult,
     Verdict,
 )
-from domovoy.pipeline import Modules, empty_extraction, llm_config, run_search
+from domovoy.pipeline import Modules, empty_extraction, llm_config, open_extractor, run_search
 from domovoy.profile import load_profile
 from domovoy.sources.base import SourceError
 
@@ -206,15 +207,19 @@ def fake_costs(*, rejected_source_ids: tuple[str, ...] = ()) -> SimpleNamespace:
 
 
 def fake_extraction(*, error: Exception | None = None, provider: str = "featherless") -> tuple[SimpleNamespace, list[str]]:
+    """A stand-in for the WP4 Extractor: extract(listing) and aclose()."""
     calls: list[str] = []
 
-    async def extract(listing: Listing, cfg: Any) -> Extraction:
+    async def extract(listing: Listing) -> Extraction:
         calls.append(listing.source_id)
         if error is not None:
             raise error
         return extraction_with(provider=provider, rent=listing.rent)
 
-    return SimpleNamespace(extract=extract), calls
+    async def aclose() -> None:
+        return None
+
+    return SimpleNamespace(extract=extract, aclose=aclose), calls
 
 
 def fake_notion(
@@ -481,3 +486,61 @@ def test_flatitem_assembly_matches_the_hand_built_example():
     assert {entry["field"] for entry in actual["evidence"]} == {
         "rent", "move_in_date", "lease_type", "lease_length_months", "unit_type_hint",
     }
+
+
+# Extraction wiring and LLM defaults
+
+
+def test_llm_defaults_follow_the_wp4_decisions():
+    cfg = llm_config({}, {})
+    assert cfg.model == "Qwen/Qwen3-30B-A3B-Instruct-2507"
+    assert cfg.fallback_model == "deepseek-ai/DeepSeek-V4-Flash"
+    assert cfg.concurrency == 1
+    assert cfg.timeout_sec == 60
+    assert cfg.featherless_api_key is None and cfg.openai_api_key is None
+    custom = llm_config({"llm": {"model": "m2", "concurrency": 3, "fallbackModel": "f2", "timeoutSec": 30}}, {})
+    assert (custom.model, custom.concurrency, custom.fallback_model, custom.timeout_sec) == ("m2", 3, "f2", 30)
+
+
+async def test_open_extractor_falls_back_when_the_extraction_module_is_missing(monkeypatch, caplog):
+    monkeypatch.setitem(sys.modules, "domovoy.extraction", None)  # an import of it fails, as if not on main
+    caplog.set_level(logging.WARNING)
+    assert await open_extractor({}, {}, LOG) is None
+    assert "stage extraction: fallback in use" in caplog.text
+
+
+async def test_skip_extraction_never_opens_the_cache(monkeypatch):
+    opened: list[bool] = []
+
+    async def open_cache() -> None:
+        opened.append(True)
+
+    module = SimpleNamespace(Extractor=lambda *args, **kwargs: None, open_apify_cache=open_cache)
+    monkeypatch.setitem(sys.modules, "domovoy.extraction", module)
+    assert await open_extractor({"skipExtraction": True}, {}, LOG) is None
+    assert opened == []
+
+
+async def test_open_extractor_builds_the_extractor_over_the_cache(monkeypatch):
+    built: dict[str, Any] = {}
+
+    class Extractor:
+        def __init__(self, cfg: Any, cache: Any, **kwargs: Any) -> None:
+            built.update(cfg=cfg, cache=cache, kwargs=kwargs)
+
+    cache = object()
+
+    async def open_cache() -> object:
+        return cache
+
+    monkeypatch.setitem(
+        sys.modules, "domovoy.extraction", SimpleNamespace(Extractor=Extractor, open_apify_cache=open_cache)
+    )
+    extractor = await open_extractor(
+        {"llm": {"concurrency": 1}}, {"FEATHERLESS_API_KEY": "fake-featherless-key-for-tests"}, LOG
+    )
+    assert isinstance(extractor, Extractor)
+    assert built["cache"] is cache
+    assert built["kwargs"] == {"min_confidence": 0.5}
+    assert built["cfg"].model == "Qwen/Qwen3-30B-A3B-Instruct-2507"
+    assert built["cfg"].featherless_api_key.get_secret_value() == "fake-featherless-key-for-tests"
