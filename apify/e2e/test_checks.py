@@ -74,7 +74,7 @@ def test_missed_dedup_fires_only_across_portals_within_tolerance():
 
 def page_for(it, page_id="pg1", status="Shortlisted", **props):
     base = {"Rent": it["rent"], "Total monthly": it["total_monthly"], "Kauce": it["kauce"],
-            "Commission": it["commission"], "Upfront": checks.item_move_in(it), "Missing furniture cost": it["missing_furniture_cost"],
+            "Commission": it["commission"], ("Move-in cost" if "move_in_cost" in it else "Upfront"): checks.item_move_in(it), "Missing furniture cost": it["missing_furniture_cost"],
             "URL": it["url"], "Match": {"strong": "Strong", "needs_info": "Needs info"}.get(it["match"]),
             "Unknowns": "\n".join(it["unknowns"]) or None}
     base.update(props)
@@ -97,12 +97,14 @@ def test_pages_pass_and_fire():
     assert ids(checks.check_pages([], [it], set(), "r", summary)) == ["L3.item_has_page"]
 
 
-def test_move_in_cost_is_read_after_contract2():
+def test_move_in_cost_and_the_old_upfront_are_both_read():
     it = item(change="new", match="strong")
-    it["move_in_cost"] = it.pop("upfront")
-    page = page_for(it)
-    page["props"]["Move-in cost"] = page["props"].pop("Upfront")
-    assert checks.compare_page(it, page, "r") == []
+    it.pop("upfront", None)
+    it["move_in_cost"] = 31000
+    assert checks.compare_page(it, page_for(it), "r") == []
+    assert page_for(it)["props"]["Move-in cost"] == 31000
+    old = dict(it, upfront=it.pop("move_in_cost"))
+    assert "Upfront" in page_for(old)["props"] and checks.compare_page(old, page_for(old), "r") == []
 
 
 def test_counts_with_and_without_include_unchanged():
@@ -131,7 +133,7 @@ def test_call_context():
     it = item()
     page = page_for(it)
     context = {"property_id": it["property_id"], "rent": it["rent"], "total_monthly": it["total_monthly"],
-               "upfront": it["upfront"], "unknowns": it["unknowns"], "budget_cap": 30000}
+               "upfront": checks.item_move_in(it), "unknowns": it["unknowns"], "budget_cap": 30000}
     assert checks.check_call_context(context, page, 30000, []) == []
     found = checks.check_call_context(dict(context, rent=1, budget_cap=1), page, 30000, ["$.x: missing"])
     assert ids(found) == ["L5.budget_cap", "L5.context_matches_page", "L5.context_schema"]
