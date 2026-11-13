@@ -151,7 +151,7 @@ One tick does three things, and a step that fails is recorded while the tick car
 - Saved list: `posthog/.state/schedule.json`, the rejections the last tick saw. `DOMOVOY_SCHEDULE_STATE` changes the path.
 - Claude is found on `PATH` when `install` runs, and its path is stored in the agent as `DOMOVOY_CLAUDE_BIN`. If the `claude` CLI was missing then, a tick records "claude CLI not found" and skips the review. Run `install` again after you install it.
 
-Not run yet
+Run and seen on 13 Nov 2026, synthetic data (fake shortlist, dataset `sched`): one real `tick` took 72 s. It synced 15 events, the unattended Claude run read the report and filed one proposal (flag off, notebook "DOMOVOY suggests: Require an elevator", status "Waiting for your answer"), and a second tick 1 s long asked nothing because the rejections had not changed. `install --every 10` passed `plutil -lint` and launchd showed a run interval of 600 s; `remove` unloaded it. Not run: a tick fired by launchd itself, the macOS notification, and the real shortlist.
 
 ## Rules
 
