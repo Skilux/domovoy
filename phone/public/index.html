@@ -9,14 +9,14 @@
 <body>
   <svg hidden>
     <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></symbol>
-    <symbol id="i-home" viewBox="0 0 24 24"><path d="M12 3 2.5 11h2.7v9h5.3v-6h3v6h5.3v-9h2.7z"/></symbol>
   </svg>
 
+  <div class="stage">
   <main class="phone" id="phone" data-screen="ready">
     <section class="screen" data-name="ready">
       <p class="kicker">DOMOVOY phone</p>
       <div class="spacer"></div>
-      <div class="avatar"><svg><use href="#i-home"/></svg></div>
+      <div class="avatar"><img src="/domovoy.svg" alt=""></div>
       <button class="pill" id="ready" type="button">Ready</button>
       <p class="note">One click so the ringtone can play</p>
       <div class="spacer"></div>
@@ -25,7 +25,7 @@
     <section class="screen" data-name="waiting">
       <p class="kicker">DOMOVOY phone</p>
       <div class="spacer"></div>
-      <div class="avatar breathe"><svg><use href="#i-home"/></svg></div>
+      <div class="avatar breathe"><img src="/domovoy.svg" alt=""></div>
       <h1 id="waiting-title">Waiting for a call</h1>
       <div class="dots"><i></i><i></i><i></i></div>
       <p class="note" id="pair-note"></p>
@@ -38,7 +38,7 @@
         <p class="lcd-top"><span class="lcd-signal"><i></i><i></i><i></i><i></i></span><span>DOMOVOY NET</span></p>
         <p class="lcd-text"><span id="lcd-text"></span><i class="lcd-cursor"></i></p>
       </div>
-      <div class="avatar pulse"><svg><use href="#i-home"/></svg></div>
+      <div class="avatar pulse"><img src="/domovoy.svg" alt=""></div>
       <h1>DOMOVOY AI assistant</h1>
       <p class="sub">calling about a flat</p>
       <div class="card">
@@ -59,45 +59,63 @@
     </section>
 
     <section class="screen" data-name="call">
-      <p class="kicker"><span id="call-status">Connecting</span></p>
-      <p class="timer" id="timer">00:00</p>
-      <p class="sub" data-address></p>
-      <div class="wave" id="wave"></div>
-      <p class="mode" id="mode"></p>
-      <ul class="checklist" id="checklist" hidden></ul>
-      <div class="transcript" id="transcript"></div>
-      <div class="actions single">
-        <div class="action">
-          <button class="round red down" id="hangup" type="button" aria-label="Hang up"><svg><use href="#i-phone"/></svg></button>
-          <span>Hang up</span>
+      <div class="pane pane-a">
+        <p class="kicker"><span id="call-status">Connecting</span></p>
+        <div class="spacer wide-only"></div>
+        <div class="avatar wide-only"><img src="/domovoy.svg" alt=""></div>
+        <p class="timer" id="timer">00:00</p>
+        <p class="sub" data-address></p>
+        <div class="wave" id="wave"></div>
+        <p class="mode" id="mode"></p>
+        <div class="spacer wide-only"></div>
+        <div class="actions single">
+          <div class="action">
+            <button class="round red down" id="hangup" type="button" aria-label="Hang up"><svg><use href="#i-phone"/></svg></button>
+            <span>Hang up</span>
+          </div>
         </div>
+      </div>
+      <div class="pane pane-b">
+        <ul class="checklist" id="checklist" hidden></ul>
+        <div class="transcript" id="transcript"></div>
       </div>
     </section>
 
     <section class="screen" data-name="result">
-      <p class="kicker">Call ended</p>
-      <div class="spacer"></div>
-      <div class="badge" id="badge"></div>
-      <h1 class="outcome" id="outcome"></h1>
-      <div class="cal" id="cal" hidden>
-        <p class="cal-month"></p>
-        <p class="cal-day"></p>
-        <p class="cal-sub"></p>
+      <div class="pane pane-a">
+        <p class="kicker">Call ended</p>
+        <div class="spacer"></div>
+        <div class="badge" id="badge"></div>
+        <h1 class="outcome" id="outcome"></h1>
+        <div class="spacer wide-only"></div>
       </div>
-      <div class="card" id="when-card">
-        <p class="label">When</p>
-        <p class="when" id="when"></p>
+      <div class="pane pane-b">
+        <div class="spacer wide-only"></div>
+        <div class="cal" id="cal" hidden>
+          <p class="cal-month"></p>
+          <p class="cal-day"></p>
+          <p class="cal-sub"></p>
+        </div>
+        <div class="card" id="when-card">
+          <p class="label">When</p>
+          <p class="when" id="when"></p>
+        </div>
+        <div class="card left">
+          <p class="label" data-address></p>
+          <p class="summary" id="summary"></p>
+        </div>
+        <div class="spacer"></div>
       </div>
-      <div class="card left">
-        <p class="label" data-address></p>
-        <p class="summary" id="summary"></p>
-      </div>
-      <div class="spacer"></div>
     </section>
 
+    <i class="hinge"></i>
+    <div class="statusbar"><span id="clock"></span><span class="battery"><i></i></span></div>
+    <i class="cutout"></i>
+    <i class="homebar"></i>
     <p class="error" id="error" role="alert"></p>
   </main>
   <p class="caption">Live AI voice. No real phone number. Unscripted.</p>
+  </div>
 
   <audio id="ringtone" src="/ringtone.mp3" loop preload="auto"></audio>
   <script type="module" src="/app.js"></script>
