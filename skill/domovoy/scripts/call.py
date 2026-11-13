@@ -9,6 +9,9 @@
                                                          not posted from this machine (flat must be Calling)
 
 W and F are a JSON file path, "-" for stdin, or inline JSON. Output is one JSON object on stdout.
+Paths: config.json is DOMOVOY_CONFIG, else the skill folder. The env file is DOMOVOY_ENV_FILE, else
+phone.env_file in config.json, else ~/.config/domovoy/.env. Call state is kept in DOMOVOY_STATE_DIR, else
+.state in the skill folder. Nothing depends on the working directory, and nothing reads a terminal.
 Exit codes: 0 handled, 2 refused (nothing was contacted), 1 error.
 
 SHORTLIST INTERFACE. call.py reaches the shortlist only through the module named in config.json
@@ -53,7 +56,8 @@ import urllib.parse
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATE_DIR = os.path.join(ROOT, ".state")
+STATE_DIR = os.path.expanduser(os.environ.get("DOMOVOY_STATE_DIR") or os.path.join(ROOT, ".state"))
+DEFAULT_ENV_FILE = "~/.config/domovoy/.env"
 MARKER = "domovoy-call: %s"
 PAGE_ID = "notion_page_id"
 TYPES = {
@@ -71,10 +75,10 @@ class Refusal(Exception):
 
 
 def load_config():
-    path = os.environ.get("DOMOVOY_CONFIG") or os.path.join(ROOT, "config.json")
+    path = os.path.expanduser(os.environ.get("DOMOVOY_CONFIG") or os.path.join(ROOT, "config.json"))
     if not os.path.exists(path):
         raise RuntimeError("config not found: %s (copy config.example.json to config.json)" % path)
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -125,7 +129,7 @@ def budget_cap(cfg):
 
 
 def load_schema(name):
-    with open(os.path.join(ROOT, "reference", name + ".schema.json")) as f:
+    with open(os.path.join(ROOT, "reference", name + ".schema.json"), encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -211,7 +215,7 @@ def read_json_arg(arg):
         return json.load(sys.stdin)
     if arg.lstrip()[:1] in "[{":
         return json.loads(arg)
-    with open(os.path.expanduser(arg)) as f:
+    with open(os.path.expanduser(arg), encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -249,9 +253,10 @@ def phone_setting(cfg, name):
     env_name = phone.get(name + "_env")
     if env_name and os.environ.get(env_name):
         return os.environ[env_name]
-    path = os.path.expanduser(phone.get("env_file") or "")
+    env_file = os.environ.get("DOMOVOY_ENV_FILE") or phone.get("env_file") or DEFAULT_ENV_FILE
+    path = os.path.expanduser(env_file)
     if env_name and os.path.isfile(path):
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 key, _, value = line.strip().partition("=")
                 if key.replace("export ", "").strip() == env_name and value:
@@ -259,7 +264,7 @@ def phone_setting(cfg, name):
     if phone.get(name):
         return phone[name]
     raise RuntimeError("phone %s is not set (%s in the environment, in %s, or phone.%s in config.json)"
-                       % (name, env_name, phone.get("env_file"), name))
+                       % (name, env_name, env_file, name))
 
 
 def phone_request(cfg, method, path, body=None):
@@ -285,14 +290,14 @@ def handled_path():
 def seen_conversations():
     if not os.path.exists(handled_path()):
         return set()
-    with open(handled_path()) as f:
+    with open(handled_path(), encoding="utf-8") as f:
         return set(json.load(f))
 
 
 def remember(conversation_id):
     seen = sorted(seen_conversations() | {conversation_id})
     os.makedirs(STATE_DIR, exist_ok=True)
-    with open(handled_path(), "w") as f:
+    with open(handled_path(), "w", encoding="utf-8") as f:
         json.dump(seen, f)
 
 
@@ -431,13 +436,14 @@ def cmd_start(cfg, backend, args, post, wait=True):
         warnings.append("total_monthly is over budget_cap: the recheck will end in Not booked")
     if not post:
         return {"valid": True, "posted": False, "warnings": warnings, "call_context": context}
+    os.makedirs(STATE_DIR, exist_ok=True)
     status, body = phone_request(cfg, "POST", "/api/call", context)
     if not 200 <= status < 300:
         raise RuntimeError("phone server refused the call_context with %s: %s; the flat stays in %s"
                            % (status, json.dumps(body)[:200], cfg["statuses"]["interested"]))
     os.makedirs(STATE_DIR, exist_ok=True)
     saved = {"context": context, "page": {PAGE_ID: page[PAGE_ID], "url": page.get("url")}}
-    with open(state_path(page[PAGE_ID]), "w") as f:
+    with open(state_path(page[PAGE_ID]), "w", encoding="utf-8") as f:
         json.dump(saved, f, indent=2)
     backend.set_status(cfg, page[PAGE_ID], cfg["statuses"]["calling"])
     if not wait:
@@ -453,7 +459,7 @@ def cmd_start(cfg, backend, args, post, wait=True):
 def cmd_resume(cfg, backend, args):
     calling = cfg["statuses"]["calling"]
     if args.page is not None and os.path.exists(state_path(args.page)):
-        with open(state_path(args.page)) as f:
+        with open(state_path(args.page), encoding="utf-8") as f:
             saved = json.load(f)
     elif args.page is not None and args.windows:
         page = next((p for p in backend.list_pages(cfg, calling) if p[PAGE_ID] == args.page), None)
@@ -462,7 +468,7 @@ def cmd_resume(cfg, backend, args):
         saved = {"context": build_context(cfg, page, read_json_arg(args.windows), args.listing),
                  "page": {PAGE_ID: page[PAGE_ID], "url": page.get("url")}}
         os.makedirs(STATE_DIR, exist_ok=True)
-        with open(state_path(args.page), "w") as f:
+        with open(state_path(args.page), "w", encoding="utf-8") as f:
             json.dump(saved, f, indent=2)
     else:
         raise Refusal("resume needs --page ID, and --windows W when the call was not posted from this machine")
@@ -482,6 +488,8 @@ def main(argv=None):
     parser.add_argument("--page", help="notion_page_id of the flat, when several are Interested")
     parser.add_argument("--listing", help="listing fields as a file, '-' or inline JSON")
     args = parser.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     try:
         cfg = load_config()
         backend = load_backend(cfg)
