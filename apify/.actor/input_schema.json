@@ -6,7 +6,7 @@
     "mode": {
       "title": "Mode",
       "type": "string",
-      "description": "search collects listings from the portal sources in profile.filters.sources (Sreality and Bezrealitky are registered; iDNES follows). katastr_lookup returns NOT_IMPLEMENTED.",
+      "description": "search collects listings from the portals in profile.filters.sources (Sreality, Bezrealitky, iDNES). katastr_lookup is reserved for a later version and returns NOT_IMPLEMENTED.",
       "editor": "select",
       "enum": [
         "search",
@@ -21,13 +21,52 @@
     "profile": {
       "title": "Search profile",
       "type": "object",
-      "description": "Search profile, validated against profile.schema.json. See README.md.",
-      "editor": "json"
+      "description": "What to search for and what the flat must meet. filters: offer_type \"rent\", property_type \"flat\", locations (city, optional citypart), dispositions (for example \"2+kk\"), max_rent and min_area_m2 in CZK and m2, sources (sreality, bezrealitky, idnes) and max_listings per source. requirements: max_total_monthly (CZK, required), max_upfront, elevator (\"required\" or null), lease_types (najem, podnajem), move_in_by (YYYY-MM-DD) and pets_allowed. id names the profile; household.occupants sets the per-person fees. Full schema: domovoy/schemas/profile.schema.json in the source.",
+      "editor": "json",
+      "prefill": {
+        "id": "praha-2kk-30k",
+        "version": 1,
+        "filters": {
+          "offer_type": "rent",
+          "property_type": "flat",
+          "locations": [
+            {
+              "city": "Praha",
+              "citypart": "Vinohrady"
+            }
+          ],
+          "dispositions": [
+            "2+kk",
+            "2+1"
+          ],
+          "max_rent": 30000,
+          "min_area_m2": 45,
+          "sources": [
+            "sreality",
+            "bezrealitky",
+            "idnes"
+          ],
+          "max_listings": 5
+        },
+        "household": {
+          "occupants": 1
+        },
+        "requirements": {
+          "max_total_monthly": 32000,
+          "max_upfront": null,
+          "elevator": null,
+          "lease_types": [
+            "najem"
+          ],
+          "move_in_by": null,
+          "pets_allowed": null
+        }
+      }
     },
     "notion": {
       "title": "Notion",
       "type": "object",
-      "description": "Notion target. Without dataSourceId, results go to the dataset only. With it, the Notion schema is checked before any portal is contacted.",
+      "description": "Optional. Without dataSourceId, results go to the dataset only. With it, flats are written to a Notion database with the DOMOVOY shortlist schema, and that schema is checked before any portal is contacted.",
       "editor": "schemaBased",
       "properties": {
         "dataSourceId": {
@@ -40,7 +79,7 @@
     "notionToken": {
       "title": "Notion token",
       "type": "string",
-      "description": "Notion integration token. Falls back to the environment variable NOTION_TOKEN (Apify secret notionToken).",
+      "description": "Optional. Token of your Notion integration, needed only with notion.dataSourceId. Falls back to the environment variable NOTION_TOKEN, which the public Actor does not set.",
       "editor": "textfield",
       "isSecret": true
     },
@@ -88,14 +127,14 @@
     "featherlessApiKey": {
       "title": "Featherless API key",
       "type": "string",
-      "description": "Featherless API key for the primary and fallback models. Falls back to the environment variable FEATHERLESS_API_KEY (Apify secret featherlessApiKey).",
+      "description": "Optional, your own key. Used for the primary model (llm.model, Qwen on Featherless). Without a Featherless or OpenAI key, fees are not extracted and stay unknown. Falls back to the environment variable FEATHERLESS_API_KEY, which the public Actor does not set.",
       "editor": "textfield",
       "isSecret": true
     },
     "openaiApiKey": {
       "title": "OpenAI API key",
       "type": "string",
-      "description": "OpenAI API key for the fallback model (llm.fallbackModel, gpt-6-luna), tried when Qwen has no valid answer. Falls back to the environment variable OPENAI_API_KEY (Apify secret openaiApiKey).",
+      "description": "Optional, your own key. Used for the fallback model (llm.fallbackModel), tried once when Qwen has no valid answer. Falls back to the environment variable OPENAI_API_KEY, which the public Actor does not set.",
       "editor": "textfield",
       "isSecret": true
     },
@@ -116,7 +155,7 @@
     "proxyConfiguration": {
       "title": "Proxy configuration",
       "type": "object",
-      "description": "Off. Apify Proxy is paid, so turning it on is a team decision.",
+      "description": "Not used yet: the Actor makes direct requests to the portals, with a delay between requests to each portal.",
       "editor": "proxy",
       "default": {
         "useApifyProxy": false

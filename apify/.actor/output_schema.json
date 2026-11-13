@@ -1,0 +1,19 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "DOMOVOY output",
+  "description": "One dataset item per flat (FlatItem in domovoy/models.py) and a run summary in the default key-value store under OUTPUT.",
+  "properties": {
+    "flats": {
+      "type": "string",
+      "title": "Flats",
+      "description": "One item per flat found in this run: rent, total monthly cost, move-in cost, match verdict, evidence, unknowns and the listing on each portal.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    },
+    "summary": {
+      "type": "string",
+      "title": "Run summary",
+      "description": "RunSummary: per-source status and counts, flats by match and change, extraction and Notion counts.",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
+    }
+  }
+}
