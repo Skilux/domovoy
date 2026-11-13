@@ -116,6 +116,24 @@ class EndToEndFake(unittest.TestCase):
         self.assertEqual(self.page()["body"].count("Call result"), 1)
         self.assertEqual(self.page()["status"], "Viewing booked")
 
+    def test_start_returns_at_once_and_resume_finishes(self):
+        notion.set_status(self.cfg, PAGE, "Interested")
+        began = time.time()
+        code, out = self.run_call("start", "--windows", WINDOWS)
+        self.assertLess(time.time() - began, 2)
+        self.assertEqual((code, out["posted"], out["notion_page_id"], out["status"]), (0, True, PAGE, "Calling"))
+        self.assertEqual(self.page()["status"], "Calling")
+        self.assertEqual(fake_phone_server.STATE["pending"]["notion_page_id"], PAGE)
+        code, out = self.run_call("resume", "--page", PAGE)
+        self.assertEqual((code, out["refused"]), (2, True))
+        self.assertEqual(self.page()["status"], "Calling")
+        self.post_result(result("conv-S"))
+        code, out = self.run_call("resume", "--page", PAGE)
+        self.assertEqual((code, out["status"], out["create_event"]), (0, "Viewing booked", True))
+        code, out = self.run_call("resume", "--page", PAGE)
+        self.assertEqual((code, out["already_handled"], out["create_event"]), (0, True, False))
+        self.assertEqual(self.page()["body"].count("domovoy-call: conv-S"), 1)
+
     def test_outside_windows_is_not_booked(self):
         code, out, _ = self.run_with_result(result("conv-B", viewing_start="2026-11-18T10:00:00+01:00"))
         self.assertEqual((out["status"], out["create_event"]), ("Not booked", False))

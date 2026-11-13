@@ -3,6 +3,7 @@
 
   call.py check  --windows W [--page ID] [--listing F]   build and validate only, contacts nobody
   call.py run    --windows W [--page ID] [--listing F]   post the call, poll, recheck, update the shortlist
+  call.py start  --windows W [--page ID] [--listing F]   post the call and return at once; finish with resume
   call.py resume --page ID [--windows W]                 fetch the result again for a call already posted;
                                                          posts nothing. W is needed only when the call was
                                                          not posted from this machine (flat must be Calling)
@@ -419,7 +420,7 @@ def pick_page(cfg, backend, page_id):
     return pages[0]
 
 
-def cmd_start(cfg, backend, args, post):
+def cmd_start(cfg, backend, args, post, wait=True):
     windows = read_json_arg(args.windows)
     page = pick_page(cfg, backend, args.page)
     context = build_context(cfg, page, windows, args.listing)
@@ -439,6 +440,10 @@ def cmd_start(cfg, backend, args, post):
     with open(state_path(page[PAGE_ID]), "w") as f:
         json.dump(saved, f, indent=2)
     backend.set_status(cfg, page[PAGE_ID], cfg["statuses"]["calling"])
+    if not wait:
+        return {"posted": True, PAGE_ID: page[PAGE_ID], "page_url": page.get("url"),
+                "property_id": context["property_id"], "status": cfg["statuses"]["calling"],
+                "warnings": warnings, "next": "call.py resume --page %s" % page[PAGE_ID]}
     print("call posted for page %s, waiting for the result" % page[PAGE_ID], file=sys.stderr)
     out = apply_result(cfg, backend, page, context, poll(cfg, context["property_id"], seen_conversations()))
     out["warnings"] = warnings
@@ -472,7 +477,7 @@ def cmd_resume(cfg, backend, args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["check", "run", "resume"])
+    parser.add_argument("command", choices=["check", "run", "start", "resume"])
     parser.add_argument("--windows", help="free windows: [{start, end}] as a file, '-' or inline JSON")
     parser.add_argument("--page", help="notion_page_id of the flat, when several are Interested")
     parser.add_argument("--listing", help="listing fields as a file, '-' or inline JSON")
@@ -485,7 +490,7 @@ def main(argv=None):
         elif not args.windows:
             raise Refusal("--windows is required: free windows from the calendar as [{start, end}]")
         else:
-            out = cmd_start(cfg, backend, args, post=args.command == "run")
+            out = cmd_start(cfg, backend, args, post=args.command != "check", wait=args.command != "start")
     except Refusal as e:
         print(json.dumps({"refused": True, "reason": str(e)}, indent=2, ensure_ascii=False))
         return 2

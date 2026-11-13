@@ -74,6 +74,7 @@ Optional, and it must never delay or fail the call: if `repo_path` is set in `co
 Other forms:
 
 - `python3 scripts/call.py check --windows '<JSON>' [--page ID]` builds and validates the context and contacts nobody. Use it to preview.
+- `python3 scripts/call.py start --windows '<the JSON>'` posts the call, sets `Calling` and returns at once with `notion_page_id`, for a client that cannot wait 5 minutes in one command. Then run `resume --page ID` every few seconds: it exits with code 2 and `refused` while the call is running, and prints the same result as `run` once it ends. Unlike `run`, nothing sets `Not booked` if no result ever comes.
 - `python3 scripts/call.py resume --page ID` fetches the result again for a call this machine already posted, for example after a crash. It posts nothing and is safe to repeat. For a call posted from another machine, add `--windows '<JSON>'` with the same windows; the flat must still be in Calling.
 - `tests/fixtures/real_call_2026-11-13_booked.json` is a labeled real result from a spoken demo call on a sample context. If the voice call fails on stage, show it as a prior result and say so.
 - `--listing <file or JSON>` gives the listing fields as one JSON object (named as in `call_context`) when the backend cannot supply them.
