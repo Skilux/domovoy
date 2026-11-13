@@ -439,6 +439,49 @@ class Round:
                         self.contacts.add(str(value))
                         checks.register_contact(str(value))
 
+    # round setup: the pages L4 and L5 change are recorded, and reset at the next round start
+
+    def touched_file(self) -> Path:
+        return DATA / "touched-pages.json"
+
+    def touched(self) -> list[str]:
+        known = load_json(self.touched_file())
+        if known is None:  # first use: seed with what earlier rounds changed (L4 edits, call.py's Not booked)
+            known = [e["page_id"] for f in sorted(DATA.glob("*/L4-edited.json")) for e in [load_json(f) or {}]
+                     if e.get("page_id")]
+            known += [p["page_id"] for p in self.snapshot() if p["status"] == "Not booked"]
+            known = sorted(set(known))
+            save_json(self.touched_file(), known)
+        return known
+
+    def touch(self, page_id: str) -> None:
+        known = set(self.touched())
+        known.add(page_id)
+        save_json(self.touched_file(), sorted(known))
+
+    def prepare_pool(self, needed: int) -> None:
+        """Make sure `needed` Shortlisted pages exist for L4 (1) and L5 (2). Only pages this harness changed in an
+        earlier round are reset (Status Shortlisted, Interested? and Reason cleared), only in the e2e database (every
+        write goes through the guarded client), and only as many as are missing."""
+        n = self.launch_check()
+        pages = self.snapshot()
+        spare = [p for p in pages if p["status"] == "Shortlisted" and p["property_id"]
+                 and p["props"].get("Match") in ("Strong", "Needs info")]
+        missing = needed - len(spare)
+        touched = set(self.touched())
+        resettable = sorted((p for p in pages if p["page_id"] in touched and p["status"] != "Shortlisted"
+                             and p["property_id"] and p["props"].get("Match") in ("Strong", "Needs info")),
+                            key=lambda p: p["property_id"])
+        reset = []
+        for page in resettable[:max(missing, 0)]:
+            properties = {"Status": {"select": {"name": "Shortlisted"}}, "Reason": {"rich_text": []}}
+            if "Interested?" in n.properties:
+                properties["Interested?"] = {"select": None}
+            n.write_page(page["page_id"], properties)
+            reset.append(page["property_id"])
+        self.notes.append("setup: %d Shortlisted pages, %d needed, reset %d touched by earlier rounds %s"
+                          % (len(spare), needed, len(reset), reset))
+
     # layers
 
     def l0(self) -> None:
@@ -616,6 +659,7 @@ class Round:
         target = candidates[0]
         edited = {"page_id": target["page_id"], "status": "Not interested", "reason": "e2e round %s edit" % self.args.round,
                   "marker": "e2e-marker r%s %s" % (self.args.round, uuid.uuid4().hex[:8])}
+        self.touch(target["page_id"])
         n.write_page(target["page_id"], {"Status": {"select": {"name": edited["status"]}},
                                          "Reason": {"rich_text": [{"type": "text", "text": {"content": edited["reason"]}}]}})
         n.append(target["page_id"], edited["marker"])
@@ -675,6 +719,7 @@ class Round:
         try:
             for i, page in enumerate(pool[:2]):
                 via_select = i == 1 and has_interested
+                self.touch(page["page_id"])
                 if via_select:
                     n.write_page(page["page_id"], {"Interested?": {"select": {"name": "Yes"}}})
                 else:
@@ -914,6 +959,9 @@ def main(argv: list[str] | None = None) -> int:
         if not cfg_profiles or cfg_profiles[0] != rnd.profile:
             raise Refused("config active profile must equal apify/e2e/profile_e2e.json")
         before_file = rnd.data / "before-pages.json"
+        needed = (1 if "L4" in layers else 0) + (2 if "L5" in layers else 0)
+        if needed:
+            rnd.prepare_pool(needed)
         if "L0" in layers:
             rnd.l0()
         if any(l in layers for l in ("L1", "L2", "L4", "L5")) or ("L3" in layers and not args.offline_items):

@@ -275,3 +275,38 @@ def test_round_starts_when_earlier_rounds_saved_page_id_lists(harness):
     rnd = run_e2e.Round(harness())
     assert NAME in checks.known_contacts()
     rnd.config.close()
+
+
+def test_prepare_pool_resets_only_pages_the_harness_changed(harness):
+    """Round setup: with 1 Shortlisted page and 3 needed, two pages touched by earlier rounds are reset; a page the
+    harness never touched and a rejected-looking page stay as they are; nothing is written when the pool is full."""
+    def page(pid, status, match="Needs info"):
+        return {"page_id": "page-" + pid, "property_id": "p-" + pid, "status": status, "interested": None,
+                "reason": None, "props": {"Match": match}, "body": None}
+
+    pages = [page("AAAAAAAAAA", "Shortlisted"), page("BBBBBBBBBB", "Not booked"), page("CCCCCCCCCC", "Not interested"),
+             page("DDDDDDDDDD", "Not interested"), page("EEEEEEEEEE", "Not booked", match=None)]
+    writes = []
+
+    class Writer(FakeNotion):
+        properties = {"Interested?": {}}
+
+        def write_page(self, page_id, properties):
+            writes.append((page_id, properties))
+            next(p for p in pages if p["page_id"] == page_id)["status"] = properties["Status"]["select"]["name"]
+
+    rnd = run_e2e.Round(harness())
+    rnd.launch_check = lambda: Writer()
+    rnd.snapshot = lambda **kw: pages
+    run_e2e.save_json(rnd.touched_file(), ["page-BBBBBBBBBB", "page-CCCCCCCCCC", "page-EEEEEEEEEE"])
+    rnd.prepare_pool(3)
+    assert [w[0] for w in writes] == ["page-BBBBBBBBBB", "page-CCCCCCCCCC"]
+    assert writes[0][1] == {"Status": {"select": {"name": "Shortlisted"}}, "Reason": {"rich_text": []},
+                            "Interested?": {"select": None}}
+    assert pages[3]["status"] == "Not interested"  # never touched by the harness
+    writes.clear()
+    rnd.prepare_pool(3)
+    assert writes == []
+    rnd.touch("page-ZZZZZZZZZZ")
+    assert "page-ZZZZZZZZZZ" in rnd.touched()
+    rnd.config.close()

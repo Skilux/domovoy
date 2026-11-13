@@ -39,6 +39,13 @@ platform run. Offline tests of the checks and the safety rails: `cd apify && .ve
   round's datasets or pages, then email and phone patterns. Evidence from child JSON output is allowlisted keys only.
 - Heavy jobs (`apify run`, `search.py run`) go through the orchestration `heavy.sh` slots.
 
+## Round setup
+
+When L4 or L5 runs, the round starts by making sure 3 Shortlisted pages exist (1 for L4, 2 for L5). Every page the
+harness changes (L4 edit, L5 Interested) is recorded in `~/.config/domovoy/e2e-data/touched-pages.json`; only those
+pages are reset (Status Shortlisted, Interested? and Reason cleared), only as many as are missing, and only through the
+guarded e2e client. Pages the harness never touched are left alone.
+
 ## Layers and checks
 
 | Layer | Runs | Check ids |
