@@ -15,42 +15,49 @@
       <p class="team">by (Not)Homeless.ai</p>
 
       <h1>Your real-estate agent in your pocket.</h1>
-      <p class="lead">An open-source Agent Skill for Claude Code. It collects real Prague listings, shows the monthly cost and the move-in cost of each flat, and after you approve one flat it holds a live voice call in the browser to book the viewing.</p>
+      <p class="lead">It finds flats in Prague, shows what they really cost, and calls to book the viewing.</p>
 
       <div class="start" id="install">
         <div class="paste">
-          <p class="label">Paste this into Claude Code</p>
-          <p class="prompt" id="prompt">Set up DOMOVOY for me. 1) Run: git clone https://github.com/Skilux/domovoy ~/domovoy (git pull if it exists). 2) Symlink ~/domovoy/skill/domovoy to ~/.claude/skills/domovoy, and copy config.example.json to config.json in that folder if config.json is missing. 3) Run: python3 ~/domovoy/skill/domovoy/scripts/doctor.py check --json. 4) For each FAIL, show me its fix line and wait while I put the key into ~/.config/domovoy/.env myself. Never ask me to paste a key in chat, and never read or print that file. 5) Run the check again until nothing fails, then find me a flat to rent in Prague. To see it first with no accounts, run: python3 ~/domovoy/skill/domovoy/scripts/demo.py call and tell me the run is synthetic.</p>
+          <p class="label">Paste into Claude Code</p>
           <button class="copy" id="copy" type="button">Copy install + prompt</button>
-          <p class="label or">Or run it from a terminal</p>
-          <p class="prompt cli" id="cli">claude "$(curl -fsSL https://domovoy-phone.vercel.app/prompt.txt)"</p>
+          <details class="more" id="more">
+            <summary>Show the prompt</summary>
+            <p class="prompt" id="prompt">Set up DOMOVOY for me. 1) Run: git clone https://github.com/Skilux/domovoy ~/domovoy (git pull if it exists). 2) Symlink ~/domovoy/skill/domovoy to ~/.claude/skills/domovoy, and copy config.example.json to config.json in that folder if config.json is missing. 3) Run: python3 ~/domovoy/skill/domovoy/scripts/doctor.py check --json. 4) For each FAIL, show me its fix line and wait while I put the key into ~/.config/domovoy/.env myself. Never ask me to paste a key in chat, and never read or print that file. 5) Run the check again until nothing fails, then find me a flat to rent in Prague. To see it first with no accounts, run: python3 ~/domovoy/skill/domovoy/scripts/demo.py call and tell me the run is synthetic.</p>
+            <p class="label or">Or run it from a terminal</p>
+            <p class="prompt cli" id="cli">claude "$(curl -fsSL https://domovoy-phone.vercel.app/prompt.txt)"</p>
+          </details>
         </div>
         <div class="scan">
           <img src="/qr.svg" alt="QR code for domovoy-phone.vercel.app/start" width="148" height="148">
-          <p>Scan to open this page<br><strong>domovoy-phone.vercel.app/start</strong></p>
+          <p>Scan to open this page</p>
         </div>
       </div>
 
       <ol class="steps">
-        <li>
-          <h2>Real listings, honest costs</h2>
-          <p>Sreality, Bezrealitky and iDNES go into one Notion shortlist. Each flat shows two numbers: the monthly cost, and the move-in cost, which is everything you pay to move in (first month, deposit, commission, one-time fees, missing furniture). Estimated and unknown parts are named.</p>
-        </li>
-        <li>
-          <h2>You approve one flat</h2>
-          <p>Mark it Interested in Notion. Nobody is contacted before that.</p>
-        </li>
-        <li>
-          <h2>It calls and books</h2>
-          <p>The agent talks to the realtor in a live browser call, with no telephone network. A viewing lands in your calendar only inside your free windows and your budget.</p>
-        </li>
+        <li>Find</li>
+        <li>You approve</li>
+        <li>It calls and books</li>
       </ol>
 
-      <p class="fine">The demo call is a browser voice call with a consenting demo participant. No real phone number is dialled. Built at AI Agents for the Rest of Us, Prague, 13 Nov 2026.</p>
+      <p class="fine">Demo: a browser voice call with a consenting demo realtor. No phone number is dialled.</p>
     </div>
 
-    <div class="live">
-      <iframe src="/phone" title="DOMOVOY phone" allow="microphone; autoplay"></iframe>
+    <div class="stage">
+      <ul class="built" aria-label="Services DOMOVOY uses">
+        <li style="--x:-13%;--y:6%;--d:0s;--c:#D97757"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg><span>Claude Code</span></li>
+        <li style="--x:78%;--y:10%;--d:-2s;--c:#97D700"><b aria-hidden="true">A</b><span>Apify</span></li>
+        <li style="--x:-17%;--y:28%;--d:-4s;--c:#A78BFA"><b aria-hidden="true">F</b><span>Featherless</span></li>
+        <li style="--x:80%;--y:30%;--d:-1s;--c:#FFFFFF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952L12.21 19s0 .84-1.168.84l-3.222.186c-.093-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.139c-.093-.514.28-.887.747-.933zM1.936 1.035l13.31-.98c1.634-.14 2.055-.047 3.082.7l4.249 2.986c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.667c0-.839.374-1.54 1.447-1.632z"/></svg><span>Notion</span></li>
+        <li style="--x:-14%;--y:52%;--d:-3s;--c:#FFFFFF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6035 0v24h4.9317V0zm9.8613 0v24h4.9317V0z"/></svg><span>ElevenLabs</span></li>
+        <li style="--x:79%;--y:50%;--d:-5s;--c:#FFFFFF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 1.608 12 20.784H0Z"/></svg><span>Vercel</span></li>
+        <li style="--x:-16%;--y:76%;--d:-2.5s;--c:#00E9A3"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.8027 0C11.193 0 8.583.9952 6.5918 2.9863c-3.9823 3.9823-3.9823 10.4396 0 14.4219 1.9911 1.9911 5.2198 1.9911 7.211 0 1.991-1.9911 1.991-5.2198 0-7.211L12 12c.9956.9956.9956 2.6098 0 3.6055-.9956.9955-2.6099.9955-3.6055 0-2.9866-2.9868-2.9866-7.8297 0-10.8164 2.9868-2.9868 7.8297-2.9868 10.8164 0l1.8028-1.8028C19.0225.9952 16.4125 0 13.8027 0zM12 12c-.9956-.9956-.9956-2.6098 0-3.6055.9956-.9955 2.6098-.9955 3.6055 0 2.9867 2.9868 2.9867 7.8297 0 10.8164-2.9867 2.9868-7.8297 2.9868-10.8164 0l-1.8028 1.8028c3.9823 3.9822 10.4396 3.9822 14.4219 0 3.9823-3.9824 3.9823-10.4396 0-14.4219-.9956-.9956-2.3006-1.4922-3.6055-1.4922-1.3048 0-2.6099.4966-3.6054 1.4922-1.9912 1.9912-1.9912 5.2198 0 7.211z"/></svg><span>Upstash</span></li>
+        <li style="--x:76%;--y:70%;--d:-0.5s;--c:#F9BD2B"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.854 14.5 5 9.647.854 5.5A.5.5 0 0 0 0 5.854V8.44a.5.5 0 0 0 .146.353L5 13.647l.147.146L9.854 18.5l.146.147v-.049c.065.03.134.049.207.049h2.586a.5.5 0 0 0 .353-.854L9.854 14.5zm0-5-4-4a.487.487 0 0 0-.409-.144.515.515 0 0 0-.356.21.493.493 0 0 0-.089.288V8.44a.5.5 0 0 0 .147.353l9 9a.5.5 0 0 0 .853-.354v-2.585a.5.5 0 0 0-.146-.354l-5-5zm1-4a.5.5 0 0 0-.854.354V8.44a.5.5 0 0 0 .147.353l4 4a.5.5 0 0 0 .853-.354V9.854a.5.5 0 0 0-.146-.354l-4-4zm12.647 11.515a3.863 3.863 0 0 1-2.232-1.1l-4.708-4.707a.5.5 0 0 0-.854.354v6.585a.5.5 0 0 0 .5.5H23.5a.5.5 0 0 0 .5-.5v-.6c0-.276-.225-.497-.499-.532zm-5.394.032a.8.8 0 1 1 0-1.6.8.8 0 0 1 0 1.6zM.854 15.5a.5.5 0 0 0-.854.354v2.293a.5.5 0 0 0 .5.5h2.293c.222 0 .39-.135.462-.309a.493.493 0 0 0-.109-.545L.854 15.501zM5 14.647.854 10.5a.5.5 0 0 0-.854.353v2.586a.5.5 0 0 0 .146.353L4.854 18.5l.146.147h2.793a.5.5 0 0 0 .353-.854L5 14.647z"/></svg><span>PostHog</span></li>
+        <li style="--x:70%;--y:90%;--d:-3.5s;--c:#4285F4"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.316 5.684H24v12.632h-5.684V5.684zM5.684 24h12.632v-5.684H5.684V24zM18.316 5.684V0H1.895A1.894 1.894 0 0 0 0 1.895v16.421h5.684V5.684h12.632zm-7.207 6.25v-.065c.272-.144.5-.349.687-.617s.279-.595.279-.982c0-.379-.099-.72-.3-1.025a2.05 2.05 0 0 0-.832-.714 2.703 2.703 0 0 0-1.197-.257c-.6 0-1.094.156-1.481.467-.386.311-.65.671-.793 1.078l1.085.452c.086-.249.224-.461.413-.633.189-.172.445-.257.767-.257.33 0 .602.088.816.264a.86.86 0 0 1 .322.703c0 .33-.12.589-.36.778-.24.19-.535.284-.886.284h-.567v1.085h.633c.407 0 .748.109 1.02.327.272.218.407.499.407.843 0 .336-.129.614-.387.832s-.565.327-.924.327c-.351 0-.651-.103-.897-.311-.248-.208-.422-.502-.521-.881l-1.096.452c.178.616.505 1.082.977 1.401.472.319.984.478 1.538.477a2.84 2.84 0 0 0 1.293-.291c.382-.193.684-.458.902-.794.218-.336.327-.72.327-1.149 0-.429-.115-.797-.344-1.105a2.067 2.067 0 0 0-.881-.689zm2.093-1.931l.602.913L15 10.045v5.744h1.187V8.446h-.827l-2.158 1.557zM22.105 0h-3.289v5.184H24V1.895A1.894 1.894 0 0 0 22.105 0zm-3.289 23.5l4.684-4.684h-4.684V23.5zM0 22.105C0 23.152.848 24 1.895 24h3.289v-5.184H0v3.289z"/></svg><span>Google Calendar</span></li>
+      </ul>
+      <div class="live">
+        <iframe src="/phone" title="DOMOVOY phone" allow="microphone; autoplay"></iframe>
+      </div>
     </div>
   </div>
 
@@ -77,6 +84,7 @@
         await navigator.clipboard.writeText(text);
         button.textContent = "Copied";
       } catch {
+        document.getElementById("more").open = true;
         const range = document.createRange();
         range.selectNodeContents(document.getElementById("prompt"));
         const selection = getSelection();
