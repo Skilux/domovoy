@@ -49,6 +49,15 @@ def renter():
     return (skill_config().get("call_context") or {}).get("user_name") or "renter"
 
 
+def active_profile_requirements():
+    """Hard filters the search already applies, so the agent does not propose one of them again."""
+    cfg = skill_config()
+    for profile in cfg.get("profiles") or []:
+        if profile.get("id") == cfg.get("active_profile"):
+            return profile.get("requirements") or {}
+    return {}
+
+
 def load_state():
     if os.path.exists(STATE):
         with open(STATE, encoding="utf-8") as f:
@@ -92,17 +101,45 @@ def approved_requirements(flags):
     return merged
 
 
+SUPPORTED = ("elevator", "furnished", "min_floor", "max_total_monthly", "max_upfront", "max_commission", "max_metro_m")
+PROFILE_REQUIREMENTS = ("elevator", "max_total_monthly", "max_upfront")  # names profile.schema.json also knows
+
+
 def fails(flat, requirements):
     """Why a flat fails the approved requirements, or None. Unknown values never fail."""
+    def over(name, field, label):
+        cap = requirements.get(name)
+        if cap is not None and flat.get(field) is not None and flat[field] > cap:
+            return label % cap
+        return None
+
     if requirements.get("elevator") == "required" and flat.get("elevator") == "No":
         return "elevator required"
-    cap = requirements.get("max_total_monthly")
-    if cap is not None and flat.get("total_monthly") is not None and flat["total_monthly"] > cap:
-        return "total monthly over %s CZK" % cap
-    cap = requirements.get("max_upfront")
-    if cap is not None and flat.get("upfront") is not None and flat["upfront"] > cap:
-        return "upfront over %s CZK" % cap
-    return None
+    if requirements.get("furnished") == "required" and flat.get("furnished") == "No":
+        return "furnished required"
+    floor = requirements.get("min_floor")
+    if floor is not None and flat.get("floor") is not None and flat["floor"] < floor:
+        return "floor below %s" % floor
+    return (over("max_total_monthly", "total_monthly", "total monthly over %s CZK")
+            or over("max_upfront", "upfront", "upfront over %s CZK")
+            or over("max_commission", "commission", "commission over %s CZK")
+            or over("max_metro_m", "metro_m", "metro farther than %s m"))
+
+
+def rejected_by_renter(flat):
+    """The renter's own no: Status = Not interested, or "Interested?" = No, each with a typed Reason."""
+    reason = flat.get("reason") or ""
+    said_no = flat["status"] == "Not interested" or flat.get("interested") == "No"
+    return said_no and bool(reason) and not reason.startswith(FILTERED)
+
+
+def wanted_by_renter(flat):
+    return flat["status"] in CONTACTED or (flat["status"] == "Shortlisted" and flat.get("interested") == "Yes")
+
+
+def open_for_review(flat):
+    """Still on the shortlist with no answer from the renter. Only these are ever filtered."""
+    return flat["status"] == "Shortlisted" and flat.get("interested") not in ("Yes", "No")
 
 
 def base_props(args, flags):
@@ -121,12 +158,12 @@ def cmd_sync(args):
     for flat in shortlist.list_flats():
         pid = flat["property_id"]
         props = dict(base_props(args, flags), property_id=pid, portal=flat["portal"], elevator=flat["elevator"],
-                     floor=flat["floor"], total_monthly=flat["total_monthly"], upfront=flat["upfront"])
+                     floor=flat["floor"], total_monthly=flat["total_monthly"], upfront=flat["upfront"],
+                     furnished=flat.get("furnished"), commission=flat.get("commission"), metro_m=flat.get("metro_m"))
         events = [("listing_shortlisted", {})]
-        reason = flat.get("reason") or ""
-        if flat["status"] == "Not interested" and reason and not reason.startswith(FILTERED):
-            events.append(("listing_rejected", {"reason": reason}))
-        if flat["status"] in CONTACTED:
+        if rejected_by_renter(flat):
+            events.append(("listing_rejected", {"reason": flat["reason"]}))
+        if wanted_by_renter(flat):
             events.append(("listing_interested", {}))
         for event, extra in events:
             mark = "%s:%s:%s:%s" % (args.dataset, event, pid, extra.get("reason", ""))
@@ -176,6 +213,9 @@ def cmd_report(args):
         "rejections": rejections,
         "already_decided": decided,
         "approved_requirements": approved_requirements(criteria_flags(args.dataset)),
+        "profile_requirements": active_profile_requirements(),
+        "supported_changes": {"elevator": "required", "furnished": "required", "min_floor": "N", "max_total_monthly": "N CZK",
+                              "max_upfront": "N CZK", "max_commission": "N CZK (0 = no agency fee)", "max_metro_m": "N metres"},
         "scout_instructions": {"source": "PostHog skills store", "name": skill["name"], "version": skill["version"],
                                "body": skill["body"]},
     })
@@ -196,8 +236,10 @@ def cmd_propose(args):
     existing = [f for f in criteria_flags(args.dataset) if f["key"] == flag_key]
     if existing:
         return out({"refused": True, "reason": "%s was already proposed (flag %s is %s); not proposing it twice" % (key, flag_key, "on" if existing[0]["active"] else "off")}, 2)
-    would_remove = [f["property_id"] for f in shortlist.list_flats()
-                    if f["status"] == "Shortlisted" and fails(f, change)]
+    unknown_names = sorted(set(change) - set(SUPPORTED))
+    if unknown_names:
+        return out({"refused": True, "reason": "unsupported change %s; supported: %s" % (unknown_names, ", ".join(SUPPORTED))}, 2)
+    would_remove = [f["property_id"] for f in shortlist.list_flats() if open_for_review(f) and fails(f, change)]
     flag = api("POST", "feature_flags/", {
         "key": flag_key,
         "name": "DOMOVOY approved criteria change: %s. Off = proposed or declined, on = approved." % args.title,
@@ -246,15 +288,18 @@ def cmd_propose(args):
 
 def refilter(args, flags):
     requirements = approved_requirements(flags)
-    moved = []
+    moved, kept = [], []
     for flat in shortlist.list_flats():
         why = fails(flat, requirements) if flat["status"] == "Shortlisted" else None
-        if why:
+        if why and open_for_review(flat):
             shortlist.reject(flat, FILTERED + why)
             moved.append({"property_id": flat["property_id"], "title": flat["title"], "reason": FILTERED + why})
-    remaining = sorted((f for f in shortlist.list_flats() if f["status"] == "Shortlisted"),
+        elif why and flat.get("interested") == "Yes":
+            kept.append({"property_id": flat["property_id"], "title": flat["title"], "would_fail": why,
+                         "kept_because": "the renter marked it Interested? = Yes"})
+    remaining = sorted((f for f in shortlist.list_flats() if f["status"] == "Shortlisted" and f.get("interested") != "No"),
                        key=lambda f: (f["total_monthly"] is None, f["total_monthly"] or 0))
-    return {"approved_requirements": requirements, "moved_to_not_interested": moved,
+    return {"approved_requirements": requirements, "moved_to_not_interested": moved, "kept_despite_failing": kept,
             "shortlisted_now": [{"property_id": f["property_id"], "title": f["title"], "total_monthly": f["total_monthly"]}
                                 for f in remaining]}
 
@@ -303,7 +348,10 @@ def cmd_apply(args):
 
 def cmd_overrides(args):
     flags = criteria_flags(args.dataset)
-    return out({"requirements": approved_requirements(flags), "from_flags": sorted(f["key"] for f in flags if f["active"])})
+    merged = approved_requirements(flags)
+    return out({"requirements": {k: v for k, v in merged.items() if k in PROFILE_REQUIREMENTS},
+                "not_in_profile_schema": {k: v for k, v in merged.items() if k not in PROFILE_REQUIREMENTS},
+                "from_flags": sorted(f["key"] for f in flags if f["active"])})
 
 
 def main():
@@ -326,6 +374,9 @@ def main():
     group.add_argument("--yes", action="store_true")
     group.add_argument("--no", action="store_true")
     args = parser.parse_args()
+    if args.dataset != "live" and not shortlist.explicit_data_source():
+        return out({"refused": True, "reason": "a test dataset needs an explicit shortlist: set NOTION_DATA_SOURCE_ID or "
+                    "DOMOVOY_FAKE_SHORTLIST. Without one this would read and re-filter the real DOMOVOY shortlist."}, 2)
     return {"sync": cmd_sync, "report": cmd_report, "propose": cmd_propose, "decide": cmd_decide,
             "apply": cmd_apply, "overrides": cmd_overrides}[args.cmd](args)
 

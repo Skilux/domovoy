@@ -67,15 +67,20 @@ python3 posthog/loop.py propose --key no_elevator --title "3 of 5 rejected flats
 python3 posthog/loop.py decide --key no_elevator --yes
 ```
 
-- Supported changes: `{"elevator": "required"}`, `{"max_total_monthly": N}`, `{"max_upfront": N}`. An unknown value never fails a flat.
+- A flat counts as rejected by the renter when `Status` = Not interested, or `Interested?` = No, with a typed `Reason`. A missing `Interested?` column is fine. `Interested?` = Yes on a Shortlisted flat counts as interested.
+- Supported changes: `{"elevator": "required"}`, `{"furnished": "required"}`, `{"min_floor": N}`, `{"max_total_monthly": N}`, `{"max_upfront": N}`, `{"max_commission": N}`, `{"max_metro_m": N}`. An unknown value never fails a flat. `overrides` splits them: the three names `profile.schema.json` knows go under `requirements`, the rest under `not_in_profile_schema`.
+- `decide --yes` filters only Shortlisted flats the renter has not answered. It sets `Status` = Not interested and `Reason`, and never writes `Interested?`: that column is the renter's own answer. A flat marked `Interested?` = Yes that would fail is kept and listed in `kept_despite_failing`.
+- A test dataset refuses to run without an explicit shortlist (`NOTION_DATA_SOURCE_ID` or `DOMOVOY_FAKE_SHORTLIST`), so a test can never re-filter the real shortlist.
+- On the real shortlist at 14:10 on 13 Nov 2026 no Shortlisted flat had `Elevator` = No (14 Yes, 8 Unknown), so an "elevator required" change would move nothing there.
 - `loop.py` reads the skill's `config.json` the way `call.py` does: the file named by `DOMOVOY_CONFIG`, else `skill/domovoy/config.json` in this checkout. It takes the renter's name from it.
-- The shortlist is the Notion data source named by `NOTION_DATA_SOURCE_ID`, else a `data_source_id` in that config, else the one titled "DOMOVOY shortlist". It reads `Property ID`, `Status`, `Reason`, `Elevator`, `Floor`, `Total monthly`, `Upfront`, `Sources` and writes only `Status` and `Reason`.
+- The shortlist is the Notion data source named by `NOTION_DATA_SOURCE_ID`, else a `data_source_id` in that config, else the one titled "DOMOVOY shortlist". It reads `Property ID`, `Status`, `Interested?`, `Reason`, `Elevator`, `Furnished`, `Floor`, `Metro m`, `Commission`, `Total monthly`, `Upfront`, `Sources` and writes only `Status` and `Reason`. All of these exist in the real database (checked read-only, 13 Nov 2026 14:10).
 - `--dataset NAME` before the command runs a test: events carry `synthetic: true` and flags are named `domovoy-test-NAME-...`, so a test never changes live criteria. `DOMOVOY_FAKE_SHORTLIST=posthog/tests/fake_shortlist_seed.json` (use a copy) replaces Notion with a file.
 - PostHog needs 30 to 100 s to show new events to queries. `report` waits for every event `sync` sent (at most 150 s) and prints `"complete": false` if they are not all there. `propose` and `decide` do not wait.
 - `scout/rejection-scout.md` is the source of the instructions stored in PostHog. A paused paid scout with the same instructions exists in the project; it is not used.
 
 ### Run and seen on 13 Nov 2026 (synthetic data only)
 
+- `Interested?` column, Notion test database: `sync` counted 5 rejections (3 by `Status`, 2 by `Interested?` = No) and 2 interested; `decide --yes` for "furnished required" moved the one unanswered unfurnished flat and kept the one marked `Interested?` = Yes. `sync` on a shortlist without the column sent the same 15 events as before.
 - Stage timing on the Notion test database, events already ingested: `report` 3.3 s, `propose` 6.9 s, `decide` 3.6 s. `sync` 3.3 s, run beforehand.
 
 - Fake shortlist: `sync` sent 15 events, a second `sync` sent 0. `report` read back 5 rejections. `propose` with 2 flats was refused. `propose` with 3 created the flag and the notebook. `decide --no` recorded the answer, and proposing the same key again was refused.

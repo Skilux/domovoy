@@ -81,7 +81,7 @@ Warnings in the output (`total_monthly` unknown or over the cap) mean the rechec
 
 ## Improve command (P1, optional)
 
-Trigger: the user has rejected flats in Notion with a `Reason` and asks something like "what should we change?" or "improve my search". This command is separate from the call command; the call command never needs it.
+Trigger: the user has rejected flats in Notion (`Status` = Not interested, or `Interested?` = No, each with a typed `Reason`) and asks something like "what should we change?" or "improve my search". This command is separate from the call command; the call command never needs it.
 
 The script is not inside this skill folder. It lives in the repo checkout at `<repo_path>/posthog/loop.py`, where `repo_path` is set in `config.json`. Run every command below from that folder: `cd <repo_path>` first. If `repo_path` is missing or has no `posthog/loop.py`, say so and stop. Start every command below with `DOMOVOY_CONFIG=<path of this skill's config.json>`, so `loop.py` reads the same `config.json` as `call.py` (renter's name, Notion data source) and not a second copy in the checkout.
 
@@ -93,10 +93,10 @@ It needs the PostHog keys and `NOTION_TOKEN` in `~/.config/domovoy/.env` (names 
 4. Follow `scout_instructions.body`: normalize each free-text reason to a short key and group the flats by key.
 5. Only if one key that is not in `already_decided` covers 3 or more flats, propose one change:
    `DOMOVOY_CONFIG=<config> python3 posthog/loop.py propose --key KEY --title '<N> of <M> rejected flats: <reason>' --finding '<one sentence>' --change '<JSON>' --ids id1,id2,id3`
-   `--change` is one of `{"elevator": "required"}`, `{"max_total_monthly": N}`, `{"max_upfront": N}`. `--ids` are the `property_id` values behind the finding.
+   `--change` is one of `{"elevator": "required"}`, `{"furnished": "required"}`, `{"min_floor": N}`, `{"max_total_monthly": N}`, `{"max_upfront": N}`, `{"max_commission": N}` (0 = no agency fee), `{"max_metro_m": N}`. Do not propose a requirement that `profile_requirements` in the report already holds: those flats never reach the shortlist. `--ids` are the `property_id` values behind the finding.
    With fewer than 3 flats on any undecided key, say so and propose nothing.
 6. Show the user the finding, the proposed change and the `notebook` link from the output, and ask yes or no. Keep it to three short lines: on stage this step has 60 seconds in total.
-7. After the answer, and never before it: `DOMOVOY_CONFIG=<config> python3 posthog/loop.py decide --key KEY --yes` or `--no`. On yes, tell the user which flats moved to Not interested (`moved_to_not_interested` in the output). On no, say nothing was changed.
+7. After the answer, and never before it: `DOMOVOY_CONFIG=<config> python3 posthog/loop.py decide --key KEY --yes` or `--no`. On yes, tell the user which flats moved to Not interested (`moved_to_not_interested` in the output). Flats the user already answered in `Interested?` are never moved; one that would fail is listed in `kept_despite_failing`. On no, say nothing was changed.
 
 Rules for this command:
 

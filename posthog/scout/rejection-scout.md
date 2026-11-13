@@ -9,17 +9,18 @@ Only use events of one dataset: `properties.dataset = 'live'` unless the run nam
 | Event | Meaning | Properties |
 | --- | --- | --- |
 | `listing_shortlisted` | A flat passed the hard filters and was shown | `property_id`, `portal`, `total_monthly`, `upfront` |
-| `listing_rejected` | The renter dismissed a shown flat | `property_id`, `portal`, `reason` (free text) |
+| `listing_rejected` | The renter dismissed a shown flat (`Status` = Not interested or `Interested?` = No) | `property_id`, `portal`, `reason` (free text), `elevator`, `furnished`, `floor`, `commission`, `metro_m`, `total_monthly`, `upfront` |
 | `listing_interested` | The renter approved contact for a flat | `property_id`, `portal` |
 | `criteria_change_decided` | The renter answered an earlier proposal | `change` (short key), `approved` (bool) |
 
 ## Steps
 
 1. Query today's `listing_rejected` events with `execute-sql`. Take the latest event per `property_id`.
-2. Normalize each free-text `reason` to a short key. Example: "no lift", "without elevator", "4th floor no elevator" all become `no_elevator`.
+2. Normalize each free-text `reason` to a short key. Example: "no lift", "without elevator", "4th floor no elevator" all become `no_elevator`; "unfurnished", "empty flat" become `unfurnished`; "agency fee", "commission too high" become `commission`.
 3. Count rejected flats per key.
 4. Check memory: query `criteria_change_decided`. If a key was already decided (approved or not), do not propose it again.
-5. Decide:
+5. Map the key to one supported change: `{"elevator": "required"}`, `{"furnished": "required"}`, `{"min_floor": N}`, `{"max_total_monthly": N}`, `{"max_upfront": N}`, `{"max_commission": N}`, `{"max_metro_m": N}`. Pick N from the rejected flats' own values. A key with no supported change, or one the search profile already requires, gets no proposal: say so.
+6. Decide:
    - If one undecided key covers 3 or more rejected flats, file exactly one report.
    - Otherwise file nothing and say why in your run summary. A quiet run is a good run.
 
