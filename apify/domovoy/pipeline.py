@@ -3,7 +3,9 @@
 Run order: open the two dedup stores, load the property-id map and merge. Then every flat runs as its own task,
 as soon as its extraction is done: cost, cross_source from its own commissions, diff against the profile state,
 evaluate, build the FlatItem, push it to the dataset and upsert it to Notion when new or changed (not rejected).
-The tasks share the extractor's slot limit (llm.concurrency) and the Notion sink's throttle. An unexpected error in
+The tasks share the extractor's slot limit (llm.concurrency) and the Notion sink's throttle. Flats named in the
+input priorityPropertyIds (a demo flat) run first, alone, and their Notion upsert completes before any other flat
+starts; a priority id that is absent or rejected changes nothing else. An unexpected error in
 one flat is logged by class, counted in the log and leaves that flat out of the profile state; the others go on. The property-id map
 and the profile state are saved at the end, only when every Notion write of the run succeeded, so a failed write
 is never recorded as seen.
@@ -341,6 +343,14 @@ async def write_notion(sink: Any, item: FlatItem, counts: NotionCounts, log: Log
         counts.updated += 1
 
 
+def priority_property_ids(actor_input: Mapping[str, Any]) -> set[str]:
+    """Input priorityPropertyIds: flats processed and written first. Anything that is not a string is ignored."""
+    value = actor_input.get("priorityPropertyIds") or []
+    if not isinstance(value, list):
+        return set()
+    return {item for item in value if isinstance(item, str) and item}
+
+
 async def run_search(
     profile: SearchProfile,
     actor_input: Mapping[str, Any],
@@ -463,7 +473,13 @@ async def _search(
         if sink is not None and item.match != "rejected":  # new, changed, or unchanged with includeUnchanged
             await write_notion(sink, item, notion, log)
 
-    await asyncio.gather(*(isolated(index, flat) for index, flat in enumerate(flats)))
+    priority_ids = priority_property_ids(actor_input)
+    first = [(index, flat) for index, flat in enumerate(flats) if flat.property_id in priority_ids]
+    rest = [(index, flat) for index, flat in enumerate(flats) if flat.property_id not in priority_ids]
+    if first:  # a demo flat: written to Notion before any other flat's extraction starts
+        log.info("priority: %d flat(s) processed first: %s", len(first), ", ".join(f.property_id for _, f in first))
+        await asyncio.gather(*(isolated(index, flat) for index, flat in first))
+    await asyncio.gather(*(isolated(index, flat) for index, flat in rest))
     if failed:
         log.warning("%d flat(s) failed and stay retryable: the next run treats them as before", len(failed))
     flats = final

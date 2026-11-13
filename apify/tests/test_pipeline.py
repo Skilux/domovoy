@@ -912,3 +912,73 @@ async def test_final_provider_expiry_is_delivered_as_timeout_and_the_next_run_up
     assert updated.extraction.status in ("ok", "partial") and updated.extraction.provider == "featherless"
     assert updated.services == 2000
     assert "fees not extracted yet" not in updated.unknowns
+
+
+def priority_modules(delays: dict[str, float], events: list[str], *, rejected: tuple[str, ...] = ()) -> Modules:
+    """Extraction sleeps per source id; the sink records each upsert. events holds extract starts and upserts in order."""
+
+    async def extract(listing: Listing) -> Extraction:
+        events.append(f"extract {listing.source_id}")
+        await asyncio.sleep(delays.get(listing.source_id, 0))
+        return extraction_with(rent=listing.rent)
+
+    sink_module, _ = fake_notion()
+
+    class Sink(sink_module.NotionSink):
+        async def upsert(self, item: Any) -> UpsertResult:
+            events.append(f"upsert {item.property_id}")
+            return await super().upsert(item)
+
+    return Modules(
+        dedup=fake_dedup(), extraction=SimpleNamespace(extract=extract), costs=fake_costs(rejected_source_ids=rejected),
+        notion=SimpleNamespace(NotionSink=Sink),
+    )
+
+
+PRIORITY_RUN = {"skipExtraction": False, "notion": {"dataSourceId": "ds"}}
+
+
+async def test_a_priority_flat_is_written_to_notion_before_any_other_flat_starts():
+    """The priority flat is last in the list and the slowest to extract; it is still upserted first."""
+    events: list[str] = []
+    modules = priority_modules({"3": 0.05}, events)
+    sources = {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2"), make_listing("3")])}
+    async with asyncio.timeout(2):
+        summary, platform = await run_pipeline(
+            sources, modules, actor_input={**PRIORITY_RUN, "priorityPropertyIds": ["p-sreality-3"]},
+            environ={"NOTION_TOKEN": "t"},
+        )
+    assert events[:2] == ["extract 3", "upsert p-sreality-3"]  # nothing else started before the write
+    assert sorted(events[2:]) == ["extract 1", "extract 2", "upsert p-sreality-1", "upsert p-sreality-2"]
+    assert platform.items[0]["property_id"] == "p-sreality-3"
+    assert summary.change == {"new": 3, "changed": 0, "unchanged": 0}
+    assert summary.notion.created == 3
+    [state] = modules.dedup.calls.saved_states
+    assert set(state.flats) == {"p-sreality-1", "p-sreality-2", "p-sreality-3"}
+
+
+async def test_without_priority_ids_flats_stream_in_completion_order():
+    events: list[str] = []
+    modules = priority_modules({"3": 0.05}, events)
+    sources = {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2"), make_listing("3")])}
+    summary, _ = await run_pipeline(
+        sources, modules, actor_input={**PRIORITY_RUN, "priorityPropertyIds": []}, environ={"NOTION_TOKEN": "t"}
+    )
+    upserts = [event for event in events if event.startswith("upsert")]
+    assert upserts[-1] == "upsert p-sreality-3"  # the slow flat finishes last, as before
+    assert events[:3] == ["extract 1", "extract 2", "extract 3"]  # all start together
+    assert summary.notion.created == 3
+
+
+async def test_a_rejected_or_absent_priority_flat_changes_nothing_else():
+    events: list[str] = []
+    modules = priority_modules({}, events, rejected=("2",))
+    sources = {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2")])}
+    summary, platform = await run_pipeline(
+        sources, modules, actor_input={**PRIORITY_RUN, "priorityPropertyIds": ["p-sreality-2", "p-missing"]},
+        environ={"NOTION_TOKEN": "t"},
+    )
+    assert events == ["extract 2", "extract 1", "upsert p-sreality-1"]
+    assert sorted(item["property_id"] for item in platform.items) == ["p-sreality-1", "p-sreality-2"]
+    assert summary.match["rejected"] == 1 and summary.match["strong"] == 1
+    assert summary.notion.created == 1 and summary.notion.errors == 0
