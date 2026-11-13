@@ -13,7 +13,12 @@ APIFY_ACTOR_ID, then vladb~domovoy), apify.timeout_seconds (900), apify.poll_sec
 from the environment or the env file. APIFY_API_BASE replaces https://api.apify.com (the tests use it).
 The Notion token is never sent: the Actor reads its own secret on the platform.
 
-The run input is {"mode": "search", "profile": ..., "notion": {"dataSourceId": ...}}. The summary is the run's
+The run input is {"mode": "search", "profile": ..., "notion": {"dataSourceId": ...}}, plus includeUnchanged with
+--include-unchanged. apify.extra_input (an optional object) adds further Actor input keys, for example
+{"priorityPropertyIds": ["p-HCWRU3OW3J"], "includeUnchanged": true} to write the demo flat first and re-write every
+flat on each run. It may set or replace any key except mode and profile, which search.py always sets; secret keys
+(notionToken, featherlessApiKey, openaiApiKey) are never sent from it. --include-unchanged still forces
+includeUnchanged to true. The summary is the run's
 key-value record OUTPUT, the Actor's RunSummary (apify/domovoy/models.py). summarize copies its fields by name;
 a field that is absent or of the wrong shape prints as null.
 """
@@ -35,6 +40,8 @@ OUTPUT_KEY = "OUTPUT"
 TERMINAL = ("SUCCEEDED", "FAILED", "TIMED-OUT", "ABORTED")
 REQUEST_TIMEOUT = 30  # seconds per HTTP request; a poll also gets no more than the time left before the deadline
 SOURCE_FIELDS = ("portal", "status", "found", "fetched", "failed", "error")  # SourceStatus, apify/domovoy/models.py
+PROTECTED_INPUT_KEYS = ("mode", "profile")  # always set by search.py, never from apify.extra_input
+SECRET_INPUT_KEYS = ("notionToken", "featherlessApiKey", "openaiApiKey")  # never sent from apify.extra_input
 SECRETS = set()  # the Apify token; scrubbed from everything printed
 TYPES = {
     "string": lambda v: isinstance(v, str),
@@ -178,6 +185,19 @@ def apify_settings(cfg, timeout=None):
         "poll": max(float(apify.get("poll_seconds", 5)), 0.01),
         "env_file": os.environ.get("DOMOVOY_ENV_FILE") or apify.get("env_file") or DEFAULT_ENV_FILE,
     }
+
+
+def extra_input(cfg):
+    """apify.extra_input from config.json: more Actor input keys. Secret keys, mode and profile are dropped."""
+    extra = (cfg.get("apify") or {}).get("extra_input")
+    if extra is None:
+        return {}
+    if not isinstance(extra, dict):
+        raise Refusal("apify.extra_input in config.json must be an object. Nothing was started.")
+    dropped = sorted(k for k in extra if k in SECRET_INPUT_KEYS)
+    if dropped:
+        log("apify.extra_input: ignored secret key(s) %s; the Actor reads its own secrets" % ", ".join(dropped))
+    return {k: v for k, v in extra.items() if k not in SECRET_INPUT_KEYS and k not in PROTECTED_INPUT_KEYS}
 
 
 def error_text(raw, fallback):
@@ -361,7 +381,9 @@ def cmd_run(cfg, args):
     profile = copy.deepcopy(profile)
     if args.max_listings is not None:
         profile["filters"]["max_listings"] = args.max_listings
-    body = {"mode": "search", "profile": profile, "notion": {"dataSourceId": datasource}}
+    body = {"notion": {"dataSourceId": datasource}}
+    body.update(copy.deepcopy(extra_input(cfg)))  # may replace notion; never mode, profile or a secret
+    body.update(mode="search", profile=profile)
     if args.include_unchanged:
         body["includeUnchanged"] = True
     api = Api(token)

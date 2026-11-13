@@ -340,6 +340,40 @@ class SearchTest(unittest.TestCase):
         self.assertIs(body["includeUnchanged"], True)
         self.assertEqual(PROFILE["filters"]["max_listings"], 150)  # the profile itself is not changed
 
+    def test_extra_input_is_merged_but_cannot_override_profile_mode_or_secrets(self):
+        self.use_config(apify={"extra_input": {
+            "priorityPropertyIds": ["p-HCWRU3OW3J"], "mode": "katastr_lookup", "profile": {"id": "other"},
+            "notionToken": "leaked", "openaiApiKey": "leaked2"}})
+        code, out, raw, err = self.cli("run")
+        self.assertEqual(code, 0, raw)
+        body = self.fake.calls("POST", "/runs")[0][3]
+        self.assertEqual(body["priorityPropertyIds"], ["p-HCWRU3OW3J"])
+        self.assertEqual(body["mode"], "search")
+        self.assertEqual(body["profile"], PROFILE)
+        self.assertEqual(body["notion"], {"dataSourceId": DATA_SOURCE})
+        self.assertNotIn("includeUnchanged", body)
+        self.assertNotIn("notionToken", body)
+        self.assertNotIn("openaiApiKey", body)
+        self.assertIn("notionToken", err)
+        self.assertNotIn("leaked", err + raw)
+
+    def test_include_unchanged_from_extra_input_takes_effect_and_the_flag_still_forces_true(self):
+        self.use_config(apify={"extra_input": {"priorityPropertyIds": ["p-HCWRU3OW3J"], "includeUnchanged": True}})
+        code, _, raw, _ = self.cli("run")  # no --include-unchanged: the config value is not blocked
+        self.assertEqual(code, 0, raw)
+        self.assertIs(self.fake.calls("POST", "/runs")[0][3]["includeUnchanged"], True)
+        self.use_config(apify={"extra_input": {"includeUnchanged": False}})
+        code, _, raw, _ = self.cli("run", "--include-unchanged")
+        self.assertEqual(code, 0, raw)
+        self.assertIs(self.fake.calls("POST", "/runs")[1][3]["includeUnchanged"], True)
+
+    def test_extra_input_that_is_not_an_object_is_refused_before_any_request(self):
+        self.use_config(apify={"extra_input": ["priorityPropertyIds"]})
+        code, out, raw, _ = self.cli("run")
+        self.assertEqual(code, 2, raw)
+        self.assertIn("extra_input", out["reason"])
+        self.assertEqual(self.fake.calls("POST", "/runs"), [])
+
     def test_absent_counts_print_as_null_not_zero(self):
         self.fake.output = {"change": {"new": 2}}
         code, out, raw, _ = self.cli("status", "--run", RUN_ID)

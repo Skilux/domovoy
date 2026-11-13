@@ -138,6 +138,13 @@
       "editor": "textfield",
       "isSecret": true
     },
+    "priorityPropertyIds": {
+      "title": "Priority property IDs",
+      "type": "array",
+      "description": "Flats processed and written first, e.g. a demo flat. Each is a property ID (for example p-HCWRU3OW3J); its Notion write completes before any other flat is processed. An ID that is not found or is rejected changes nothing.",
+      "editor": "stringList",
+      "default": []
+    },
     "includeUnchanged": {
       "title": "Include unchanged flats",
       "type": "boolean",
