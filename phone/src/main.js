@@ -33,7 +33,21 @@ function showError(text) {
 
 function setAddress(text) {
   document.querySelectorAll('[data-address]').forEach((el) => {
-    el.textContent = text;
+    el.textContent = '';
+    if (!el.classList.contains('address')) {
+      el.textContent = text;
+      return;
+    }
+    text.split(/(?<=,)\s+/).forEach((part, i) => {
+      const chunk = document.createElement('span');
+      chunk.textContent = part;
+      if (i) el.append(' ');
+      el.append(chunk);
+    });
+    const lines = () => Math.round(el.offsetHeight / parseFloat(getComputedStyle(el).lineHeight));
+    el.classList.remove('long', 'xlong');
+    if (lines() > 2) el.classList.add('long');
+    if (lines() > 3) el.classList.add('xlong');
   });
 }
 
@@ -309,6 +323,12 @@ async function ready() {
     return;
   }
   startWaiting();
+}
+
+if (window.ResizeObserver) {
+  new ResizeObserver(() => {
+    transcript.scrollTop = transcript.scrollHeight;
+  }).observe(transcript);
 }
 
 $('ready').addEventListener('click', ready);
