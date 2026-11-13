@@ -9,20 +9,29 @@ W and F are a JSON file path, "-" for stdin, or inline JSON. Output is one JSON 
 Exit codes: 0 handled, 2 refused (nothing was contacted), 1 error.
 
 SHORTLIST INTERFACE. call.py reaches the shortlist only through the module named in config.json
-"backend.module" (scripts/notion.py; tests/fake_notion_backend.py is a local fake). cfg is the parsed
-config.json. The module must offer exactly these three functions:
+"backend.module" (scripts/notion.py; the modules in tests/ are local fakes). cfg is the parsed config.json.
+load_backend() accepts either of two shapes, so the module needs one of them, not both.
 
+Shape A:
   list_pages(cfg, status) -> list of {"notion_page_id": str, "title": str, "url": str, "listing": dict}
-      Pages whose Status equals status. "listing" holds the flat's fields under the call_context names
-      (property_id, address, url, collected_at, rent, total_monthly, upfront, kauce, commission,
-      move_in_date, lease_type, missing_furniture_cost, unknowns). Unknown values are None. Extra keys
-      are passed through to the call_context. No realtor contacts in "listing".
-  set_status(cfg, notion_page_id, status) -> None
-      Sets the Status select to the given option name.
-  append(cfg, notion_page_id, text) -> None
-      Appends plain text (lines separated by "\n") to the end of the page body.
+  set_status(cfg, notion_page_id, status)
+  append(cfg, notion_page_id, text)
 
-Errors are raised as RuntimeError with a message for the user.
+Shape B:
+  list_flats(cfg, status=None) -> list of {"id": str, "title": str, "url": str, "status": str}
+  get_flat(cfg, flat_id)       -> {"id", "title", "url", "listing": dict, "text": str}
+  set_status(cfg, flat_id, status)
+  append(cfg, flat_id, text)
+
+Optional in both: set_viewing_date(cfg, id, start) is called after a booked result that passes the
+recheck, with start as ISO 8601 with offset.
+
+The id is an opaque Notion page id string. "listing" holds the flat's fields under the call_context
+names (property_id, address, url, collected_at, rent, total_monthly, upfront, kauce, commission,
+move_in_date, lease_type, missing_furniture_cost, unknowns). Unknown values are None. Extra keys are
+passed through to the call_context. No realtor contacts in "listing". get_flat is called only when a
+listed flat has no "listing". append gets plain text, lines separated by "\n", for the end of the page
+body. Errors are raised as RuntimeError with a message for the user.
 """
 import argparse
 import datetime
@@ -69,7 +78,31 @@ def load_backend(cfg):
     spec = importlib.util.spec_from_file_location("domovoy_backend", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return Shortlist(module)
+
+
+class Shortlist:
+    def __init__(self, module):
+        self.module = module
+        self.set_status = module.set_status
+        self.append = module.append
+
+    def list_pages(self, cfg, status):
+        m = self.module
+        rows = m.list_pages(cfg, status) if hasattr(m, "list_pages") else m.list_flats(cfg, status)
+        pages = []
+        for row in rows:
+            if row.get("status", status) != status:
+                continue
+            page_id = row.get(PAGE_ID) or row.get("id")
+            if not isinstance(row.get("listing"), dict) and hasattr(m, "get_flat"):
+                row = dict(row, **m.get_flat(cfg, page_id))
+            pages.append(dict(row, **{PAGE_ID: str(page_id)}))
+        return pages
+
+    def set_viewing_date(self, cfg, page_id, start):
+        if hasattr(self.module, "set_viewing_date"):
+            self.module.set_viewing_date(cfg, page_id, start)
 
 
 def budget_cap(cfg):
@@ -343,6 +376,7 @@ def apply_result(cfg, backend, page, context, result):
             "end": (start + datetime.timedelta(minutes=cal.get("window_minutes", 60))).isoformat(),
             "description": "%s\n%s" % (page.get("url") or "", clean(result["summary"])),
         })
+        backend.set_viewing_date(cfg, page[PAGE_ID], start.isoformat())
     return out
 
 
