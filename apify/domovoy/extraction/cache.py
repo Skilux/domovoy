@@ -11,6 +11,7 @@ from apify import Actor
 from apify.storages import KeyValueStore
 
 from domovoy.extraction.prompt import PROMPT_VERSION
+from domovoy.store_names import store_name
 
 CACHE_STORE_NAME = "domovoy-extraction-cache"
 
@@ -54,4 +55,4 @@ class ApifyCache:
 
 async def open_apify_cache() -> ApifyCache:
     """Open the named store. Call inside an Actor run (`async with Actor:`)."""
-    return ApifyCache(await Actor.open_key_value_store(name=CACHE_STORE_NAME))
+    return ApifyCache(await Actor.open_key_value_store(name=store_name(CACHE_STORE_NAME)))

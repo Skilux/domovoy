@@ -52,6 +52,7 @@ from domovoy.models import (
     SourceStatus,
 )
 from domovoy.sources.base import Source, SourceContext, SourceError
+from domovoy.store_names import store_name
 
 DEFAULT_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"  # decided in #35
 DEFAULT_FALLBACK_MODEL = "gpt-6-luna"  # OpenAI, reasoning effort medium; the only fallback (perf2 amendment)
@@ -387,8 +388,8 @@ async def _search(
     ids: dict[str, str] | None = None
     state: Any = None
     if dedup_on:
-        property_store = await platform.open_key_value_store(name=dd.PROPERTY_IDS_STORE)
-        state_store = await platform.open_key_value_store(name=dd.PROFILE_STATE_STORE)
+        property_store = await platform.open_key_value_store(name=store_name(dd.PROPERTY_IDS_STORE))
+        state_store = await platform.open_key_value_store(name=store_name(dd.PROFILE_STATE_STORE))
         ids = await dd.load_property_ids(property_store)
         flats = dd.merge(listings, ids)  # updates ids in place
         state = await dd.load_profile_state(state_store, profile.id)

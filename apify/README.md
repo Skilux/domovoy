@@ -46,6 +46,10 @@ An answer whose confidence is below 0.5 becomes unknown. `llm.concurrency` is th
 
 `notionToken`, `featherlessApiKey` and `openaiApiKey` are secret inputs. Each falls back to the environment variable `NOTION_TOKEN`, `FEATHERLESS_API_KEY` or `OPENAI_API_KEY`. On the platform those come from the Apify secrets of the same names, via `environmentVariables` in `.actor/actor.json`. Locally, the extraction stage also falls back to `/Users/vladimir/.config/domovoy/.env` by design. Nothing is logged; the run log only says whether each key is set.
 
+## Public Store Actor
+
+The same code is also pushed as a public Actor, `vladb/prague-flat-rentals`, with `./push_public.sh`. The script pushes a temporary copy whose only environment variable is `DOMOVOY_STORE_SUFFIX=-public`, so the public Actor carries none of our keys (users pass their own `featherlessApiKey`, `openaiApiKey` and `notionToken`) and has its own named stores (`domovoy-*-public`); a limited-permission Actor may not open the stores the demo Actor created in the same account. Never push the public Actor with plain `apify push`, and never add environment variables to it in the Console. Its Store page is `.actor/README.md`; this file stays the developer notes. The Store tests every public Actor daily with the input schema's `prefill`, and expects a succeeded run with a non-empty dataset within 5 minutes.
+
 ## Run the tests (offline)
 
     cd apify

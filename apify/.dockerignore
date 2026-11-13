@@ -3,3 +3,5 @@ storage
 tests
 __pycache__
 .pytest_cache
+e2e
+research
