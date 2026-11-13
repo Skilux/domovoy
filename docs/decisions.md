@@ -71,3 +71,4 @@ Made by Vladimir while specifying the Actor lane ([prd/actor.md](prd/actor.md)).
 | Realtor contacts | Stored only in the private Notion database and the Apify dataset; never in the repo or the cached fallback; hidden in the demo view | Kept out of public GitHub issues |
 | Katastr owner check | Phase 2 (`katastr_lookup` mode, WSDP); storing owner names needs compliance sign-off | — |
 | PostHog from the Actor | Phase 2; the PostHog lane stays P1 | — |
+| GitHub Projects board | Team task tracking during the hackathon only; never a DOMOVOY or demo surface | Shortlist UI for DOMOVOY |

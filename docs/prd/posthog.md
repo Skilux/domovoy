@@ -17,7 +17,7 @@ Optional self-improvement loop. DOMOVOY sends what happens to PostHog; Claude re
 
 ```mermaid
 flowchart LR
-  A[Vladimir rejects cards and types Reason] --> B[Skill reads Notion]
+  A[Vladimir rejects flats and types Reason] --> B[Skill reads Notion]
   B --> C[capture listing_rejected]
   P[Pipeline and call flow] --> C2[capture other events]
   C --> PH[(PostHog)]
@@ -52,13 +52,13 @@ flowchart LR
 
 Required for the demo: `listing_rejected` and `criteria_change_decided`. The rest are sent if the code path exists.
 
-Notion changes carry no event of their own, so the skill reads Notion and sends `listing_rejected` for each rejected card it has not sent before.
+Notion changes carry no event of their own, so the skill reads Notion and sends `listing_rejected` for each rejected flat it has not sent before.
 
 ### Report and change
 
 - Reasons are free text. Claude normalizes them to a short key, e.g. "no lift", "without elevator" → `no_elevator`, before grouping.
 - A proposal needs one reason on 3 or more rejections. With fewer, the report says so and proposes nothing.
-- A change adds one requirement to the active search profile. Flats that now fail are moved to Not interested with `Reason = filtered: <change>`; the remaining cards keep their order by `total_monthly`.
+- A change adds one requirement to the active search profile. Flats that now fail are moved to Not interested with `Reason = filtered: <change>`; the remaining flats keep their order by `total_monthly`.
 - The chosen reason must not already be a hard filter, or those flats would never have reached Notion.
 
 ### Honesty

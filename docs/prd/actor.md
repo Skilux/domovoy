@@ -13,7 +13,7 @@ The Actor turns a search profile written by Claude into a shortlist in the Notio
 - real costs computed in Python
 - requirements checked
 
-This version replaces the earlier board-based draft; see [decisions.md](../decisions.md#actor-prd-decisions-13-nov-2026).
+This version replaces the earlier draft that used the GitHub board as the shortlist; see [decisions.md](../decisions.md#actor-prd-decisions-13-nov-2026).
 
 ## Definition of done
 
@@ -282,7 +282,7 @@ Every step leaves a working Actor. Times are targets for 13 Nov.
 ## Decisions
 
 - The Actor does everything from scraping to Notion: extraction, cost math, requirement checks and writing the shortlist. There's no board-sync or pipeline script in the skill.
-- Notion replaces the GitHub board. The `Status` select stays the only workflow state, and the Actor sets it only on creation.
+- Notion is the DOMOVOY shortlist. The GitHub Projects board is only for team task tracking during the hackathon, never for DOMOVOY or the demo. The `Status` select stays the only workflow state, and the Actor sets it only on creation.
 - One Actor with a `mode` input. Claude polls runs; there's no webhook.
 - Claude writes search profiles (filters + requirements). The Actor applies filters before extraction and checks requirements after. Hard fails never reach Notion.
 - Multi-portal is a must. Bezrealitky comes before iDNES.

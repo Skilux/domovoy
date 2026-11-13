@@ -29,7 +29,7 @@ flowchart LR
     B --> C[Normalize, dedupe, filter, cost math]
   end
   C --> F[(Notion: DOMOVOY shortlist, one page per flat)]
-  V((Vladimir)) -- moves card to Interested --> F
+  V((Vladimir)) -- moves flat to Interested --> F
   V -- "call about it" --> S[Claude Code + DOMOVOY skill]
   F --> S
   G[(Vladimir's Google Calendar)] -- free windows --> S
@@ -54,7 +54,7 @@ sequenceDiagram
   participant P as Phone page
   participant E as ElevenLabs agent
   actor D as Danila (demo realtor)
-  V->>N: Move card to Interested
+  V->>N: Move flat to Interested
   V->>C: "Call about my Interested flat"
   C->>N: Read Interested page
   C->>Cal: Read free windows
@@ -92,9 +92,9 @@ Change a contract only in `plan.md`, and tell the other lane.
 The product is done when all of this is true on Vladimir's laptop, live:
 
 - [ ] The Notion shortlist shows at least 3 real flats from Sreality, Bezrealitky and iDNES, each with source link, collection time, monthly total, upfront cash and unknowns.
-- [ ] Vladimir moves one card to Interested and tells Claude Code to call; nothing contacts anyone before that.
+- [ ] Vladimir moves one flat to Interested and tells Claude Code to call; nothing contacts anyone before that.
 - [ ] The phone page rings, Danila answers, and the agent holds an unscripted English conversation about that flat.
-- [ ] After the call, a test event at the agreed time is in Vladimir's calendar, the card is in Viewing booked, and the Notion page has the call summary.
+- [ ] After the call, a test event at the agreed time is in Vladimir's calendar, the flat is in Viewing booked, and the Notion page has the call summary.
 - [ ] The full flow fits in 1:30 and has been rehearsed twice in the venue.
 - [ ] The repo README has run instructions and what was built today; the repo is public; the Vercel URL works.
 
@@ -105,11 +105,11 @@ P1, only after the above: the PostHog report and rerank in [posthog.md](posthog.
 | Time | Must be true | Cut first if not |
 | --- | --- | --- |
 | 14:00 | Actor: real flats from at least Sreality in Notion. Voice: page rings and agent talks with a hand-written context. | In-call visuals |
-| 16:00 | One full run end to end: card → call → Calendar event → Viewing booked. Bezrealitky in Notion. | PostHog, Gmail |
+| 16:00 | One full run end to end: Interested → call → Calendar event → Viewing booked. Bezrealitky in Notion. | PostHog, Gmail |
 | 17:00 | Code freeze; all three portals in. Dry run in the hall. 60–90 s cut rehearsed. | Any new code |
 | 17:30 | Repo checked for secrets, realtor contacts and personal config; repo public, links on the form. | — |
 | 18:00 | Demo. | — |
 
 ## Out of scope
 
-GitHub Issues / Projects board (replaced by Notion), Czech, negotiation of alternative times or costs, more than one call, real phone calls, a custom dashboard, always-on monitoring, an agency product, Gmail unless time remains. Actor phase 2: katastr ownership check, PostHog events from the Actor. Full list in [plan.md](../plan.md#scope-and-ownership).
+GitHub Issues or the Projects board as a DOMOVOY surface (the board is only our hackathon task tracker; the shortlist is Notion), Czech, negotiation of alternative times or costs, more than one call, real phone calls, a custom dashboard, always-on monitoring, an agency product, Gmail unless time remains. Actor phase 2: katastr ownership check, PostHog events from the Actor. Full list in [plan.md](../plan.md#scope-and-ownership).

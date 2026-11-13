@@ -73,7 +73,7 @@ Claude reads busy times for the next 7 days, intersects them with the configured
 
 ## Decisions
 
-- The trigger is Vladimir's spoken or typed request after he moves the card. No webhook, no polling of Notion for status.
+- The trigger is Vladimir's spoken or typed request after he moves the flat to Interested. No webhook, no polling of Notion for status.
 - Claude starts the Actor run and polls the Apify run status; no Apify webhook, because the laptop has no public URL.
 - Exactly one call per run.
 - Claude rechecks the agent's `booked` against windows and budget before writing anything.

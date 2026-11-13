@@ -5,7 +5,7 @@ Three-minute hard stop; also rehearse a 60–90 second cut. Times below are elap
 | Time | Action |
 | --- | --- |
 | 0:00–0:15 | Vladimir's actual problem; real requirements and listings |
-| 0:15–1:45 | Notion shortlist → move one card to Interested → "call about it" → live browser call → Calendar event and Notion update to Viewing booked |
+| 0:15–1:45 | Notion shortlist → move one flat to Interested → "call about it" → live browser call → Calendar event and Notion update to Viewing booked |
 | 1:45–2:45 | If ready: PostHog report on rejection reasons → Vladimir says yes → visible rerank |
 | 2:45–3:00 | "Install the skill in your own agent", one sentence on agencies, repository and demo links |
 
@@ -16,7 +16,7 @@ If PostHog is not ready, the core gets its minute. Never rush past the receipt.
 - [ ] Skill loads in Claude Code on Vladimir's laptop and executes the workflow.
 - [ ] Sreality, Bezrealitky and iDNES work through the Apify Actor; each displayed property has source and collection time. Cached fallback is labeled and holds no realtor contacts.
 - [ ] Costs and hard filters retain evidence and unknowns; criteria are Vladimir's, confirmed by him.
-- [ ] Interested authorizes contact; no contact occurs before the card moves.
+- [ ] Interested authorizes contact; no contact occurs before the flat is moved to Interested.
 - [ ] Live English WebRTC conversation works with Danila as the labeled demo realtor. No claim of a telephone call or real viewing secured.
 - [ ] The happy path is rehearsed: one call ends in Viewing booked, with the test event in Vladimir's calendar and the call summary on the Notion page.
 - [ ] Full and short demos rehearsed with venue audio and network; nothing needed from the audience.
