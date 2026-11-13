@@ -26,9 +26,9 @@ shows what each flat really costs, and holds a live voice call to book the viewi
 
 ### [Live page](https://domovoy-phone.vercel.app/start) · [Quick start](#quick-start) · [Docs](docs/README.md) · [Demo plan](docs/demo.md) · [Costs](#costs)
 
-<a href="https://domovoy-phone.vercel.app/start"><img src="docs/img/start.png" alt="The DOMOVOY start page: the pitch, the install prompt with a QR code, and the demo phone" width="820"></a>
+<a href="https://domovoy-phone.vercel.app/stage"><img src="docs/img/demo-stage.gif" alt="A 27 second walk through the DOMOVOY flow on the stage page: find, approve, call, book, learn" width="820"></a>
 
-<sub>The public start page, <a href="https://domovoy-phone.vercel.app/start">domovoy-phone.vercel.app/start</a>. Screenshot taken 13 Nov 2026.</sub>
+<sub>Screen recording of the public <a href="https://domovoy-phone.vercel.app/stage">stage page</a>, 13 Nov 2026. Synthetic flat, sample data, simulated call states. The panels are labelled stand-ins, not a recording of a live call.</sub>
 
 </div>
 
@@ -134,9 +134,10 @@ flowchart TD
 The two halves meet at two JSON contracts, [`call_context`](docs/plan.md#contracts) and [`submit_call_result`](docs/plan.md#contracts). The Notion `Status` property is the only workflow state.
 
 <div align="center">
-<a href="https://domovoy-phone.vercel.app/stage"><img src="docs/img/stage.png" alt="The DOMOVOY stage page: the renter's problem and the three steps of the pitch" width="820"></a>
+<a href="https://domovoy-phone.vercel.app/start"><img src="docs/img/start.png" alt="The DOMOVOY start page: the pitch, the install prompt with a QR code, and the demo phone" width="820"></a>
 
-<sub>The public stage page, <a href="https://domovoy-phone.vercel.app/stage">domovoy-phone.vercel.app/stage</a>. It shows the demo script with sample data and calls no API. Screenshot taken 13 Nov 2026.</sub>
+<sub>The public start page, <a href="https://domovoy-phone.vercel.app/start">domovoy-phone.vercel.app/start</a>. Screenshot taken 13 Nov 2026.</sub>
+
 </div>
 
 ## A real call
