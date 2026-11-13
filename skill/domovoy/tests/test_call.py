@@ -3,6 +3,7 @@ import copy
 import json
 import os
 import sys
+import types
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -103,6 +104,60 @@ class CallTest(unittest.TestCase):
         body = call.comment_body(CFG, context, res, True, None)
         self.assertIn("Asked: commission Answer: About thirty thousand CZK", body)
         self.assertIn("Asked: Are pets allowed? Answer: Depends on the pets", body)
+
+
+def flat(flat_id, status, interested=None):
+    return {"id": flat_id, "title": flat_id, "url": "https://example.com/" + flat_id, "status": status,
+            "interested": interested, "listing": {}}
+
+
+def backend_with(*rows, calls=None):
+    """call.py's Shortlist over in-memory rows. A status of None returns every row, as scripts/notion.py does."""
+    def list_flats(cfg, status=None):
+        if calls is not None:
+            calls.append(status)
+        return [dict(row) for row in rows if status is None or row["status"] == status]
+    module = types.SimpleNamespace(list_flats=list_flats, set_status=lambda cfg, flat_id, status: None,
+                                   append=lambda cfg, flat_id, text: None)
+    return call.Shortlist(module)
+
+
+class CallableTest(unittest.TestCase):
+    """Who may be called: Status = Interested, or "Interested?" = Yes whatever the Status."""
+
+    def test_interested_yes_is_callable_whatever_the_status(self):
+        for status in ("Shortlisted", "Calling", "Viewing booked", "Not booked"):
+            with self.subTest(status=status):
+                page = call.pick_page(CFG, backend_with(flat("a", status, True)), None)
+                self.assertEqual(page[call.PAGE_ID], "a")
+
+    def test_status_interested_is_callable_without_a_yes(self):
+        page = call.pick_page(CFG, backend_with(flat("a", "Interested")), None)
+        self.assertEqual(page[call.PAGE_ID], "a")
+
+    def test_a_shortlisted_flat_without_a_yes_is_refused(self):
+        backend = backend_with(flat("a", "Shortlisted", False), flat("b", "Shortlisted"),
+                               flat("c", "Not booked", False))
+        with self.assertRaisesRegex(call.Refusal, "nobody was contacted"):
+            call.pick_page(CFG, backend, None)
+        with self.assertRaisesRegex(call.Refusal, "nobody was contacted"):
+            call.pick_page(CFG, backend, "a")
+
+    def test_two_callable_flats_need_a_choice(self):
+        backend = backend_with(flat("a", "Not booked", True), flat("b", "Interested"),
+                               flat("c", "Shortlisted", False))
+        with self.assertRaisesRegex(call.Refusal, "--page ID"):
+            call.pick_page(CFG, backend, None)
+        self.assertEqual(call.pick_page(CFG, backend, "a")[call.PAGE_ID], "a")
+        self.assertEqual(call.pick_page(CFG, backend, "b")[call.PAGE_ID], "b")
+        with self.assertRaisesRegex(call.Refusal, "nobody was contacted"):
+            call.pick_page(CFG, backend, "c")
+
+    def test_all_rows_come_in_one_query(self):
+        calls = []
+        backend = backend_with(flat("a", "Calling", True), flat("b", "Shortlisted"), calls=calls)
+        self.assertEqual([p[call.PAGE_ID] for p in call.callable_pages(CFG, backend)], ["a"])
+        self.assertEqual(calls, [None])
 
 
 if __name__ == "__main__":

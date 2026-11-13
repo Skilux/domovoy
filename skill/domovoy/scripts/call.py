@@ -19,7 +19,8 @@ SHORTLIST INTERFACE. call.py reaches the shortlist only through the module named
 load_backend() accepts either of two shapes, so the module needs one of them, not both.
 
 Shape A:
-  list_pages(cfg, status) -> list of {"notion_page_id": str, "title": str, "url": str, "listing": dict}
+  list_pages(cfg, status) -> list of {"notion_page_id": str, "title": str, "url": str, "status": str,
+                                      "listing": dict}
   set_status(cfg, notion_page_id, status)
   append(cfg, notion_page_id, text)
 
@@ -29,9 +30,10 @@ Shape B:
   set_status(cfg, flat_id, status)
   append(cfg, flat_id, text)
 
-Optional in both: a listed row may carry "interested": true, read from the user's "Interested?" column.
-A flat is callable when its Status is Interested, or when its Status is Shortlisted and "interested" is
-true. call.py then sets Calling and the final status, so a finished flat is never called again.
+Both take status None for every row, and every row carries its "status". Optional in both: a listed row may
+carry "interested": true, read from the user's "Interested?" column. A flat is callable when its Status is
+Interested, or when "interested" is true whatever its Status, so a retry after a failed call is allowed.
+call.py sets Calling and then the final status on each call.
 
 Optional in both: set_viewing_date(cfg, id, start) is called after a booked result that passes the
 recheck, with start as ISO 8601 with offset.
@@ -103,7 +105,7 @@ class Shortlist:
         rows = m.list_pages(cfg, status) if hasattr(m, "list_pages") else m.list_flats(cfg, status)
         pages = []
         for row in rows:
-            if row.get("status", status) != status:
+            if status is not None and row.get("status", status) != status:
                 continue
             page_id = row.get(PAGE_ID) or row.get("id")
             if not isinstance(row.get("listing"), dict) and hasattr(m, "get_flat"):
@@ -401,23 +403,22 @@ def state_path(page_id):
 
 
 def callable_pages(cfg, backend):
-    statuses = cfg["statuses"]
-    pages = backend.list_pages(cfg, statuses["interested"])
-    if statuses.get("shortlisted"):
-        pages += [p for p in backend.list_pages(cfg, statuses["shortlisted"]) if p.get("interested") is True]
-    return pages
+    """Flats that may be called: Status = Interested, or "Interested?" = Yes whatever the Status. One query."""
+    interested = cfg["statuses"]["interested"]
+    return [p for p in backend.list_pages(cfg, None) if p.get("status") == interested or p.get("interested") is True]
 
 
 def pick_page(cfg, backend, page_id):
     interested = cfg["statuses"]["interested"]
     pages = callable_pages(cfg, backend)
     if not pages:
-        raise Refusal("no flat is marked Interested; nobody was contacted. Set \"Interested?\" to Yes "
-                      "(or Status to %s) on one flat first." % interested)
+        raise Refusal('no flat is marked Interested; nobody was contacted. Set "Interested?" to Yes on one flat, '
+                      'whatever its Status, or set its Status to %s.' % interested)
     if page_id is not None:
         page = next((p for p in pages if p[PAGE_ID] == page_id), None)
         if page is None:
-            raise Refusal("page %s is not marked Interested; nobody was contacted" % page_id)
+            raise Refusal('page %s is not marked Interested (Interested? Yes, or Status %s); nobody was contacted'
+                          % (page_id, interested))
         return page
     if len(pages) > 1:
         raise Refusal("%d flats are marked Interested; ask which one and pass --page ID: %s" % (
@@ -439,8 +440,8 @@ def cmd_start(cfg, backend, args, post, wait=True):
     os.makedirs(STATE_DIR, exist_ok=True)
     status, body = phone_request(cfg, "POST", "/api/call", context)
     if not 200 <= status < 300:
-        raise RuntimeError("phone server refused the call_context with %s: %s; the flat stays in %s"
-                           % (status, json.dumps(body)[:200], cfg["statuses"]["interested"]))
+        raise RuntimeError("phone server refused the call_context with %s: %s; the flat's Status is not changed"
+                           % (status, json.dumps(body)[:200]))
     os.makedirs(STATE_DIR, exist_ok=True)
     saved = {"context": context, "page": {PAGE_ID: page[PAGE_ID], "url": page.get("url")}}
     with open(state_path(page[PAGE_ID]), "w", encoding="utf-8") as f:

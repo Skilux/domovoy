@@ -64,7 +64,7 @@ This is a live call. It counts against the three-call budget.
 | --- | --- | --- | --- |
 | - [ ] | Both | Open the demo flat in Notion | `Status` = **Viewing booked**, `Viewing date` is the agreed time, and the page body ends with "Call result: Viewing booked", the summary and the answers. No realtor name in the summary |
 | - [ ] | Vladimir | Open Google Calendar | One event "Viewing (demo): ..." at the agreed time, shown in Prague time, with the Notion page link. Claude created it only after `"create_event": true` |
-| - [ ] | Vladimir | Ask Claude to call again about the same flat | A refusal. The flat is not called twice |
+| - [ ] | Vladimir | Ask Claude to call again about the same flat, `Interested?` still Yes | The call goes ahead: Status does not block a retry. To stop calls, clear `Interested?`: then a refusal |
 | - [ ] | Either | Offline, no minutes used: `python3 scripts/demo.py call --outcome not_booked` | `"status": "Not booked"`, `"create_event": false`, reason "the call ended without an agreed viewing" |
 | - [ ] | Either | Offline: `python3 -m unittest tests.test_e2e_fake -k over_budget -k outside_windows -v` | `OK`. A recurring cost over the cap gives Not booked with the reason "monthly total ... is over the budget cap"; a time outside the windows gives Not booked; neither creates an event |
 

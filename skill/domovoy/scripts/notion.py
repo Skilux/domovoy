@@ -17,8 +17,8 @@ SHORTLIST BACKEND, shape B of the call.py docstring (config.json "backend.module
   set_viewing_date(cfg, flat_id, start) ISO 8601 with a UTC offset
   attach_file(cfg, flat_id, path, caption=None, marker=None)
                                         upload a PDF (katastr.py attach) and add it to the page body
-"interested" is the user's "Interested?" column: True (Yes), False (No) or None (empty). call.py calls a
-Shortlisted flat only when it is True. "listing" holds the call_context fields read from the page properties. Realtor contacts are never read.
+"interested" is the user's "Interested?" column: True (Yes), False (No) or None (empty). call.py calls a flat
+when its Status is Interested or this is True, whatever the Status. "listing" holds the call_context fields read from the page properties. Realtor contacts are never read.
 call_context's "upfront" is read from the "Move-in cost" property (the Actor renamed Upfront) until the
 call_context field is renamed.
 

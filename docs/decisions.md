@@ -111,6 +111,14 @@ Team decision by Vladimir at 13:00, for the iDNES source (WP3). The organizers o
 | Contacts in the repo | No realtor names, phones or emails in code, fixtures or docs. The repo goes public at 17:30 | — (already a rule in CLAUDE.md) |
 | Call trigger | A flat is callable when `Status` = Interested, or when the user's `Interested?` column is Yes and `Status` is still Shortlisted. `call.py` then sets Calling and the final status, so a finished flat is not called again. `Status` stays the only workflow state. Danila, 13 Nov 2026, issue #80 | `Status` = Interested only |
 
+## Call retry decision, 13 Nov 2026
+
+Made by Vladimir at 15:25 for the call-retry ticket. Overrides the Call trigger row above.
+
+| Topic | Decision | Replaces |
+| --- | --- | --- |
+| Call after a failed call | `Interested?` = Yes makes a flat callable whatever its `Status`, so a retry after a failed demo call goes ahead. `Status` = Interested still makes it callable. A flat stops being callable only when `Interested?` is not Yes and `Status` is not Interested | Call trigger above: the Shortlisted condition, and "a finished flat is not called again" |
+
 ## Katastr check decisions, 13 Nov 2026
 
 Made by Vladimir for the katastr check (issue #57, PRs #111 and #113).
