@@ -14,7 +14,8 @@ append = fake.append
 
 
 def list_flats(cfg, status=None):
-    return [{"id": p["notion_page_id"], "title": p["title"], "url": p["url"], "status": p["status"]}
+    return [{"id": p["notion_page_id"], "title": p["title"], "url": p["url"], "status": p["status"],
+             "interested": p.get("interested")}
             for p in fake._load()["pages"] if status is None or p["status"] == status]
 
 

@@ -10,6 +10,7 @@
     "actor_id": "vladb~domovoy"
   },
   "statuses": {
+    "shortlisted": "Shortlisted",
     "interested": "Interested",
     "calling": "Calling",
     "booked": "Viewing booked",
