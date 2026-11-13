@@ -103,6 +103,7 @@ The values below are an example only, until Vladimir supplies his brief (open it
     "sources": ["sreality", "bezrealitky", "idnes"],
     "max_listings": 150
   },
+  "household": { "occupants": 1 },
   "requirements": {
     "max_total_monthly": 30000,
     "max_upfront": null,
@@ -116,6 +117,7 @@ The values below are an example only, until Vladimir supplies his brief (open it
 
 - **`filters`** are cheap and applied at scrape time, before any LLM call. A citypart maps to portal region ids through a table in code. Vinohrady spans Praha 2, 3 and 10, so all three are queried and the results filtered by citypart.
 - **`requirements`** need extracted data, so they're checked after extraction.
+- **`household.occupants`** (default 1) multiplies per-person charges such as energy deposits per person.
 - **`budget_cap`** in `call_context` is `requirements.max_total_monthly`.
 - A change in the profile's content re-evaluates flats already seen.
 
@@ -267,7 +269,7 @@ The page cover is the first photo. Realtor contacts can live in the private Noti
 
 ### Build order
 
-Every step leaves a working Actor. Times are targets for 13 Nov.
+Every step leaves a working Actor. Times are targets for 13 Nov. Work packages, agents and contracts are in [actor-implementation.md](actor-implementation.md).
 
 | # | Step | Done when | Target |
 | --- | --- | --- | --- |
