@@ -158,6 +158,8 @@ def owned_values(item: FlatItem) -> dict[str, dict[str, Any]]:
         "Commission": {"number": item.commission},
         "Upfront": {"number": item.upfront},
         "Missing furniture cost": {"number": item.missing_furniture_cost},
+        "Move-in total": {"number": item.move_in_total},
+        "Move-in note": {"rich_text": _text(item.move_in_note)},
         "Estimated": _multi(item.estimated),
         "Lease type": _select(LEASE_NAMES.get(item.lease_type or "", "Unknown")),
         "Move-in date": {"date": {"start": item.move_in_date.isoformat()} if item.move_in_date else None},
@@ -212,7 +214,8 @@ def _cost_table(item: FlatItem) -> dict[str, Any]:
         ("One-time fees", item.one_time_fees, False),
         ("First payment", item.first_payment, False),
         ("Upfront", item.upfront, False),
-        ("Missing furniture cost", item.missing_furniture_cost, False),
+        ("Missing furniture cost", item.missing_furniture_cost, "missing_furniture_cost" in estimated),
+        ("Move-in total", item.move_in_total, "move_in_total" in estimated),
     ]
     table_rows = [("Item", "Amount")] + [(label, _money(value, est)) for label, value, est in rows]
     children = [

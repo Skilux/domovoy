@@ -152,6 +152,8 @@ One item per deduplicated flat. Names follow `call_context` in [plan.md](../plan
 | `estimated` | string[] | Fields that contain an estimate, e.g. `["energy", "total_monthly"]` |
 | `kauce`, `commission`, `one_time_fees`, `first_payment`, `upfront` | int \| null | |
 | `missing_furniture`, `missing_furniture_cost` | string[], int \| null | |
+| `move_in_total` | int \| null | Cash to move in, known parts summed. See [Cost math](#cost-math) |
+| `move_in_note` | string \| null | Plain English: which parts `move_in_total` leaves out (not stated) and which it estimates |
 | `move_in_date` | string \| null | ISO date |
 | `lease_type` | `"najem"` \| `"podnajem"` \| null | |
 | `lease_length_months`, `pets_allowed`, `permanent_residence`, `unit_type_hint` | | |
@@ -209,8 +211,13 @@ commission             = N × rent or the stated amount, × 1.21 when VAT is ext
 first_payment          = total_monthly
 upfront                = first_payment + kauce + commission + stated one_time_fees   # per plan.md: stated costs only
 missing_furniture_cost = sum of missing_furniture priced from a fixed CZK table; shown next to upfront, not inside it
+move_in_total          = rent + services + energy + kauce + commission + stated one_time_fees + missing_furniture_cost
+                         # sums the known parts, estimates included; null only when rent is unknown
+move_in_note           = "Excludes commission (not stated). Includes estimated energy and furniture."
 hidden_monthly         = total_monthly − rent             # "hidden costs: +8,400 CZK/month"
 ```
+
+`upfront` stays stated costs only and is what `call_context` uses. `move_in_total` is separate: it answers "how much cash do I need on move-in day" even when a part is unknown, so it leaves unknown parts out and names them in `move_in_note`. It is in `estimated` when energy or furniture is estimated.
 
 Both tables (energy per m² and furniture prices) live in `apify/` and get a sanity check from the team before the demo. Furniture prices never come from the model.
 
@@ -244,6 +251,7 @@ The Actor stays under Notion's limit of about 3 requests per second. 100 new fla
 | Status | select | Actor on create, then Vladimir / Claude | Shortlisted, Not interested, Interested, Calling, Viewing booked, Not booked. See [plan.md](../plan.md). |
 | Reason | rich_text | Vladimir | Typed when rejecting |
 | Notes | rich_text | Vladimir | |
+| Interested? | select | Vladimir | Yes (green), No (red). Set by hand; the Actor never writes it. |
 | Viewing date | date | Claude | |
 | Profiles | multi_select | Actor | Profile ids that matched |
 | Match | select | Actor | Strong, Needs info |
@@ -251,7 +259,8 @@ The Actor stays under Notion's limit of about 3 requests per second. 100 new fla
 | Area m², Floor, Metro m | number | Actor | |
 | Elevator, Furnished | select | Actor | Yes, Partly, No, Unknown |
 | Address | rich_text | Actor | As listed |
-| Rent, Services, Energy, Total monthly, Kauce, Commission, Upfront, Missing furniture cost | number | Actor | CZK |
+| Rent, Services, Energy, Total monthly, Kauce, Commission, Upfront, Missing furniture cost, Move-in total | number | Actor | CZK |
+| Move-in note | rich_text | Actor | What Move-in total leaves out or estimates |
 | Estimated | multi_select | Actor | Which values are estimates |
 | Lease type | select | Actor | Nájem, Podnájem, Unknown |
 | Move-in date | date | Actor | |

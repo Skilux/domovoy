@@ -68,6 +68,8 @@ def build_flat_item(
         upfront=costs.upfront,
         missing_furniture=costs.missing_furniture,
         missing_furniture_cost=costs.missing_furniture_cost,
+        move_in_total=costs.move_in_total,
+        move_in_note=costs.move_in_note,
         move_in_date=_date_or_none(extraction.move_in_date.value),
         lease_type=extraction.lease_type.value,
         lease_length_months=extraction.lease_length_months.value,

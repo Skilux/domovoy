@@ -233,6 +233,8 @@ class Costs(BaseModel):
     missing_furniture: list[str]
     missing_furniture_cost: Czk | None
     hidden_monthly: Czk | None
+    move_in_total: Czk | None
+    move_in_note: str | None
     estimated: list[str]
 
 
@@ -293,7 +295,7 @@ class ExtractionMeta(BaseModel):
 
 
 class FlatItem(BaseModel):
-    """Dataset item and Notion input: the 46 fields of the actor.md output table, same names."""
+    """Dataset item and Notion input: the 48 fields of the actor.md output table, same names."""
 
     property_id: str
     profile_id: str
@@ -322,6 +324,8 @@ class FlatItem(BaseModel):
     upfront: Czk | None
     missing_furniture: list[str]
     missing_furniture_cost: Czk | None
+    move_in_total: Czk | None
+    move_in_note: str | None
     move_in_date: date | None
     lease_type: LeaseType | None
     lease_length_months: int | None

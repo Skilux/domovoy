@@ -307,6 +307,45 @@ class SetupTest(unittest.TestCase):
         self.assertEqual((out["added_properties"], out["added_options"], out["conflicts"]), ([], {}, []))
         self.assertEqual(self.fake.writes(), [])
 
+    def test_fresh_setup_colors_the_interested_options(self):
+        self.fake.answer("GET", "/blocks/%s/children" % PARENT, no_more([]))
+        self.fake.answer("POST", "/databases", {"id": DB_ID, "url": DB_URL})
+        self.fake.answer("GET", "/databases/%s" % DB_ID, database_object())
+        notion.setup()
+        [create] = [c for c in self.fake.calls if c[:2] == ("POST", "/databases")]
+        schema = create[2]["initial_data_source"]["properties"]
+        self.assertEqual(schema["Interested?"], {"select": {"options": [{"name": "Yes", "color": "green"},
+                                                                        {"name": "No", "color": "red"}]}})
+        self.assertEqual(schema["Move-in total"], {"number": {"format": "koruna"}})
+        self.assertEqual(schema["Move-in note"], {"rich_text": {}})
+
+    def test_live_database_gets_only_the_move_in_columns_then_nothing(self):
+        # The live shortlist: Interested? added by hand with its colors, Move-in columns not there yet.
+        props = live(remove=["Move-in total", "Move-in note"])
+        props["Interested?"]["select"]["options"] = [{"id": "y", "name": "Yes", "color": "green"},
+                                                     {"id": "n", "name": "No", "color": "red"}]
+        self.existing_database(props)
+        out = notion.setup()
+        self.assertEqual(self.fake.writes(), [("PATCH", "/data_sources/%s" % DS_ID, {"properties": {
+            "Move-in total": {"number": {"format": "koruna"}}, "Move-in note": {"rich_text": {}}}})])
+        self.assertEqual(out["added_properties"], ["Move-in note", "Move-in total"])
+        self.assertEqual((out["added_options"], out["conflicts"]), ({}, []))
+        self.fake.calls.clear()
+        self.existing_database(live())
+        out = notion.setup()
+        self.assertFalse(out["changed"])
+        self.assertEqual(self.fake.writes(), [])
+
+    def test_a_missing_colored_option_is_added_with_its_color(self):
+        props = live()
+        props["Interested?"]["select"]["options"] = [{"id": "y", "name": "Yes", "color": "blue"}]
+        self.existing_database(props)
+        out = notion.setup()
+        [(_, _, body)] = self.fake.writes()
+        self.assertEqual(body, {"properties": {"Interested?": {"select": {"options": [
+            {"id": "y"}, {"name": "No", "color": "red"}]}}}})
+        self.assertEqual(out["added_options"], {"Interested?": ["No"]})
+
     def test_a_missing_property_is_added_alone(self):
         self.existing_database(live(remove=["Owner listing"]))
         out = notion.setup()

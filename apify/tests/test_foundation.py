@@ -25,8 +25,8 @@ PACKAGE_SCHEMAS = APIFY / "domovoy" / "schemas"
 SKILL_REFERENCE = REPO / "skill" / "domovoy" / "reference"
 ACTOR_MD = REPO / "docs" / "prd" / "actor.md"
 COPIED_SCHEMAS = ["call_context.schema.json", "submit_call_result.schema.json", "profile.schema.json"]
-FLATITEM_FIELD_COUNT = 46
-MONEY_FIELDS = ["rent", "total_monthly", "upfront", "missing_furniture_cost"]
+FLATITEM_FIELD_COUNT = 48
+MONEY_FIELDS = ["rent", "total_monthly", "upfront", "missing_furniture_cost", "move_in_total"]
 TEXT_KEYS = {
     "portal", "source_id", "url", "description", "price_note", "rent",
     "area_m2", "disposition", "note", "synthetic",

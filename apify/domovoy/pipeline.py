@@ -275,6 +275,8 @@ def fallback_costs(listing: Listing) -> Costs:
         missing_furniture=[],
         missing_furniture_cost=None,
         hidden_monthly=None,
+        move_in_total=None,
+        move_in_note=None,
         estimated=[],
     )
 

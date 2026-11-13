@@ -273,10 +273,16 @@ def set_viewing_date(cfg, flat_id, start):
             {"properties": {"Viewing date": {"date": {"start": start}}}})
 
 
+def new_option(spec, name):
+    """An option to create. Carries the contract's color for it, if the contract names one."""
+    color = spec.get("colors", {}).get(name)
+    return {"name": name, "color": color} if color else {"name": name}
+
+
 def property_schema(spec):
     kind = spec["type"]
     if kind in ("select", "multi_select"):
-        return {kind: {"options": [{"name": name} for name in spec.get("options", [])]}}
+        return {kind: {"options": [new_option(spec, name) for name in spec.get("options", [])]}}
     if kind == "number":
         return {kind: {"format": spec.get("format", "number")}}
     return {kind: {}}
@@ -286,7 +292,8 @@ def plan_changes(live):
     """What setup must change so that Notion matches the contract: (conflicts, payload, added_options).
 
     payload is the body of PATCH data_sources. It holds new properties, and full option lists where options are
-    missing. Existing options are sent by id, because Notion removes every option a PATCH leaves out.
+    missing. Existing options are sent by id, because Notion removes every option a PATCH leaves out, and so keep
+    their color: setup never recolors an option.
     Nothing is removed and no type is changed: a mismatch is a conflict.
     """
     conflicts, payload, added_options = [], {}, {}
@@ -308,7 +315,7 @@ def plan_changes(live):
             missing = [option for option in spec.get("options", []) if option not in known]
             if missing:
                 kept = [{"id": option["id"]} for option in existing]
-                payload[name] = {kind: {"options": kept + [{"name": option} for option in missing]}}
+                payload[name] = {kind: {"options": kept + [new_option(spec, option) for option in missing]}}
                 added_options[name] = missing
     return conflicts, payload, added_options
 

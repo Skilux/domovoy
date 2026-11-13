@@ -374,7 +374,7 @@ CASE_STATED: dict[str, Any] = {
             {
                 "upfront": 72900,
                 "missing_furniture_cost": 6000,
-                "estimated": ["missing_furniture_cost"],
+                "estimated": ["missing_furniture_cost", "move_in_total"],
             },
             id="furniture is separate: upfront does not include it",
         ),
@@ -434,6 +434,7 @@ CASE_STATED: dict[str, Any] = {
                     "hidden_monthly",
                     "first_payment",
                     "upfront",
+                    "move_in_total",
                 ],
             },
             id="estimated energy flows into total, first payment and upfront",
@@ -477,6 +478,7 @@ CASE_STATED: dict[str, Any] = {
                     "total_monthly",
                     "hidden_monthly",
                     "first_payment",
+                    "move_in_total",
                 ],
             },
             id="real listing 688549964: energy estimated, VAT not stated on commission",
@@ -505,6 +507,97 @@ def test_costs_scenarios(case: dict[str, Any], expected: dict[str, Any]) -> None
     costs = _compute(**{"area": 49.0, **case})
     for field, value in expected.items():
         assert getattr(costs, field) == value, field
+
+
+# Costs: move-in total. Known parts are summed, estimates count, and the note names what is left out.
+
+
+@pytest.mark.parametrize(
+    ("case", "total", "note", "estimated"),
+    [
+        pytest.param({**CASE_STATED}, 72900, "All parts stated.", False, id="all known"),
+        pytest.param(
+            {**CASE_STATED, "commission": None},
+            49900,
+            "Excludes commission (not stated).",
+            False,
+            id="commission unknown: left out and named, upfront stays unknown",
+        ),
+        pytest.param(
+            {**CASE_STATED, "missing_furniture": ["wardrobe", "bed"]},
+            86900,
+            "Includes estimated furniture.",
+            True,
+            id="furniture missing: table cost added and estimated",
+        ),
+        pytest.param(
+            {**CASE_STATED, "rent": None, "kauce": Charge(czk=23000)},
+            None,
+            "Unknown: rent is not stated.",
+            False,
+            id="rent unknown: total unknown",
+        ),
+        pytest.param(
+            {**CASE_STATED, "commission": Charge(czk=20000, vat_extra=True)},
+            74100,
+            "All parts stated.",
+            False,
+            id="commission plus VAT counts 24200",
+        ),
+        pytest.param(
+            {**CASE_STATED, "energy": None, "commission": None, "missing_furniture": ["bed"]},
+            59860,
+            "Excludes commission (not stated). Includes estimated energy and furniture.",
+            True,
+            id="estimated energy and furniture, commission unknown",
+        ),
+        pytest.param(
+            {
+                "rent": 23000,
+                "area": None,
+                "commission": Charge(rent_multiple=1, vat_extra=True),
+            },
+            50830,
+            "Excludes services, energy, deposit, one-time fees and missing furniture (not stated).",
+            False,
+            id="only rent and commission known",
+        ),
+        pytest.param(
+            {
+                **CASE_STATED,
+                "one_time_fees": [
+                    OneTimeFee(label="key fee", czk=500),
+                    OneTimeFee(label="cleaning", czk=None),
+                ],
+            },
+            72900,
+            "Excludes amounts of some one-time fees (not stated).",
+            False,
+            id="a fee without an amount: the priced fees still count",
+        ),
+        pytest.param(
+            {**CASE_STATED, "one_time_fees": []},
+            72400,
+            "All parts stated.",
+            False,
+            id="stated no one-time fees",
+        ),
+    ],
+)
+def test_move_in_total(
+    case: dict[str, Any], total: int | None, note: str, estimated: bool
+) -> None:
+    costs = _compute(**{"area": 49.0, **case})
+    assert costs.move_in_total == total
+    assert costs.move_in_note == note
+    assert ("move_in_total" in costs.estimated) is estimated
+
+
+def test_move_in_total_leaves_upfront_as_stated_costs_only() -> None:
+    known = _compute(area=49.0, **{**CASE_STATED, "missing_furniture": ["bed"]})
+    assert (known.upfront, known.move_in_total) == (72900, 80900)
+    partial = _compute(area=49.0, **{**CASE_STATED, "commission": None})
+    assert (partial.upfront, partial.move_in_total) == (None, 49900)
 
 
 # Evaluate: requirement verdicts (pass, fail, unknown), estimated flags
