@@ -5,7 +5,7 @@ Vercel app at https://domovoy-phone.vercel.app. Spec: [docs/prd/voice.md](../doc
 - `api/`: the 5 routes from the spec. `lib/store.js` is the only file that knows the store (Upstash Redis REST, 1 hour expiry).
 - `lib/context.js`: the only place with `call_context` field names. Required: `property_id`, `address`. Every other field passes through to the agent as a dynamic variable and as a line in `context_text`.
 - `src/main.js` + `public/`: the page. `npm run build` bundles it into `public/app.js`.
-- `agent/`: ElevenLabs agent prompt and config. Recreate or update with `set -a; . ~/.config/domovoy/.env; set +a; node phone/agent/sync-agent.mjs`.
+- `agent/`: ElevenLabs agent prompt and config. Recreate or update with `set -a; . ~/.config/domovoy/.env; set +a; node phone/agent/sync-agent.mjs`. After every sync, also run `python3 posthog/calls.py prompt` from the repo root: it records the deployed prompt as a version of `domovoy-voice-agent` in PostHog, so call traces carry the prompt version. If that command fails, the prompt deploy still counts.
 
 Env in Vercel: `DOMOVOY_SECRET`, `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
 
