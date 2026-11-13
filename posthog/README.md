@@ -82,6 +82,23 @@ python3 posthog/loop.py decide --key no_elevator --yes
 - Notion test database with 9 synthetic flats: `decide --yes` took 4 s, moved the one Shortlisted flat without an elevator to Not interested with `Reason = filtered: elevator required`, and published version 4 of the instructions.
 - Not run: the real "DOMOVOY shortlist" database (it did not exist yet), and nobody has looked at the notebook or the chart in a browser.
 
+## Calls as traces: calls.py
+
+Reads finished calls from the ElevenLabs API and sends them to PostHog. No code in `phone/` or the skill changes.
+
+```
+python3 posthog/calls.py prompt    # after every voice prompt deploy: store it as a version of `domovoy-voice-agent`
+python3 posthog/calls.py sync      # every finished call not sent before
+python3 posthog/calls.py report    # per prompt version: calls, booked, unknowns asked and answered
+```
+
+- Each call becomes one `$ai_trace`, one `$ai_generation` per agent turn (model, tokens, cost, latency from ElevenLabs) and one `call_finished` event. They appear under AI observability in PostHog.
+- The score is deterministic: how many of the call's `unknowns` have an answer in `submit_call_result`. `call_finished` carries `unknowns_total`, `unknowns_answered`, `all_unknowns_answered`, `outcome`, `prompt_version`.
+- `prompt_version` is set when the call's ElevenLabs agent version was recorded by `calls.py prompt`. Earlier calls show as `untracked`.
+- Calls shorter than 20 s are skipped as test dials (`--min-seconds`).
+- Needs `ELEVENLABS_API_KEY` and `ELEVENLABS_AGENT_ID` in the env file. It only reads from ElevenLabs.
+- Not built: proposing a prompt change from these scores. Today the report only shows the numbers.
+
 ## ph.py
 
 Standard library only, runs on Python 3.9. The PostHog Python SDK needs 3.10, so it is not used.
