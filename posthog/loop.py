@@ -6,8 +6,9 @@
                                     earlier decisions and the scout instructions from PostHog
   loop.py propose --key K --title T --change JSON --ids a,b,c
                                     file the report: an inactive feature flag that holds the change, and a notebook
-  loop.py decide --key K --yes|--no record the human answer; on yes switch the flag on and re-filter the shortlist
-  loop.py apply                     re-filter the shortlist by every approved change (safe to repeat)
+  loop.py decide --key K --yes|--no [--real]
+                                    record the human answer; on yes switch the flag on and re-filter the shortlist
+  loop.py apply [--real]            re-filter the shortlist by every approved change (safe to repeat)
   loop.py overrides                 print the approved requirement changes, for search.py to merge into the profile
 
 Claude does the judgement between report and propose: it normalizes the free-text reasons to a short key,
@@ -17,6 +18,8 @@ The renter's name and the Notion data source come from the skill's config.json: 
 else skill/domovoy/config.json in this checkout. That is the same rule call.py uses.
 
 --dataset (default "live", or the DOMOVOY_DATASET variable) tags every event. Use --dataset synthetic for tests; those events also carry synthetic=true.
+Writes to Notion happen only in decide --yes and apply. Both first print the target database's title and id on
+stderr, and refuse a database whose title has no "test" or "synthetic" in it unless --real is given.
 Output is one JSON object on stdout. Exit codes: 0 ok, 2 refused, 1 error.
 """
 import argparse
@@ -121,7 +124,7 @@ def fails(flat, requirements):
     if floor is not None and flat.get("floor") is not None and flat["floor"] < floor:
         return "floor below %s" % floor
     return (over("max_total_monthly", "total_monthly", "total monthly over %s CZK")
-            or over("max_upfront", "upfront", "upfront over %s CZK")
+            or over("max_upfront", "upfront", "move-in cost over %s CZK")
             or over("max_commission", "commission", "commission over %s CZK")
             or over("max_metro_m", "metro_m", "metro farther than %s m"))
 
@@ -173,7 +176,7 @@ def cmd_sync(args):
             state[mark] = datetime.datetime.now().astimezone().isoformat()
             sent.append({"event": event, "property_id": pid})
     save_state(state)
-    return out({"sent": sent, "note": "report waits until PostHog shows these events, usually 30 to 100 s"})
+    return out({"shortlist": shortlist.target()["title"], "missing_properties": list(shortlist.MISSING), "sent": sent, "note": "report waits until PostHog shows these events, usually 30 to 100 s"})
 
 
 def wait_for_events(args):
@@ -286,6 +289,18 @@ def cmd_propose(args):
                 "flag_url": "%s/project/%s/feature_flags/%s" % (load_env()["POSTHOG_APP_HOST"], load_env()["POSTHOG_PROJECT_ID"], flag["id"])})
 
 
+def write_target(args):
+    """Name the Notion database about to be written, on stderr first, and refuse a real one without --real."""
+    where = shortlist.target()
+    sys.stderr.write('Notion write target: "%s" (%s)%s\n' % (where["title"], where["id"], "" if where["is_test"] else " REAL"))
+    sys.stderr.flush()
+    if not where["is_test"] and not getattr(args, "real", False):
+        return where, {"refused": True, "notion_target": where,
+                       "reason": 'this would write to "%s", which is not a test database. Pass --real to write to the real shortlist.' % where["title"]}
+    shortlist.ALLOW_REAL = bool(getattr(args, "real", False))
+    return where, None
+
+
 def refilter(args, flags):
     requirements = approved_requirements(flags)
     moved, kept = [], []
@@ -299,7 +314,8 @@ def refilter(args, flags):
                          "kept_because": "the renter marked it Interested? = Yes"})
     remaining = sorted((f for f in shortlist.list_flats() if f["status"] == "Shortlisted" and f.get("interested") != "No"),
                        key=lambda f: (f["total_monthly"] is None, f["total_monthly"] or 0))
-    return {"approved_requirements": requirements, "moved_to_not_interested": moved, "kept_despite_failing": kept,
+    return {"notion_target": shortlist.target(), "missing_properties": list(shortlist.MISSING),
+            "approved_requirements": requirements, "moved_to_not_interested": moved, "kept_despite_failing": kept,
             "shortlisted_now": [{"property_id": f["property_id"], "title": f["title"], "total_monthly": f["total_monthly"]}
                                 for f in remaining]}
 
@@ -323,6 +339,10 @@ def cmd_decide(args):
     if not flag:
         return out({"refused": True, "reason": "no proposal %s; run propose first" % flag_key}, 2)
     approved = bool(args.yes)
+    if approved:
+        _, refusal = write_target(args)
+        if refusal:
+            return out(refusal, 2)
     if approved and not flag["active"]:
         api("PATCH", "feature_flags/%s/" % flag["id"], {"active": True})
     if not approved and flag["active"]:
@@ -343,6 +363,9 @@ def cmd_decide(args):
 
 
 def cmd_apply(args):
+    _, refusal = write_target(args)
+    if refusal:
+        return out(refusal, 2)
     return out(refilter(args, criteria_flags(args.dataset)))
 
 
@@ -354,12 +377,17 @@ def cmd_overrides(args):
                 "from_flags": sorted(f["key"] for f in flags if f["active"])})
 
 
+REAL_HELP = "allow writing to a Notion database whose title has no \"test\" or \"synthetic\" in it"
+
+
 def main():
     parser = argparse.ArgumentParser(description="DOMOVOY PostHog loop")
     parser.add_argument("--dataset", default=os.environ.get("DOMOVOY_DATASET") or "live")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name in ("sync", "apply", "overrides"):
+    for name in ("sync", "overrides"):
         sub.add_parser(name)
+    a = sub.add_parser("apply")
+    a.add_argument("--real", action="store_true", help=REAL_HELP)
     r = sub.add_parser("report")
     r.add_argument("--wait", type=int, default=150, help="seconds to wait for PostHog to show the events sync sent")
     p = sub.add_parser("propose")
@@ -373,6 +401,7 @@ def main():
     group = d.add_mutually_exclusive_group(required=True)
     group.add_argument("--yes", action="store_true")
     group.add_argument("--no", action="store_true")
+    d.add_argument("--real", action="store_true", help=REAL_HELP)
     args = parser.parse_args()
     if args.dataset != "live" and not shortlist.explicit_data_source():
         return out({"refused": True, "reason": "a test dataset needs an explicit shortlist: set NOTION_DATA_SOURCE_ID or "
