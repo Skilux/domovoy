@@ -129,6 +129,30 @@ From Python: `from ph import capture, query, api, flags, mcp`. `capture(event, d
 - `ph.py smoke`: the event came back through the query API 63 s after capture in one run and 26 s in another. An earlier run had not returned it after 90 s; that run reused a cached query result, so `query()` now sends `"refresh": "force_blocking"`.
 - Plan for up to 100 s between sending an event and reading it. Send the demo events before the PostHog minute on stage, not during it.
 
+## Run the loop on a schedule
+
+`posthog/schedule.py` runs the loop on a timer, so it no longer waits for someone to say "improve my search". It is macOS only: it installs a launchd user agent.
+
+```
+python3 posthog/schedule.py install [--every 10] [--config PATH]   # every 10 minutes by default, never less than 10
+python3 posthog/schedule.py status                                  # installed?, the interval, the last 5 log lines
+python3 posthog/schedule.py remove                                  # unload the agent and delete its plist
+python3 posthog/schedule.py tick --dry-run                          # print what the next tick would do; run nothing
+```
+
+One tick does three things, and a step that fails is recorded while the tick carries on:
+
+1. `loop.py sync` sends the new shortlist changes to PostHog (at most 120 s).
+2. `loop.py measure` updates the result of each approved change (at most 60 s).
+3. If the renter has rejected at least 3 flats, and that list differs from the list the last tick saw, Claude is asked once (at most 300 s). Claude may run only `loop.py report` and, when one undecided reason covers 3 or more flats, `loop.py propose`. Then the tick shows a macOS notification and prints the notebook link.
+
+- The schedule only proposes. It never runs `decide`, never switches a change on and never writes to Notion. A proposal waits for the renter's answer in chat. Only then does `decide --yes` run.
+- Log: `~/.config/domovoy/posthog-loop.log`. Each tick is one line of JSON.
+- Saved list: `posthog/.state/schedule.json`, the rejections the last tick saw. `DOMOVOY_SCHEDULE_STATE` changes the path.
+- Claude is found on `PATH` when `install` runs, and its path is stored in the agent as `DOMOVOY_CLAUDE_BIN`. If the `claude` CLI was missing then, a tick records "claude CLI not found" and skips the review. Run `install` again after you install it.
+
+Not run yet
+
 ## Rules
 
 - Events carry `property_id`, never realtor names, phones or emails.
