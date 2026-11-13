@@ -6,7 +6,7 @@
     "mode": {
       "title": "Mode",
       "type": "string",
-      "description": "search runs the portal sources (none registered in WP0, so zero listings). katastr_lookup returns NOT_IMPLEMENTED.",
+      "description": "search collects listings from the portal sources in profile.filters.sources (Sreality is registered; Bezrealitky and iDNES follow). katastr_lookup returns NOT_IMPLEMENTED.",
       "editor": "select",
       "enum": [
         "search",
@@ -27,33 +27,34 @@
     "notion": {
       "title": "Notion",
       "type": "object",
-      "description": "Notion target. Without dataSourceId, results go to the dataset only.",
+      "description": "Notion target. Without dataSourceId, results go to the dataset only. With it, the Notion schema is checked before any portal is contacted.",
       "editor": "schemaBased",
       "properties": {
         "dataSourceId": {
           "title": "Data source ID",
           "type": "string",
-          "description": "Notion data source ID of the DOMOVOY shortlist database. Used from WP7; WP0 does not read it."
+          "description": "Notion data source ID of the DOMOVOY shortlist database."
         }
       }
     },
     "notionToken": {
       "title": "Notion token",
       "type": "string",
-      "description": "Notion integration token. Used by the Notion sink (WP7); WP0 does not read it.",
+      "description": "Notion integration token. Falls back to the environment variable NOTION_TOKEN (Apify secret notionToken).",
       "editor": "textfield",
       "isSecret": true
     },
     "llm": {
       "title": "LLM settings",
       "type": "object",
-      "description": "Featherless extraction settings. Used from WP4; WP0 does not read them.",
+      "description": "Featherless extraction settings. Used by the extraction stage.",
       "editor": "schemaBased",
       "properties": {
         "model": {
           "title": "Model",
           "type": "string",
-          "description": "Featherless model id."
+          "description": "Featherless model id.",
+          "default": "Qwen/Qwen3-30B-A3B-Instruct-2507"
         },
         "concurrency": {
           "title": "Concurrency",
@@ -72,35 +73,36 @@
         "fallbackModel": {
           "title": "Fallback model",
           "type": "string",
-          "description": "OpenAI model id, used when Featherless fails."
+          "description": "OpenAI model id, used when Featherless fails.",
+          "default": "gpt-4.1-mini"
         }
       }
     },
     "featherlessApiKey": {
       "title": "Featherless API key",
       "type": "string",
-      "description": "Featherless API key. Used by extraction (WP4); WP0 does not read it.",
+      "description": "Featherless API key. Falls back to the environment variable FEATHERLESS_API_KEY (Apify secret featherlessApiKey).",
       "editor": "textfield",
       "isSecret": true
     },
     "openaiApiKey": {
       "title": "OpenAI API key",
       "type": "string",
-      "description": "OpenAI API key for the extraction fallback (WP4); WP0 does not read it.",
+      "description": "OpenAI API key for the extraction fallback. Falls back to the environment variable OPENAI_API_KEY (Apify secret openaiApiKey).",
       "editor": "textfield",
       "isSecret": true
     },
     "includeUnchanged": {
       "title": "Include unchanged flats",
       "type": "boolean",
-      "description": "Emit flats that did not change since the last run.",
+      "description": "Push flats that did not change since the last run to the dataset. Unchanged flats are never written to Notion.",
       "editor": "checkbox",
       "default": false
     },
     "skipExtraction": {
       "title": "Skip extraction",
       "type": "boolean",
-      "description": "Debug only. WP0 logs this flag; there is no extraction step yet.",
+      "description": "Debug only. Skips the LLM extraction; costs and requirements then run on unknown fields.",
       "editor": "checkbox",
       "default": false
     },

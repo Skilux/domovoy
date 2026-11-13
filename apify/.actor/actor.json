@@ -2,14 +2,19 @@
   "actorSpecification": 1,
   "name": "domovoy",
   "title": "DOMOVOY",
-  "description": "Flat search for the DOMOVOY shortlist. WP0 foundation: no portal source is registered yet, so search returns zero listings.",
-  "version": "0.1.0",
+  "description": "Flat search for the DOMOVOY shortlist. Sreality is live; Bezrealitky and iDNES follow. Dedup, extraction, costs and Notion attach as their stages merge, and each run log names the stages still in fallback.",
+  "version": "0.2.0",
   "meta": {
     "generatedBy": "Claude Code with Claude Haiku 5.5"
   },
   "inputSchema": "./input_schema.json",
   "storages": {
     "dataset": "./dataset_schema.json"
+  },
+  "environmentVariables": {
+    "NOTION_TOKEN": "@notionToken",
+    "FEATHERLESS_API_KEY": "@featherlessApiKey",
+    "OPENAI_API_KEY": "@openaiApiKey"
   },
   "dockerfile": "../Dockerfile"
 }
