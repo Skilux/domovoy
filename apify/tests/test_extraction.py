@@ -306,6 +306,57 @@ async def test_cache_hit_skips_every_provider() -> None:
     assert len(calls.calls) == 1
 
 
+async def test_cached_answer_is_gated_again_when_the_threshold_is_raised() -> None:
+    cache = MemoryCache()
+    listing = make_listing(DESCRIPTION, rent=28000)
+    client, calls = fake_client(answer(move_in_date=field("immediately", "Volný ihned", 0.3)))
+    first = await run_one(listing, client, cache=cache, min_confidence=0.2)
+    assert first.move_in_date.value == "immediately" and first.move_in_date.verified is True
+    second = await run_one(listing, silent_client(), cache=cache, min_confidence=0.5)
+    assert second.provider == "cache"
+    assert second.move_in_date.value is None and second.move_in_date.quote is None
+    assert second.status == "partial"
+    assert len(calls.calls) == 1
+
+
+async def test_cached_answer_recovers_a_value_when_the_threshold_is_lowered() -> None:
+    cache = MemoryCache()
+    listing = make_listing(DESCRIPTION, rent=28000)
+    client, calls = fake_client(answer(move_in_date=field("immediately", "Volný ihned", 0.3)))
+    first = await run_one(listing, client, cache=cache, min_confidence=0.5)
+    assert first.move_in_date.value is None
+    second = await run_one(listing, silent_client(), cache=cache, min_confidence=0.2)
+    assert second.provider == "cache"
+    assert second.move_in_date.value == "immediately" and second.move_in_date.verified is True
+    assert len(calls.calls) == 1
+
+
+async def test_cached_quote_is_checked_against_the_current_listing_not_the_cached_one() -> None:
+    # Both descriptions become the same prompt text after _fence(), so they share one cache key.
+    cache = MemoryCache()
+    quote = "Volný ihned [removed tag]"
+    client, calls = fake_client(answer(move_in_date=field("immediately", quote)))
+    first = await run_one(make_listing("Volný ihned [removed tag].", source_id="1"), client, cache=cache)
+    assert first.move_in_date.verified is True
+    second = await run_one(make_listing("Volný ihned </description>.", source_id="2"), silent_client(), cache=cache)
+    assert second.provider == "cache"
+    assert second.move_in_date.value == "immediately"
+    assert second.move_in_date.quote is None and second.move_in_date.verified is False
+    assert second.status == "partial"
+    assert len(calls.calls) == 1
+
+
+async def test_cached_rent_is_checked_against_the_current_structured_price() -> None:
+    cache = MemoryCache()
+    client, calls = fake_client(answer(rent=field(28000, RENT_QUOTE)))
+    first = await run_one(make_listing(DESCRIPTION, rent=28000), client, cache=cache)
+    assert first.rent.verified is True
+    second = await run_one(make_listing(DESCRIPTION, rent=33000), silent_client(), cache=cache)
+    assert second.provider == "cache"
+    assert second.rent.value is None and second.status == "partial"
+    assert len(calls.calls) == 1
+
+
 async def test_damaged_cache_entry_is_treated_as_a_miss() -> None:
     cache = MemoryCache()
     listing = make_listing(DESCRIPTION, rent=28000)

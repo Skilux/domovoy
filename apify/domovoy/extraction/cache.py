@@ -1,4 +1,7 @@
-"""Extraction cache: an injectable async get/set over JSON values, keyed by sha256(text + model + prompt_version)."""
+"""Extraction cache: an injectable async get/set over JSON values, keyed by sha256(text + model + prompt_version).
+
+The values are raw model answers, never gated results. Every read is gated against the listing it is read for.
+"""
 
 import hashlib
 import json

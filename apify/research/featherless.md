@@ -36,6 +36,7 @@ Paid model calls in this session: about 37 (Qwen 29, DeepSeek-V4-Flash 3, OpenAI
 - DeepSeek-V4-Flash: one attempt. OpenAI: one attempt. Worst case per listing: four requests.
 - `Extraction.provider` is `featherless` for either Featherless model and `openai` for OpenAI. `Extraction.model` is the id that actually answered. A cache hit returns provider `cache` with the stored model.
 - Cache key: `sha256(text + model + prompt_version)`, where text is the listing text (price_note and description) and model is the configured primary. A fallback answer is stored under the Qwen key, so later runs reuse it. Bump `PROMPT_VERSION` to force a fresh extraction.
+- The cache holds the raw answer and the model that gave it, not the gated result. Every read goes through the same gate as a fresh answer: verbatim quotes against the current listing's description and price_note, the active threshold, and the structured rent. A stored answer never skips a check.
 
 ## Defaults for the Actor input (integrator)
 
@@ -59,6 +60,7 @@ Paid model calls in this session: about 37 (Qwen 29, DeepSeek-V4-Flash 3, OpenAI
 
 1. The first live run failed 5 of 5: the model returned bare values and Charge objects without the `value`/`quote`/`confidence` wrapper, and copied the portal's structured rent into `rent` with a quote that was not in the text. Fixes: the prompt shows the exact 14-key shape, the structured price is no longer sent, and a bare value is kept with confidence 0 (unknown).
 2. The second run passed 2 of 5 texts: one quote joined two places in the text, one furnished value had no support, one deposit and one commission were filed under one-time fees, and some values had no quote. Fixes: quote discipline in the prompt, one-time fees limited to one-time payments, furnished null when the text is silent, and a value without a quote counts as unknown.
+3. Review round 1 (cache): a cache hit returned a stored, already gated result. A stored quote could be verified against another listing (two descriptions that differ only by a closing tag share a key after `_fence()`), a value below a raised threshold survived, and a stale structured rent was kept. The cache now stores the raw answer and every read is gated again. Tests: threshold raised, threshold lowered, the `_fence()` collision, and a stale structured rent.
 
 ## Known limits (from the five fixture texts)
 

@@ -98,19 +98,21 @@ def failed_extraction() -> Extraction:
     )
 
 
-def _from_cache(raw: dict[str, Any] | None) -> Extraction | None:
-    if raw is None:
+def _from_cache(raw: Any) -> tuple[LlmFields, str] | None:
+    """A stored raw answer and the model that gave it. A damaged or outdated entry counts as a miss."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("model"), str):
         return None
     try:
-        return Extraction.model_validate(raw)
+        return LlmFields.model_validate(raw.get("answer")), raw["model"]
     except ValidationError:
-        return None  # a damaged or outdated entry counts as a miss
+        return None
 
 
 class Extractor:
     """Extracts listings for one run: one cache, one concurrency limit, one client per provider.
 
     Clients passed in are used as they are. Clients this object builds from the keys are closed by aclose().
+    The cache holds raw model answers. Every read, fresh or cached, goes through to_extraction().
     """
 
     def __init__(
@@ -156,21 +158,29 @@ class Extractor:
         if self._cache is not None:
             hit = _from_cache(await self._cache.get(key))
             if hit is not None:
-                return hit.model_copy(update={"provider": "cache"})
+                # A stored answer is gated like a fresh one: against this listing and the active threshold.
+                fields, model = hit
+                return to_extraction(
+                    fields,
+                    listing,
+                    min_confidence=self._min_confidence,
+                    provider="cache",
+                    model=model,
+                )
         answer = await self._ask_chain(text)
         if answer is None:
             return failed_extraction()
         fields, provider, model = answer
-        extraction = to_extraction(
+        if self._cache is not None:
+            # The raw answer is stored, not the gated result, so every later read gates it again.
+            await self._cache.set(key, {"model": model, "answer": fields.model_dump(mode="json")})
+        return to_extraction(
             fields,
             listing,
             min_confidence=self._min_confidence,
             provider=provider,
             model=model,
         )
-        if self._cache is not None:
-            await self._cache.set(key, extraction.model_dump(mode="json"))
-        return extraction
 
     async def _ask_chain(self, text: str) -> tuple[LlmFields, Provider, str] | None:
         """Qwen (one attempt and one retry), then the Featherless fallback (one attempt), then OpenAI (one attempt).
