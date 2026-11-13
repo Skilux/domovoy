@@ -4,14 +4,15 @@ Three-minute hard stop; also rehearse a 60–90 second cut. Times below are elap
 
 | Time | Action |
 | --- | --- |
-| 0:00–0:15 | Vladimir's actual problem; real requirements and listings |
-| 0:15–1:45 | Notion shortlist → move one flat to Interested → "call about it" → live browser call → Calendar event and Notion update to Viewing booked |
-| 1:45–2:45 | If ready: PostHog report on rejection reasons → Vladimir says yes → visible rerank |
-| 2:45–3:00 | "Install the skill in your own agent", one sentence on agencies, repository and demo links |
+| 0:00–0:30 | Vladimir's actual problem; what DOMOVOY is |
+| 0:30–1:18 | Voice request to ChatGPT → the public Apify Actor, explained on the stage ACTOR screen with its Store QR, streams flats into an empty Notion database → `Interested?` = Yes on one flat, No on another → voice request for a viewing |
+| 1:18–2:13 | Calendar read → live browser call with Danila as the demo realtor |
+| 2:13–2:45 | Receipt: Viewing booked and the Calendar event, then the katastr check on an LV bought before the stage |
+| 2:45–3:00 | What each part did, PostHog learning from Vladimir's rejections (synced from Notion, real data), install QR |
 
 The spoken script, beat by beat, is [demo-script.md](demo-script.md).
 
-If PostHog is not ready, the core gets its minute. Never rush past the receipt.
+Never rush past the receipt.
 
 ## Required gates
 
@@ -23,7 +24,7 @@ If PostHog is not ready, the core gets its minute. Never rush past the receipt.
 - [ ] The happy path is rehearsed: one call ends in Viewing booked, with the test event in Vladimir's calendar and the call summary on the Notion page.
 - [ ] Full and short demos rehearsed with venue audio and network; nothing needed from the audience.
 
-If voice fails onstage, show the last successful call's Notion summary and Calendar event, say they are prior results, then go to PostHog if it works. This is a transparent fallback, not a pass for the live gate. No prerecorded video.
+If voice fails onstage, show the last successful call's Notion summary and Calendar event, say they are prior results, then go to the katastr check. This is a transparent fallback, not a pass for the live gate. No prerecorded video.
 
 ## Internal scoring
 
