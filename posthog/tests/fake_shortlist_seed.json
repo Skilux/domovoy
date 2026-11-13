@@ -1,0 +1,113 @@
+{
+  "_note": "SYNTHETIC shortlist for posthog/loop.py tests. Not real listings.",
+  "flats": [
+    {
+      "page_id": "fake-page-001",
+      "property_id": "synthetic-001",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 1",
+      "status": "Not interested",
+      "reason": "no lift, 4th floor",
+      "elevator": "No",
+      "portal": "sreality",
+      "total_monthly": 27500,
+      "upfront": 82000,
+      "floor": 4
+    },
+    {
+      "page_id": "fake-page-002",
+      "property_id": "synthetic-002",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 2",
+      "status": "Not interested",
+      "reason": "without elevator",
+      "elevator": "No",
+      "portal": "bezrealitky",
+      "total_monthly": 26000,
+      "upfront": 52000,
+      "floor": 3
+    },
+    {
+      "page_id": "fake-page-003",
+      "property_id": "synthetic-003",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 3",
+      "status": "Not interested",
+      "reason": "5th floor and no elevator",
+      "elevator": "No",
+      "portal": "idnes",
+      "total_monthly": 28500,
+      "upfront": 85500,
+      "floor": 5
+    },
+    {
+      "page_id": "fake-page-004",
+      "property_id": "synthetic-004",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 4",
+      "status": "Not interested",
+      "reason": "too far from the metro",
+      "elevator": "Yes",
+      "portal": "bezrealitky",
+      "total_monthly": 29900,
+      "upfront": 60000,
+      "floor": 2
+    },
+    {
+      "page_id": "fake-page-005",
+      "property_id": "synthetic-005",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 5",
+      "status": "Not interested",
+      "reason": "kitchen is tiny",
+      "elevator": "Yes",
+      "portal": "idnes",
+      "total_monthly": 25500,
+      "upfront": 76500,
+      "floor": 1
+    },
+    {
+      "page_id": "fake-page-006",
+      "property_id": "synthetic-006",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 6",
+      "status": "Shortlisted",
+      "reason": "",
+      "elevator": "No",
+      "portal": "sreality",
+      "total_monthly": 24000,
+      "upfront": 72000,
+      "floor": 4
+    },
+    {
+      "page_id": "fake-page-007",
+      "property_id": "synthetic-007",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 7",
+      "status": "Shortlisted",
+      "reason": "",
+      "elevator": "Yes",
+      "portal": "sreality",
+      "total_monthly": 27000,
+      "upfront": 81000,
+      "floor": 2
+    },
+    {
+      "page_id": "fake-page-008",
+      "property_id": "synthetic-008",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 8",
+      "status": "Shortlisted",
+      "reason": "",
+      "elevator": "Unknown",
+      "portal": "idnes",
+      "total_monthly": 23500,
+      "upfront": null,
+      "floor": null
+    },
+    {
+      "page_id": "fake-page-009",
+      "property_id": "synthetic-009",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 9",
+      "status": "Interested",
+      "reason": "",
+      "elevator": "Yes",
+      "portal": "bezrealitky",
+      "total_monthly": 28000,
+      "upfront": 84000,
+      "floor": 3
+    }
+  ]
+}
