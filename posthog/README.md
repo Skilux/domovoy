@@ -76,6 +76,8 @@ python3 posthog/loop.py decide --key no_elevator --yes
 
 ### Run and seen on 13 Nov 2026 (synthetic data only)
 
+- Stage timing on the Notion test database, events already ingested: `report` 3.3 s, `propose` 6.9 s, `decide` 3.6 s. `sync` 3.3 s, run beforehand.
+
 - Fake shortlist: `sync` sent 15 events, a second `sync` sent 0. `report` read back 5 rejections. `propose` with 2 flats was refused. `propose` with 3 created the flag and the notebook. `decide --no` recorded the answer, and proposing the same key again was refused.
 - Notion test database with 9 synthetic flats: `decide --yes` took 4 s, moved the one Shortlisted flat without an elevator to Not interested with `Reason = filtered: elevator required`, and published version 4 of the instructions.
 - Not run: the real "DOMOVOY shortlist" database (it did not exist yet), and nobody has looked at the notebook or the chart in a browser.

@@ -9,9 +9,9 @@ Optional self-improvement loop. DOMOVOY sends what happens to PostHog; Claude re
 - [ ] The skill's search and call flow send the events below to PostHog, each with `property_id`. Events sent from inside the Actor are phase 2.
 - [ ] A report script reads today's `listing_rejected` events from PostHog and prints one grouped finding with its evidence, e.g. "3 of 3 rejected flats: no elevator".
 - [ ] Claude proposes one specific criteria change and waits for Vladimir's yes or no.
-- [ ] On yes, the change is saved to the active search profile in the skill config, the shortlist is re-filtered, and Notion visibly changes.
+- [ ] On yes, the change is switched on as a PostHog feature flag whose payload holds the requirement, the shortlist is re-filtered, and Notion visibly changes. `search.py` merges approved flags into the active profile on the next run (issue #43).
 - [ ] The decision is recorded as an event, so the same proposal is not made twice.
-- [ ] The whole step fits in 60 seconds on stage and uses only real events from today.
+- [ ] The whole step fits in 60 seconds on stage and uses only real events from today. The machine part is about 14 s; see [Stage timing](#stage-timing).
 
 ## Diagram
 
@@ -58,14 +58,37 @@ Notion changes carry no event of their own, so the skill reads Notion and sends 
 
 - Reasons are free text. Claude normalizes them to a short key, e.g. "no lift", "without elevator" → `no_elevator`, before grouping.
 - A proposal needs one reason on 3 or more rejections. With fewer, the report says so and proposes nothing.
-- A change adds one requirement to the active search profile. Flats that now fail are moved to Not interested with `Reason = filtered: <change>`; the remaining flats keep their order by `total_monthly`.
+- A change adds one requirement, held by a feature flag. Flats that now fail are moved to Not interested with `Reason = filtered: <change>`; the remaining flats keep their order by `total_monthly`. Supported today: `elevator` required, `max_total_monthly`, `max_upfront`.
 - The chosen reason must not already be a hard filter, or those flats would never have reached Notion.
+
+### How it runs on the free plan
+
+PostHog's own scouts and Inbox are paid: on 13 Nov 2026 the free plan gave them 0 credits, a scout run returned 429 and filing an Inbox report returned 402. The loop uses only free features, through `posthog/loop.py`:
+
+| Step | PostHog feature |
+| --- | --- |
+| Signals: `loop.py sync` | Events |
+| Scout instructions, read by Claude at `loop.py report` | Skills store (`domovoy-rejections`, versioned) |
+| Report: `loop.py propose` | Notebook with the finding, a live evidence query, the flag and the chart |
+| Yes or no: `loop.py decide` | Feature flag `domovoy-criteria-<key>`: off = proposed or declined, on = approved |
+| Memory | `criteria_change_decided` events, plus each decision appended to the stored instructions as a new version |
+| Measure | Saved chart split by `criteria_version`, with an annotation at each decision |
+
+Commands and test evidence: [posthog/README.md](../../posthog/README.md). Claude's steps: the improve command in `skill/domovoy/SKILL.md`.
+
+### Stage timing
+
+PostHog shows a new event to queries 30 to 100 s after it is sent. That wait must happen before the PostHog minute, not in it.
+
+- Before: `loop.py sync` runs when Vladimir has rejected flats, and again in the background at the start of the call command, so ingestion happens during the voice call.
+- On stage: `report`, `propose`, `decide`. Measured on the synthetic Notion test database with events already ingested: 3.3 s, 6.9 s and 3.6 s, 13.8 s in total. Claude's own reading and Vladimir's yes come on top.
+- If the events are not in yet, `report` waits (at most 150 s) and says so. It never reports from a local log; a report is either complete from PostHog or marked `"complete": false`.
 
 ### Honesty
 
 - One rerank shows the change was applied, not that results got better. Say "measurement pending".
-- A local event log may back up the report if the venue network fails; label it as local.
-- Do not claim PostHog's native self-driving Inbox, session replay or agency customers. Agencies get one spoken sentence.
+- No local event log backs the report today. If the venue network fails, there is no PostHog step; say so.
+- Do not claim PostHog's native self-driving Inbox, scouts, session replay or agency customers. Say: "PostHog's own scouts are a paid feature, so our agent runs the same loop on PostHog's free parts." Agencies get one spoken sentence.
 - PostHog holds telemetry only. Listing facts stay in Notion pages, state in the Notion `Status`.
 
 ## Decisions

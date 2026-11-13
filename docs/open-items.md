@@ -9,7 +9,7 @@ Things to settle before or during the build. When one is decided, move it to [de
 | 5 | Notion integration **DOMOVOY** + `NOTION_TOKEN` on Vladimir's laptop and as an Apify secret input | Vladimir | Notion writes, skill |
 | 6 | Run `notion.py setup` to create the **DOMOVOY shortlist** database | Vladimir | Notion writes, skill |
 | 7 | Featherless model choice, confidence threshold and plan concurrency limit | Vladimir | Extraction, Actor run time |
-| 8 | PostHog project key and sponsor prize criteria | Danila | P1 lane |
+| 8 | Sponsor prize criteria: ask the PostHog person what they score (the project key is settled, see decisions) | Danila | P1 lane |
 | 9 | ElevenLabs voice, persona, first message, `agent_id`; allowlist the Vercel domain | Danila | Voice agent |
 | 10 | Vladimir's separate final demo-flow page: import and reconcile | Vladimir | — |
 | 11 | Gmail confirmation: build only if time remains | Danila | — |

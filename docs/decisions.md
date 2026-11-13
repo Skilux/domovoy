@@ -85,3 +85,13 @@ Made by Danila for the call half of the Skill lane.
 | Call idempotency | The handled `conversation_id` is kept in local `.state/handled.json`; the appended summary also carries a `domovoy-call: <conversation_id>` line. A result seen before changes nothing | Unspecified |
 | Receipt order | `call.py` appends the summary and sets `Viewing booked`, then Claude creates the event from the printed `event` | Event first, then status |
 | Extra `call_context` fields | `call.py` passes listing fields it does not know through; the phone server accepts them (`phone/lib/context.js` requires only `property_id` and `address`) | Unspecified |
+
+## PostHog lane decisions, 13 Nov 2026
+
+| Topic | Decision | Replaces |
+| --- | --- | --- |
+| PostHog account | Danila's personal account, free plan only, EU Cloud, project `DOMOVOY` (id 348322). No card, no paid credits | Open item 8, project key |
+| Loop on the free plan | Report = PostHog notebook; approval = feature flag `domovoy-criteria-<key>`; memory = decision events plus versions of the stored scout instructions; all through `posthog/loop.py` | Native self-driving scouts and Inbox, which are paid |
+| Where an approved change lives | In the feature flag's payload. `search.py` merges approved flags into the profile's `requirements` (issue #43) | Saving the change to the profile in `config.json` |
+| Stage timing | `sync` runs before the PostHog minute (after rejections, and in the background at the start of the call command); `report` returns at once when the events are in | A fixed 60 s wait inside the improve command |
+| Local event log | None. A report is complete from PostHog or marked incomplete | "A local event log may back up the report" |
