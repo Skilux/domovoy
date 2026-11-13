@@ -31,6 +31,8 @@ def result(conversation_id, **changes):
 
 
 class EndToEndFake(unittest.TestCase):
+    BACKEND = "tests/fake_notion_backend.py"
+
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp)
@@ -43,7 +45,7 @@ class EndToEndFake(unittest.TestCase):
         self.url = "http://127.0.0.1:%d" % self.server.server_address[1]
         with open(os.path.join(HERE, "..", "config.example.json")) as f:
             cfg = json.load(f)
-        cfg["backend"]["module"] = "tests/fake_notion_backend.py"
+        cfg["backend"]["module"] = self.BACKEND
         cfg["phone"].update(url=self.url, secret="test-secret", env_file="", url_env="", secret_env="",
                             poll_seconds=0.1, timeout_seconds=1)
         self.cfg = cfg
@@ -56,6 +58,8 @@ class EndToEndFake(unittest.TestCase):
             self.addCleanup(os.environ.pop, key)
         self.old_state, call.STATE_DIR = call.STATE_DIR, os.path.join(self.tmp, "state")
         self.addCleanup(setattr, call, "STATE_DIR", self.old_state)
+
+    VIEWING_DATE = None
 
     def page(self):
         return notion._page(notion._load(), PAGE)
@@ -104,6 +108,7 @@ class EndToEndFake(unittest.TestCase):
         self.assertEqual((code, out["status"], out["create_event"]), (0, "Viewing booked", True))
         self.assertEqual(out["event"]["start"], "2026-11-16T17:00:00+01:00")
         self.assertEqual(self.page()["status"], "Viewing booked")
+        self.assertEqual(self.page().get("viewing_date"), self.VIEWING_DATE)
         self.assertEqual(self.page()["body"].count("domovoy-call: conv-A"), 1)
         self.post_result(result("conv-A"))
         code, out = self.run_call("resume", "--page", PAGE)
@@ -148,6 +153,11 @@ class EndToEndFake(unittest.TestCase):
         code, out = self.run_call("run", "--windows", WINDOWS)
         self.assertEqual(code, 1)
         self.assertEqual(self.page()["status"], "Interested")
+
+
+class EndToEndFakeFlatsShape(EndToEndFake):
+    BACKEND = "tests/fake_notion_backend_flats.py"
+    VIEWING_DATE = "2026-11-16T17:00:00+01:00"
 
 
 if __name__ == "__main__":
