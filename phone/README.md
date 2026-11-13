@@ -29,6 +29,29 @@ Pairing is per browser. Open `/?k=<DOMOVOY_RECEIVER_KEY>` once (`/start?k=` and 
 
 Env in Vercel: `DOMOVOY_SECRET`, `DOMOVOY_RECEIVER_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
 
+## Deploying
+
+Production is a manual `vercel deploy --prod` from `phone/`, not a GitHub deploy. The Vercel link (`phone/.vercel`) exists only in the Voice lead's worktree. Several threads change this site, so a deploy from a feature branch or a stale checkout removes other people's pages from production.
+
+Deploy only from a checkout that is exactly fresh `origin/main`:
+
+```sh
+git fetch origin && git checkout --detach origin/main
+git status --short            # must print nothing
+git rev-parse HEAD origin/main  # both lines must be equal
+cd phone && npm run build && vercel deploy --prod --yes
+```
+
+After every deploy, check (expect 307, 200, 200, 200, 200, then 401):
+
+```sh
+for p in / /phone /start /stage /prompt.txt /api/pending; do
+  curl -s -o /dev/null -w "$p %{http_code}\n" https://domovoy-phone.vercel.app$p
+done
+```
+
+## Testing on production
+
 Test on production (open the paired URL `$PHONE_URL/?k=$DOMOVOY_RECEIVER_KEY` and click Ready first):
 
 ```sh
