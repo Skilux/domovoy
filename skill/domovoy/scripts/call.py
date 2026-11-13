@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
-"""DOMOVOY call command: one Interested card -> call_context -> phone server -> rechecked result -> board.
+"""DOMOVOY call command: one Interested flat -> call_context -> phone server -> rechecked result -> shortlist.
 
-  call.py check  --windows W [--issue N] [--listing F]   build and validate only, contacts nobody
-  call.py run    --windows W [--issue N] [--listing F]   post the call, poll, recheck, update the board
-  call.py resume --issue N                               fetch the result again for a call already posted
+  call.py check  --windows W [--flat ID] [--listing F]   build and validate only, contacts nobody
+  call.py run    --windows W [--flat ID] [--listing F]   post the call, poll, recheck, update the shortlist
+  call.py resume --flat ID                               fetch the result again for a call already posted
 
 W and F are a JSON file path, "-" for stdin, or inline JSON. Output is one JSON object on stdout.
 Exit codes: 0 handled, 2 refused (nothing was contacted), 1 error.
+
+The shortlist is reached only through the module named in config "backend.module". It must offer:
+  list_flats(cfg, status) -> [{"id", "title", "url", "status"}]
+  get_flat(cfg, id)       -> {"id", "title", "url", "listing": {call_context fields} or None, "text": page text or ""}
+  set_status(cfg, id, status)
+  append(cfg, id, text)
 """
 import argparse
 import datetime
+import importlib.util
 import json
 import os
 import re
@@ -19,13 +26,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import board  # noqa: E402
-
-ROOT = board.ROOT
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_DIR = os.path.join(ROOT, ".state")
-MARKER = "<!-- domovoy-call: %s -->"
-MARKER_RE = re.compile(r"<!-- domovoy-call: (\S+) -->")
+MARKER = "domovoy-call: %s"
+MARKER_RE = re.compile(r"domovoy-call: ([\w.:-]+)")
 TYPES = {
     "string": lambda v: isinstance(v, str),
     "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
@@ -38,6 +42,36 @@ TYPES = {
 
 class Refusal(Exception):
     pass
+
+
+def load_config():
+    path = os.environ.get("DOMOVOY_CONFIG") or os.path.join(ROOT, "config.json")
+    if not os.path.exists(path):
+        raise RuntimeError("config not found: %s (copy config.example.json to config.json)" % path)
+    with open(path) as f:
+        return json.load(f)
+
+
+def load_backend(cfg):
+    path = os.path.join(ROOT, cfg["backend"]["module"])
+    if not os.path.exists(path):
+        raise RuntimeError("shortlist backend %s not found (config backend.module)" % cfg["backend"]["module"])
+    spec = importlib.util.spec_from_file_location("domovoy_backend", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def budget_cap(cfg):
+    if cfg["call_context"].get("budget_cap") is not None:
+        return cfg["call_context"]["budget_cap"]
+    profiles = cfg.get("profiles") or []
+    profile = next((p for p in profiles if p.get("id") == cfg.get("active_profile")), None)
+    if profile is None and len(profiles) == 1:
+        profile = profiles[0]
+    if profile is None:
+        raise Refusal("no active profile: set active_profile to one of the profiles[] ids in config.json")
+    return profile["requirements"]["max_total_monthly"]
 
 
 def load_schema(name):
@@ -131,44 +165,34 @@ def read_json_arg(arg):
         return json.load(f)
 
 
-def find_listing(issue, property_id, listing_arg):
-    if listing_arg:
-        data = read_json_arg(listing_arg)
-        if isinstance(data, dict) and isinstance(data.get("listings"), list):
-            data = data["listings"]
-        if isinstance(data, list):
-            data = next((r for r in data if isinstance(r, dict) and r.get("property_id") == property_id), None)
-            if data is None:
-                raise Refusal("no record with property_id %s in the listing file" % property_id)
-        return data
-    for block in re.findall(r"```json\s*\n(.*?)```", issue.get("body") or "", re.S):
-        try:
-            data = json.loads(block)
-        except ValueError:
-            continue
-        if isinstance(data, dict):
-            return data
-    raise Refusal("no listing data: pass --listing with the shortlist.json record or the issue's fields as JSON")
+def find_listing(flat, listing_arg):
+    if not listing_arg:
+        if isinstance(flat.get("listing"), dict):
+            return flat["listing"]
+        raise Refusal("the shortlist gave no listing fields for this flat: pass --listing with them as JSON")
+    data = read_json_arg(listing_arg)
+    if isinstance(data, list):
+        wanted = (flat.get("listing") or {}).get("property_id")
+        rows = [r for r in data if isinstance(r, dict) and (wanted is None or r.get("property_id") == wanted)]
+        if len(rows) != 1:
+            raise Refusal("the listing file has %d matching records, need exactly 1" % len(rows))
+        data = rows[0]
+    return data
 
 
-def build_context(cfg, issue, windows, listing_arg=None):
-    found = re.search(cfg["issue"]["property_id_pattern"], issue.get("body") or "")
-    issue_pid = found.group(1) if found else None
-    listing = find_listing(issue, issue_pid, listing_arg)
+def build_context(cfg, flat, windows, listing_arg=None):
     schema = load_schema("call_context")
-    context = dict(listing)
+    context = dict(find_listing(flat, listing_arg))
     for key, sub in schema["properties"].items():
         if key not in context and sub.get("type") == "array":
             context[key] = []
         elif key not in context and (None in sub.get("enum", []) or "null" in sub.get("type", [])):
             context[key] = None
     context.update(cfg["call_context"])
-    context.setdefault("property_id", issue_pid)
-    context["issue_number"] = issue["number"]
+    context["budget_cap"] = budget_cap(cfg)
+    context[cfg["backend"]["id_field"]] = flat["id"]
     context["available_windows"] = windows
     errors = validate(context, schema) + check_windows(windows)
-    if issue_pid and context.get("property_id") != issue_pid:
-        errors.append("$.property_id: listing says %s, issue body says %s" % (context.get("property_id"), issue_pid))
     if errors:
         raise Refusal("call_context is not valid: " + "; ".join(errors))
     return context
@@ -208,8 +232,26 @@ def phone_request(cfg, method, path, body=None):
         return status, raw.decode(errors="replace")[:200]
 
 
-def seen_conversations(issue):
-    return set(m for c in issue.get("comments") or [] for m in MARKER_RE.findall(c.get("body") or ""))
+def handled_path():
+    return os.path.join(STATE_DIR, "handled.json")
+
+
+def seen_conversations(flat):
+    seen = set(MARKER_RE.findall(flat.get("text") or ""))
+    if os.path.exists(handled_path()):
+        with open(handled_path()) as f:
+            seen |= set(json.load(f))
+    return seen
+
+
+def remember(conversation_id):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    seen = set()
+    if os.path.exists(handled_path()):
+        with open(handled_path()) as f:
+            seen = set(json.load(f))
+    with open(handled_path(), "w") as f:
+        json.dump(sorted(seen | {conversation_id}), f)
 
 
 def marker_id(conversation_id):
@@ -249,8 +291,7 @@ def clean(text, limit=600):
 
 
 def comment_body(cfg, context, result, booked, reason):
-    statuses = cfg["board"]["statuses"]
-    lines = ["**Call result: %s**" % statuses["booked" if booked else "not_booked"], ""]
+    lines = ["Call result: %s" % cfg["statuses"]["booked" if booked else "not_booked"], ""]
     if result is not None:
         lines += ["Demo call in the browser with a consenting demo participant. No real viewing was arranged.", ""]
     if booked:
@@ -274,12 +315,11 @@ def comment_body(cfg, context, result, booked, reason):
     return "\n".join(lines)
 
 
-def apply_result(cfg, issue_number, context, result):
-    statuses = cfg["board"]["statuses"]
-    issue = board.get_issue(cfg, issue_number)
-    out = {"issue_number": issue["number"], "issue_url": issue["url"], "property_id": context["property_id"],
+def apply_result(cfg, backend, flat_id, context, result):
+    flat = backend.get_flat(cfg, flat_id)
+    out = {"flat_id": flat["id"], "flat_url": flat.get("url"), "property_id": context["property_id"],
            "already_handled": False, "create_event": False}
-    if result is not None and marker_id(result.get("conversation_id")) in seen_conversations(issue):
+    if result is not None and marker_id(result.get("conversation_id")) in seen_conversations(flat):
         out.update(already_handled=True, note="this conversation_id was handled before; nothing was changed")
         return out
     if result is None:
@@ -287,9 +327,10 @@ def apply_result(cfg, issue_number, context, result):
     else:
         booked, reason = recheck(context, result)
         out["conversation_id"] = result.get("conversation_id")
-    status = statuses["booked" if booked else "not_booked"]
-    out["comment_url"] = board.comment(cfg, issue["number"], comment_body(cfg, context, result, booked, reason))
-    board.set_status(cfg, issue["number"], status)
+        remember(marker_id(result.get("conversation_id")))
+    status = cfg["statuses"]["booked" if booked else "not_booked"]
+    backend.append(cfg, flat["id"], comment_body(cfg, context, result, booked, reason))
+    backend.set_status(cfg, flat["id"], status)
     out.update(status=status, booked=booked, reason=reason)
     if booked:
         start = parse_time(result["viewing_start"])
@@ -298,37 +339,38 @@ def apply_result(cfg, issue_number, context, result):
             "title": cal.get("event_title", "Viewing (demo): {address}").format(address=context["address"]),
             "start": start.isoformat(),
             "end": (start + datetime.timedelta(minutes=cal.get("window_minutes", 60))).isoformat(),
-            "description": "%s\n%s" % (issue["url"], clean(result["summary"])),
+            "description": "%s\n%s" % (flat.get("url") or "", clean(result["summary"])),
         })
+        if hasattr(backend, "set_viewing_date"):
+            backend.set_viewing_date(cfg, flat["id"], start.isoformat())
     return out
 
 
-def state_path(issue_number):
-    return os.path.join(STATE_DIR, "issue-%d.context.json" % int(issue_number))
+def state_path(flat_id):
+    return os.path.join(STATE_DIR, "flat-%s.context.json" % re.sub(r"[^\w.-]", "_", str(flat_id)))
 
 
-def pick_card(cfg, issue_number):
-    interested = cfg["board"]["statuses"]["interested"]
-    cards = board.list_cards(cfg, interested)
-    if not cards:
-        raise Refusal("no card has Status = %s; nobody was contacted. Move one card to %s on the board first."
+def pick_flat(cfg, backend, flat_id):
+    interested = cfg["statuses"]["interested"]
+    flats = backend.list_flats(cfg, interested)
+    if not flats:
+        raise Refusal("no flat has Status = %s; nobody was contacted. Move one flat to %s first."
                       % (interested, interested))
-    if issue_number is not None:
-        card = next((c for c in cards if c["issue_number"] == issue_number), None)
-        if card is None:
-            raise Refusal("issue #%d is not in %s; nobody was contacted" % (issue_number, interested))
-        return card
-    if len(cards) > 1:
-        raise Refusal("%d cards are in %s; ask which one and pass --issue N: %s" % (
-            len(cards), interested, "; ".join("#%d %s" % (c["issue_number"], c["title"]) for c in cards)))
-    return cards[0]
+    if flat_id is not None:
+        flat = next((f for f in flats if str(f["id"]) == str(flat_id)), None)
+        if flat is None:
+            raise Refusal("flat %s is not in %s; nobody was contacted" % (flat_id, interested))
+        return flat
+    if len(flats) > 1:
+        raise Refusal("%d flats are in %s; ask which one and pass --flat ID: %s" % (
+            len(flats), interested, "; ".join("%s %s" % (f["id"], f["title"]) for f in flats)))
+    return flats[0]
 
 
-def cmd_start(cfg, args, post):
+def cmd_start(cfg, backend, args, post):
     windows = read_json_arg(args.windows)
-    card = pick_card(cfg, args.issue)
-    issue = board.get_issue(cfg, card["issue_number"])
-    context = build_context(cfg, issue, windows, args.listing)
+    flat = backend.get_flat(cfg, pick_flat(cfg, backend, args.flat)["id"])
+    context = build_context(cfg, flat, windows, args.listing)
     warnings = []
     if context["total_monthly"] is None:
         warnings.append("total_monthly is unknown: the recheck will end in Not booked")
@@ -336,53 +378,52 @@ def cmd_start(cfg, args, post):
         warnings.append("total_monthly is over budget_cap: the recheck will end in Not booked")
     if not post:
         return {"valid": True, "posted": False, "warnings": warnings, "call_context": context}
-    seen = seen_conversations(issue)
+    seen = seen_conversations(flat)
     status, body = phone_request(cfg, "POST", "/api/call", context)
     if not 200 <= status < 300:
-        raise RuntimeError("phone server refused the call_context with %s: %s; the card stays in %s"
-                           % (status, json.dumps(body)[:200], card["status"]))
+        raise RuntimeError("phone server refused the call_context with %s: %s; the flat stays in %s"
+                           % (status, json.dumps(body)[:200], cfg["statuses"]["interested"]))
     os.makedirs(STATE_DIR, exist_ok=True)
-    with open(state_path(issue["number"]), "w") as f:
+    with open(state_path(flat["id"]), "w") as f:
         json.dump(context, f, indent=2)
-    board.set_status(cfg, issue["number"], cfg["board"]["statuses"]["calling"])
-    print("call posted for issue #%d, waiting for the result" % issue["number"], file=sys.stderr)
-    out = apply_result(cfg, issue["number"], context, poll(cfg, context["property_id"], seen))
+    backend.set_status(cfg, flat["id"], cfg["statuses"]["calling"])
+    print("call posted for flat %s, waiting for the result" % flat["id"], file=sys.stderr)
+    out = apply_result(cfg, backend, flat["id"], context, poll(cfg, context["property_id"], seen))
     out["warnings"] = warnings
     return out
 
 
-def cmd_resume(cfg, args):
-    if args.issue is None or not os.path.exists(state_path(args.issue)):
-        raise Refusal("resume needs --issue N for a call posted from this machine")
-    with open(state_path(args.issue)) as f:
+def cmd_resume(cfg, backend, args):
+    if args.flat is None or not os.path.exists(state_path(args.flat)):
+        raise Refusal("resume needs --flat ID for a call posted from this machine")
+    with open(state_path(args.flat)) as f:
         context = json.load(f)
     result = fetch_result(cfg, context["property_id"])
     if result is None:
         raise Refusal("the phone server has no result for %s yet" % context["property_id"])
-    issue = board.get_issue(cfg, args.issue)
-    calling = cfg["board"]["statuses"]["calling"]
-    if marker_id(result.get("conversation_id")) not in seen_conversations(issue):
-        card = next((c for c in board.list_cards(cfg) if c["issue_number"] == args.issue), None)
-        if card is None or card["status"] != calling:
-            raise Refusal("issue #%d is not in %s; nothing was changed" % (args.issue, calling))
-    return apply_result(cfg, args.issue, context, result)
+    calling = cfg["statuses"]["calling"]
+    if marker_id(result.get("conversation_id")) not in seen_conversations(backend.get_flat(cfg, args.flat)):
+        if not any(str(f["id"]) == str(args.flat) for f in backend.list_flats(cfg, calling)):
+            raise Refusal("flat %s is not in %s; nothing was changed" % (args.flat, calling))
+    return apply_result(cfg, backend, args.flat, context, result)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=["check", "run", "resume"])
     parser.add_argument("--windows", help="free windows: [{start, end}] as a file, '-' or inline JSON")
-    parser.add_argument("--issue", type=int)
+    parser.add_argument("--flat", help="shortlist id of the flat, when several are Interested")
     parser.add_argument("--listing", help="listing record(s) as a file, '-' or inline JSON")
     args = parser.parse_args(argv)
     try:
-        cfg = board.load_config()
+        cfg = load_config()
+        backend = load_backend(cfg)
         if args.command == "resume":
-            out = cmd_resume(cfg, args)
+            out = cmd_resume(cfg, backend, args)
         elif not args.windows:
             raise Refusal("--windows is required: free windows from the calendar as [{start, end}]")
         else:
-            out = cmd_start(cfg, args, post=args.command == "run")
+            out = cmd_start(cfg, backend, args, post=args.command == "run")
     except Refusal as e:
         print(json.dumps({"refused": True, "reason": str(e)}, indent=2, ensure_ascii=False))
         return 2

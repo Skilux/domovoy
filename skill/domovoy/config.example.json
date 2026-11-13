@@ -1,20 +1,13 @@
 {
-  "github": {
-    "owner": "Skilux",
-    "repo": "Skilux/domovoy",
-    "project_number": 1
+  "backend": {
+    "module": "scripts/notion.py",
+    "id_field": "notion_page_id"
   },
-  "board": {
-    "status_field": "Status",
-    "statuses": {
-      "interested": "Interested",
-      "calling": "Calling",
-      "booked": "Viewing booked",
-      "not_booked": "Not booked"
-    }
-  },
-  "issue": {
-    "property_id_pattern": "<!--\\s*property_id:\\s*(\\S+)\\s*-->"
+  "statuses": {
+    "interested": "Interested",
+    "calling": "Calling",
+    "booked": "Viewing booked",
+    "not_booked": "Not booked"
   },
   "phone": {
     "url": "",
@@ -27,18 +20,38 @@
   },
   "call_context": {
     "user_name": "Vladimir",
-    "budget_cap": 30000,
     "realtor_name": "Demo Realtor"
   },
+  "active_profile": "example-2kk-30k",
+  "profiles": [
+    {
+      "id": "example-2kk-30k",
+      "requirements": {
+        "max_total_monthly": 30000
+      }
+    }
+  ],
   "calendar": {
     "calendar_id": "primary",
     "timezone": "Europe/Prague",
-    "viewing_weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "viewing_weekdays": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri"
+    ],
     "viewing_from": "17:00",
     "viewing_to": "20:00",
     "days_ahead": 7,
     "window_minutes": 60,
     "max_windows": 5,
     "event_title": "Viewing (demo): {address}"
+  },
+  "gh_test": {
+    "owner": "Skilux",
+    "repo": "Skilux/domovoy",
+    "project_number": 1,
+    "status_field": "Status"
   }
 }

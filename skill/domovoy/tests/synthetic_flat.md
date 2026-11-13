@@ -1,4 +1,4 @@
-> **SYNTHETIC TEST CARD. Not a real listing, not a real address, no real person.** Made to test the call command. Delete before the repo goes public.
+> **SYNTHETIC TEST FLAT. Not a real listing, not a real address, no real person.** Made to test the call command. Delete before the repo goes public.
 
 Link: https://example.com/synthetic-listing-001 · collected 2026-11-13T12:00:00+01:00
 
@@ -32,5 +32,3 @@ Unknowns: commission, move_in_date
   "unknowns": ["commission", "move_in_date"]
 }
 ```
-
-<!-- property_id: synthetic-test-001 -->
