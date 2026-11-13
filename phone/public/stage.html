@@ -335,12 +335,12 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
   }
   function flatCard(kind) {
     if (kind === 'booked') {
-      return '<div class="fcard ok"><h3>Korunni 88</h3><p class="ar">Praha 2 - Vinohrady</p>' +
+      return '<div class="fcard ok"><h3>Ukazkova 12</h3><p class="ar">Praha (sample)</p>' +
         '<p class="mny">Mon 16 Nov, 17:00</p>' +
         '<p class="ans">Commission: <b>about 30,000 CZK</b></p><p class="ans">Pets: <b>depends on the pets</b></p></div>';
     }
-    return '<div class="fcard ' + (kind === 'hot' ? 'hot' : '') + '"><h3>Korunni 88</h3><p class="ar">Praha 2 - Vinohrady</p>' +
-      '<p class="mny">Monthly 27,500 CZK</p><p class="mny">Move-in cost 75,500&nbsp;CZK</p>' +
+    return '<div class="fcard ' + (kind === 'hot' ? 'hot' : '') + '"><h3>Ukazkova 12</h3><p class="ar">Praha (sample)</p>' +
+      '<p class="mny">Monthly 27,500 CZK</p><p class="mny">Move-in cost 72,000&nbsp;CZK</p>' +
       '<p class="unk">Commission: unknown</p><p class="unk">Pets: unknown</p></div>';
   }
   function board(where, foot) {
@@ -360,9 +360,9 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
     var inner;
     if (screen === 'incoming') {
       inner = '<p class="kick">Incoming call</p>' +
-        '<div class="lcd"><p class="lcd-top">' + SIG + '<span>DOMOVOY NET</span></p><p class="lcd-text">KORUNNI 88<i class="cur"></i></p></div>' +
+        '<div class="lcd"><p class="lcd-top">' + SIG + '<span>DOMOVOY NET</span></p><p class="lcd-text">UKAZKOVA 12<i class="cur"></i></p></div>' +
         '<div class="av">' + I_HOME + '</div><h3>DOMOVOY AI assistant</h3><p class="sub">calling about a flat</p>' +
-        '<div class="pcard"><p class="addr">Korunni 88</p><p class="sub">Rent 24,000 CZK</p></div><div class="sp"></div>' +
+        '<div class="pcard"><p class="addr">Ukazkova 12</p><p class="sub">Rent 24,000 CZK</p></div><div class="sp"></div>' +
         '<div class="acts"><div class="act"><span class="rnd r">' + I_PHONE + '</span>Decline</div>' +
         '<div class="act"><span class="rnd g">' + I_PHONE + '</span>Accept</div></div>';
     } else if (screen === 'call') {
@@ -379,14 +379,14 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
       inner = '<p class="kick">Call ended</p><div class="badge"></div><h3 class="outcome">Viewing booked</h3>' +
         '<div class="cal"><p class="cal-m">Nov</p><p class="cal-d">16</p><p class="cal-s">Mon 17:00</p></div>' +
         '<div class="sp"></div>' +
-        '<div class="pcard left"><p class="kick">Korunni 88</p><p class="sum">Commission about 30,000 CZK. Pets: depends on the pets.</p></div>';
+        '<div class="pcard left"><p class="kick">Ukazkova 12</p><p class="sum">Commission about 30,000 CZK. Pets: depends on the pets.</p></div>';
     }
     return win('Phone page (stand-in)', '<div class="ph ' + screen + '">' + inner + '</div>', 'mid');
   }
   function calendar() {
     return win('Google Calendar (stand-in)',
       '<div class="gcal"><div class="cal"><p class="cal-m">Nov</p><p class="cal-d">16</p><p class="cal-s">Mon</p></div>' +
-      '<div><h3>Viewing: Korunni 88</h3><p class="wh">Mon 16 Nov, 17:00</p><p class="ar">Praha 2 - Vinohrady</p>' +
+      '<div><h3>Viewing: Ukazkova 12</h3><p class="wh">Mon 16 Nov, 17:00</p><p class="ar">Praha (sample)</p>' +
       '<p class="ar">Inside the free window 17:00-19:00</p></div></div>');
   }
   function notionBooked() {
@@ -409,7 +409,7 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
   }
   function zone(n) {
     var cls = '', body = '';
-    if (n === 1) body = board(0, '<p class="foot"><b>Monthly</b> = rent 24,000 + services 3,500 CZK. Budget cap 30,000 CZK.<br><b>Move-in cost</b> = everything paid to move in: first month 27,500 + deposit 48,000 CZK. Commission not stated, so not included.</p>');
+    if (n === 1) body = board(0, '<p class="foot"><b>Monthly</b> = rent 24,000 + services 3,500 CZK. Budget cap 30,000 CZK.<br><b>Move-in cost</b> = everything paid to move in: first rent 24,000 + deposit 48,000 CZK. Commission not stated, so not included.</p>');
     if (n === 2) body = board(1, '<p class="foot">Vladimir moved one flat to <b>Interested</b>. Only now may the agent make contact.</p>');
     if (n === 3) { cls = 'two'; body = terminal() + phone('incoming'); }
     if (n === 4) { cls = 'two'; body = terminal() + phone('call'); }
