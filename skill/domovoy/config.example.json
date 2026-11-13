@@ -1,4 +1,5 @@
 {
+  "repo_path": "~/domovoy",
   "backend": {
     "module": "scripts/notion.py"
   },
