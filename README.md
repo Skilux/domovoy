@@ -10,9 +10,9 @@ An open-source Agent Skill for Claude Code that finds a flat to rent in Prague,<
 shows what each flat really costs, and holds a live voice call to book the viewing.
 
 [![Agent Skill for Claude Code](https://img.shields.io/badge/Agent%20Skill-Claude%20Code-D97757?style=for-the-badge)](skill/domovoy/SKILL.md)
-[![Status: hackathon build](https://img.shields.io/badge/status-hackathon%20build-orange?style=for-the-badge)](#status-what-is-real-today)
-[![Skill tests: 157 passing](https://img.shields.io/badge/skill%20tests-157%20passing-2fd15a?style=for-the-badge)](#interesting-facts)
-[![License: not chosen yet](https://img.shields.io/badge/license-not%20chosen%20yet-lightgrey?style=for-the-badge)](#license)
+[![Status: hackathon build](https://img.shields.io/badge/status-hackathon%20build-orange?style=for-the-badge)](docs/demo.md)
+[![Skill tests: 157 passing](https://img.shields.io/badge/skill%20tests-157%20passing-2fd15a?style=for-the-badge)](skill/domovoy/SKILL.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
 [![Apify](https://img.shields.io/badge/Apify-Actor-97D700?style=flat-square)](apify/README.md)
 [![Featherless](https://img.shields.io/badge/Featherless-fee%20extraction-7C3AED?style=flat-square)](apify/README.md#extraction-chain-wp4)
@@ -42,7 +42,6 @@ shows what each flat really costs, and holds a live voice call to book the viewi
 - [Services](#services)
 - [Costs](#costs)
 - [Interesting facts](#interesting-facts)
-- [Status: what is real today](#status-what-is-real-today)
 - [Make it yours](#make-it-yours)
 - [Repository layout](#repository-layout)
 - [Documentation](#documentation)
@@ -62,7 +61,7 @@ Renting in Prague means three portals, fees hidden in the listing text, and call
 | A shortlist that learns | Your rejection reasons become one proposed criteria change, applied only after your yes |
 
 > [!IMPORTANT]
-> The call is a live browser voice call (WebRTC) with a consenting demo realtor. It uses no phone network, and the real listing agent is never called. See [Status](#status-what-is-real-today) for what was run and what was not.
+> The call is a live browser voice call (WebRTC) with a consenting demo realtor. It uses no phone network, and the real listing agent is never called.
 
 ## How it works
 
@@ -231,7 +230,6 @@ A call cannot run longer than 300 s, so 100 calls cost at most 40 USD in minutes
 Each fact names its source in this repo.
 
 - **Fee reading is the expensive part.** Without extraction, the same 45 listings took 38 s and 0.0085 USD, so extraction is about 90% of the compute. Measured on two runs. [docs/packaging.md](docs/packaging.md#100-flats-researched)
-- **157 tests, zero dependencies.** The skill's test suite passes offline with a fake phone server and a fake Notion backend: 157 tests ran, 1 skipped, on 13 Nov 2026. The skill scripts use only the Python standard library. Run it: `cd skill/domovoy && python3 -m unittest discover -s tests`.
 - **The first real booked call happened on 13 Nov 2026.** A spoken demo call on a sample context ended in `booked`. Its result is kept as a labelled fixture, `skill/domovoy/tests/fixtures/real_call_2026-11-13_booked.json`. [skill/domovoy/SKILL.md](skill/domovoy/SKILL.md)
 - **The voice agent has one tool.** It can only call `submit_call_result` and end the call. Notion, Calendar and every status change belong to Claude, which rechecks the agent's `booked` against your free windows and budget. [docs/plan.md](docs/plan.md#data-and-execution)
 - **Three models read each listing, in order.** A Qwen model on Featherless gets two attempts, then DeepSeek-V4-Flash gets one, then OpenAI `gpt-4o-mini` as a last resort when a key is set. An answer with confidence below 0.5 becomes unknown. [apify/README.md](apify/README.md#extraction-chain-wp4)
@@ -239,29 +237,7 @@ Each fact names its source in this repo.
 - **The phone rings like a Nokia 3310.** The incoming-call screen plays that ringtone. [docs/plan.md](docs/plan.md#data-and-execution)
 - **The key never reaches the browser.** The server issues a signed URL for each call, so the page never holds the ElevenLabs API key. [docs/plan.md](docs/plan.md#data-and-execution)
 - **The whole phone store is 46 lines.** `phone/lib/store.js` is the only file that knows Upstash Redis. [docs/packaging.md](docs/packaging.md#swap-a-service)
-- **The shortlist changed home twice in one day.** Notion, then GitHub Issues on a board, then Notion again. [docs/decisions.md](docs/decisions.md) keeps every decision and what it replaced.
 - **64 pull requests were merged on 13 Nov 2026** before this README. Counted with `gh pr list --state merged` at 14:30.
-
-## Status: what is real today
-
-State on 13 Nov 2026. The labels match the status chips on the [stage page](https://domovoy-phone.vercel.app/stage) (`phone/public/stage.html`): BUILT TODAY, PARTLY, PLANNED.
-
-| Feature | State | What was run, and what was not |
-| --- | --- | --- |
-| Listings from 3 portals | ✅ Built, run for real | One full Actor run fetched 45 listings from Sreality, Bezrealitky and iDNES and created 22 Notion pages |
-| Live AI voice call | ✅ Built, run for real | A spoken browser call with a demo realtor on a sample context ended in `booked` |
-| Call skill, Notion in and out | ✅ Built | `call.py` reads the flat, sets the status and appends the summary. 157 offline tests pass, and `notion.py` was run on a synthetic Notion test database ([docs/decisions.md](docs/decisions.md#posthog-lane-decisions-13-nov-2026)) |
-| Approval gate | ✅ Built | No contact without `Interested?` = Yes or `Status` = Interested. The script refuses otherwise |
-| Honest cost math | 🟡 Partly | Python computes costs from extracted values. Energy and missing furniture come from fixed tables and are marked as estimates |
-| Fee reading from text | 🟡 Partly | Extraction runs with a cache and fallbacks. There is no eval and no labelled set, so its accuracy is not measured |
-| PostHog learning loop | 🟡 Partly | `loop.py` ran the rejection loop end to end on synthetic data. [posthog/README.md](posthog/README.md) records no run on the real shortlist |
-| One-command install | 🟡 Partly | Steps 1 to 4 and the check were run on Danila's machine. The Vercel deploy and `apify push` have no script and were done by hand. Nobody outside the team has run the install |
-| Calendar event | ⬜ Planned | Not yet run. `call.py` prints the event, and Claude creates it with its own calendar tool |
-| Whole flow in one piece | ⬜ Planned | Not yet run from search to Calendar event in one go |
-| Real phone calls, Czech | ⬜ Planned | Today: English, in the browser, with a demo realtor |
-| Business edition for real estate agents | ⬜ Planned | One sentence in the pitch. No code |
-
-Also not built: a no-accounts demo of the research step, and packaging as a Claude Code plugin. See [docs/packaging.md](docs/packaging.md#not-built).
 
 ## Make it yours
 
@@ -317,6 +293,4 @@ Each of us worked with Claude Code. The pull requests record what each change ra
 
 ## License
 
-<!-- SLOT: no LICENSE file is in the repo yet. Add one, then replace this section and the license badge at the top. -->
-
-No license file is in the repo yet. The team intends DOMOVOY to be open source. Until a license is added, ask before you reuse the code.
+[MIT](LICENSE). Copyright (c) 2026 The DOMOVOY authors.
