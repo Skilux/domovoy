@@ -3,7 +3,9 @@
 
   call.py check  --windows W [--page ID] [--listing F]   build and validate only, contacts nobody
   call.py run    --windows W [--page ID] [--listing F]   post the call, poll, recheck, update the shortlist
-  call.py resume --page ID                               fetch the result again for a call already posted
+  call.py resume --page ID [--windows W]                 fetch the result again for a call already posted;
+                                                         posts nothing. W is needed only when the call was
+                                                         not posted from this machine (flat must be Calling)
 
 W and F are a JSON file path, "-" for stdin, or inline JSON. Output is one JSON object on stdout.
 Exit codes: 0 handled, 2 refused (nothing was contacted), 1 error.
@@ -361,6 +363,10 @@ def apply_result(cfg, backend, page, context, result):
     else:
         booked, reason = recheck(context, result)
         out["conversation_id"] = result.get("conversation_id")
+        out["summary"] = clean(result.get("summary") or "")
+        out["answers"] = [{"question": clean(a.get("question"), 200), "answer": clean(a.get("answer"), 300)}
+                          for a in result.get("answers") or [] if isinstance(a, dict)]
+        out["new_costs"] = [c for c in result.get("new_costs") or [] if isinstance(c, dict)]
     status = cfg["statuses"]["booked" if booked else "not_booked"]
     backend.append(cfg, page[PAGE_ID], comment_body(cfg, context, result, booked, reason))
     if result is not None:
@@ -428,14 +434,24 @@ def cmd_start(cfg, backend, args, post):
 
 
 def cmd_resume(cfg, backend, args):
-    if args.page is None or not os.path.exists(state_path(args.page)):
-        raise Refusal("resume needs --page ID for a call posted from this machine")
-    with open(state_path(args.page)) as f:
-        saved = json.load(f)
+    calling = cfg["statuses"]["calling"]
+    if args.page is not None and os.path.exists(state_path(args.page)):
+        with open(state_path(args.page)) as f:
+            saved = json.load(f)
+    elif args.page is not None and args.windows:
+        page = next((p for p in backend.list_pages(cfg, calling) if p[PAGE_ID] == args.page), None)
+        if page is None:
+            raise Refusal("page %s is not in %s; nothing was changed" % (args.page, calling))
+        saved = {"context": build_context(cfg, page, read_json_arg(args.windows), args.listing),
+                 "page": {PAGE_ID: page[PAGE_ID], "url": page.get("url")}}
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(state_path(args.page), "w") as f:
+            json.dump(saved, f, indent=2)
+    else:
+        raise Refusal("resume needs --page ID, and --windows W when the call was not posted from this machine")
     result = fetch_result(cfg, saved["context"]["property_id"])
     if result is None:
         raise Refusal("the phone server has no result for %s yet" % saved["context"]["property_id"])
-    calling = cfg["statuses"]["calling"]
     if marker_id(result.get("conversation_id")) not in seen_conversations():
         if not any(p[PAGE_ID] == args.page for p in backend.list_pages(cfg, calling)):
             raise Refusal("page %s is not in %s; nothing was changed" % (args.page, calling))

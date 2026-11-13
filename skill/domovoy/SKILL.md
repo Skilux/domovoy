@@ -49,11 +49,16 @@ Trigger: the user moved a flat to Interested in Notion and says something like "
    - `"create_event": true`: create one event in calendar `calendar_id` with exactly the `event.title`, `event.start`, `event.end` and `event.description` printed. Then tell the user the time, the new status and the page link (`page_url`).
    - `"booked": false`: create no event. Tell the user the `reason` and the page link.
    - `"already_handled": true`: this result was processed before. Create nothing and say so.
+4. **Tell the user what the call found.** After any result, read `answers` and `new_costs` from the output and say them in one or two lines.
+   - The voice agent puts the reply to an unknown field (commission, deposit, move-in date, pets) in `answers` as free text, not in `new_costs`. `call.py` appends every answer to the Notion page. It does not turn free text into numbers and does not change the cost properties.
+   - If an answer states a one-time cost, for example a commission of "about thirty thousand CZK", say that upfront cash rises by about that amount on top of the listed `upfront`, and that the number is the realtor's spoken estimate. Do not write a computed total into Notion.
+   - The budget recheck is on the monthly total only: `total_monthly` plus `new_costs` marked recurring. A one-time fee, in `answers` or in `new_costs`, never turns a booked viewing into Not booked. A monthly cost that pushes the total over `budget_cap` does.
 
 Other forms:
 
 - `python3 scripts/call.py check --windows '<JSON>' [--page ID]` builds and validates the context and contacts nobody. Use it to preview.
-- `python3 scripts/call.py resume --page ID` fetches the result again for a call this machine already posted, for example after a crash. It is safe to repeat.
+- `python3 scripts/call.py resume --page ID` fetches the result again for a call this machine already posted, for example after a crash. It posts nothing and is safe to repeat. For a call posted from another machine, add `--windows '<JSON>'` with the same windows; the flat must still be in Calling.
+- `tests/fixtures/real_call_2026-11-13_booked.json` is a labeled real result from a spoken demo call on a sample context. If the voice call fails on stage, show it as a prior result and say so.
 - `--listing <file or JSON>` gives the listing fields as one JSON object (named as in `call_context`) when the backend cannot supply them.
 
 Warnings in the output (`total_monthly` unknown or over the cap) mean the recheck will end in Not booked. Tell the user before they take the call.

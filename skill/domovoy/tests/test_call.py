@@ -88,6 +88,22 @@ class CallTest(unittest.TestCase):
             self.assertNotIn(leaked, body)
 
 
+    def test_real_booked_fixture_passes_and_one_time_fee_keeps_it_booked(self):
+        with open(os.path.join(HERE, "fixtures", "real_call_2026-11-13_booked.json")) as f:
+            real = json.load(f)
+        context, res = real["context"], real["result"]
+        self.assertEqual(call.validate(context, call.load_schema("call_context")), [])
+        self.assertEqual(call.validate(res, call.load_schema("submit_call_result")), [])
+        self.assertEqual(call.recheck(context, res), (True, None))
+        self.assertEqual(call.monthly_after_call(context, res), 27500)
+        fee = dict(res, new_costs=[{"label": "commission", "amount": 30000, "recurring": False}])
+        self.assertEqual(call.recheck(context, fee), (True, None))
+        monthly = dict(res, new_costs=[{"label": "fee", "amount": 30000, "recurring": True}])
+        self.assertFalse(call.recheck(context, monthly)[0])
+        body = call.comment_body(CFG, context, res, True, None)
+        self.assertIn("Asked: commission Answer: About thirty thousand CZK", body)
+        self.assertIn("Asked: Are pets allowed? Answer: Depends on the pets", body)
+
 
 if __name__ == "__main__":
     unittest.main()
