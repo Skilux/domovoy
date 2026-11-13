@@ -1,0 +1,47 @@
+{
+  "enquiries": [],
+  "_label": "SYNTHETIC example. Not a real agency, person, address or listing.",
+  "listings": {
+    "syn-flat-001": {
+      "address": "Synthetic Street 1, Testville",
+      "url": "https://example.com/synthetic-agency/syn-flat-001",
+      "collected_at": "2026-11-13T12:00:00+01:00",
+      "rent": 24000,
+      "total_monthly": 27500,
+      "upfront": 99500,
+      "kauce": 48000,
+      "commission": 24000,
+      "move_in_date": "2026-12-01",
+      "lease_type": "najem",
+      "missing_furniture_cost": null,
+      "facts": {
+        "disposition": "2+kk",
+        "area_m2": 54,
+        "floor": 3,
+        "elevator": "yes",
+        "furnished": "yes",
+        "services_included": "water, heating, building fees; electricity is paid by the tenant"
+      }
+    },
+    "syn-flat-002": {
+      "address": "Example Square 7, Testville",
+      "url": "https://example.com/synthetic-agency/syn-flat-002",
+      "collected_at": "2026-11-13T12:00:00+01:00",
+      "rent": 17500,
+      "total_monthly": 20500,
+      "upfront": 55500,
+      "kauce": 35000,
+      "commission": 0,
+      "move_in_date": null,
+      "lease_type": "najem",
+      "missing_furniture_cost": null,
+      "facts": {
+        "disposition": "1+kk",
+        "area_m2": 31,
+        "floor": 1,
+        "elevator": "no",
+        "furnished": "partly"
+      }
+    }
+  }
+}

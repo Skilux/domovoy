@@ -1,0 +1,94 @@
+{
+  "_label": "SYNTHETIC example. Not a real agency, person, address or listing.",
+  "agency": {
+    "name": "Synthetic Homes Example",
+    "slug": "synthetic-agency",
+    "assistant_name": "Mila",
+    "viewing_agent_first_name": "Alex",
+    "offer": "Long-term rentals of furnished 1+kk to 3+kk flats in Testville. No short stays and no sales."
+  },
+  "voice": {
+    "language": "en",
+    "language_name": "English",
+    "tone": "Warm, brief and professional. No jokes about money or about the caller.",
+    "first_message": "Hello {{realtor_name}}, this is Mila, an AI assistant of Synthetic Homes Example. You asked about the flat at {{address}}. Do you have two minutes?",
+    "call_seconds": 120,
+    "max_call_seconds": 300
+  },
+  "viewings": {
+    "calendar_id": "primary",
+    "timezone": "Europe/Prague",
+    "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "from": "09:00",
+    "to": "18:00",
+    "days_ahead": 7,
+    "window_minutes": 60,
+    "viewing_minutes": 30,
+    "max_windows": 5,
+    "event_title": "Viewing: {address}"
+  },
+  "qualifying_questions": [
+    "When do you want to move in?",
+    "How many people will live in the flat?",
+    "Do you have pets?",
+    "How long do you plan to stay?"
+  ],
+  "rules": [
+    "The lease is for at least 12 months.",
+    "At most 3 people may live in a 2+kk flat.",
+    "Dogs are not allowed. Cats are allowed."
+  ],
+  "may_promise": [
+    "A viewing at an agreed time inside the free windows.",
+    "That Alex will send a confirmation after the call."
+  ],
+  "must_not_promise": [
+    "Say how many other people are interested in the flat."
+  ],
+  "handoff": "Say that Alex will call back on a working day between 09:00 and 18:00.",
+  "listings": [
+    {
+      "id": "syn-flat-001",
+      "address": "Synthetic Street 1, Testville",
+      "url": "https://example.com/synthetic-agency/syn-flat-001",
+      "collected_at": "2026-11-13T12:00:00+01:00",
+      "rent": 24000,
+      "total_monthly": 27500,
+      "upfront": 99500,
+      "kauce": 48000,
+      "commission": 24000,
+      "move_in_date": "2026-12-01",
+      "lease_type": "najem",
+      "missing_furniture_cost": null,
+      "facts": {
+        "disposition": "2+kk",
+        "area_m2": 54,
+        "floor": 3,
+        "elevator": "yes",
+        "furnished": "yes",
+        "services_included": "water, heating, building fees; electricity is paid by the tenant"
+      }
+    },
+    {
+      "id": "syn-flat-002",
+      "address": "Example Square 7, Testville",
+      "url": "https://example.com/synthetic-agency/syn-flat-002",
+      "collected_at": "2026-11-13T12:00:00+01:00",
+      "rent": 17500,
+      "total_monthly": 20500,
+      "upfront": 55500,
+      "kauce": 35000,
+      "commission": 0,
+      "move_in_date": null,
+      "lease_type": "najem",
+      "missing_furniture_cost": null,
+      "facts": {
+        "disposition": "1+kk",
+        "area_m2": 31,
+        "floor": 1,
+        "elevator": "no",
+        "furnished": "partly"
+      }
+    }
+  ]
+}

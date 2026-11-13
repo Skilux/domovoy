@@ -1,0 +1,170 @@
+{
+  "agent": {
+    "name": "Synthetic Homes Example viewing desk",
+    "tags": [
+      "domovoy-business",
+      "synthetic-agency"
+    ],
+    "conversation_config": {
+      "agent": {
+        "first_message": "Hello {{realtor_name}}, this is Mila, an AI assistant of Synthetic Homes Example. You asked about the flat at {{address}}. Do you have two minutes?",
+        "language": "en",
+        "dynamic_variables": {
+          "dynamic_variable_placeholders": {
+            "user_name": "Alex",
+            "realtor_name": "Sam",
+            "address": "Synthetic Street 1, Testville",
+            "unknowns": "1. When do you want to move in?\n2. How many people will live in the flat?\n3. Do you have pets?\n4. How long do you plan to stay?",
+            "available_windows": "1. Monday 16 November, 10:00 to 11:00 (2026-11-16T10:00:00+01:00 to 2026-11-16T11:00:00+01:00)",
+            "context_text": "address: Synthetic Street 1, Testville\nrent: 24000\ntotal_monthly: 27500"
+          }
+        },
+        "prompt": {
+          "llm": "gemini-3.5-flash",
+          "temperature": 0.4,
+          "timezone": "Europe/Prague",
+          "built_in_tools": {
+            "end_call": {
+              "type": "system",
+              "name": "end_call",
+              "description": "",
+              "params": {
+                "system_tool_type": "end_call"
+              }
+            }
+          }
+        }
+      },
+      "tts": {
+        "model_id": "eleven_v4_turbo",
+        "voice_id": "UgBBYS2sOqTuMpoF3BR0"
+      },
+      "turn": {
+        "turn_timeout": 7,
+        "turn_eagerness": "normal",
+        "speculative_turn": true
+      },
+      "conversation": {
+        "max_duration_seconds": 300,
+        "client_events": [
+          "audio",
+          "interruption",
+          "user_transcript",
+          "agent_response",
+          "agent_response_correction",
+          "client_tool_call"
+        ]
+      }
+    },
+    "platform_settings": {
+      "auth": {
+        "enable_auth": true,
+        "allowlist": []
+      }
+    }
+  },
+  "tools": [
+    {
+      "type": "client",
+      "name": "submit_call_result",
+      "description": "Save the final result of the call. Call exactly once, after the caller confirmed a viewing time or once it is clear no viewing will be booked, and before saying goodbye.",
+      "expects_response": true,
+      "response_timeout_secs": 20,
+      "parameters": {
+        "type": "object",
+        "required": [
+          "outcome",
+          "answers",
+          "new_costs",
+          "summary"
+        ],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "booked",
+              "not_booked"
+            ],
+            "description": "booked only if the caller explicitly said yes when you repeated back a viewing time fully inside a free window. Otherwise not_booked: no agreement, a time outside the windows, maybe, a call back, the caller has to check, or the call ending early."
+          },
+          "viewing_start": {
+            "type": "string",
+            "description": "Agreed viewing start as ISO 8601 with the Europe/Prague offset, in the same form as the free window times, for example 2026-11-14T10:30:00+01:00. Set only when outcome is booked. Leave out when not booked."
+          },
+          "answers": {
+            "type": "array",
+            "description": "One item per open question asked during the call. Empty list when none were asked.",
+            "items": {
+              "type": "object",
+              "description": "A question and the caller's answer.",
+              "required": [
+                "question",
+                "answer"
+              ],
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "description": "The open question, as listed in the prompt."
+                },
+                "answer": {
+                  "type": "string",
+                  "description": "What the caller said, in a few words. Use unknown when they did not know or did not answer."
+                }
+              }
+            }
+          },
+          "new_costs": {
+            "type": "array",
+            "description": "Costs the caller mentioned that are not in the fact sheet. Leave out a cost with no stated amount and mention it in the summary instead. Empty list when there are none.",
+            "items": {
+              "type": "object",
+              "description": "One cost with a stated amount.",
+              "required": [
+                "label",
+                "amount",
+                "recurring"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "description": "Short name of the cost, for example parking or internet."
+                },
+                "amount": {
+                  "type": "integer",
+                  "description": "Amount in whole CZK."
+                },
+                "recurring": {
+                  "type": "boolean",
+                  "description": "true when the cost repeats monthly, false when it is paid once."
+                }
+              }
+            }
+          },
+          "summary": {
+            "type": "string",
+            "description": "One or two sentences on what happened in the call, with the reason when not booked."
+          }
+        }
+      }
+    },
+    {
+      "type": "client",
+      "name": "mark_question_asked",
+      "description": "Tick an open question on the screen. Call right after you asked that open question aloud, once per question. Do not mention it and do not wait for a result.",
+      "expects_response": false,
+      "pre_tool_speech": "off",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "number"
+        ],
+        "properties": {
+          "number": {
+            "type": "integer",
+            "description": "The 1-based number of the open question in the numbered list of open questions."
+          }
+        }
+      }
+    }
+  ]
+}
