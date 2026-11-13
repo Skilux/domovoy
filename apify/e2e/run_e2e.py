@@ -56,6 +56,7 @@ DEMO_TITLE = "DOMOVOY shortlist"
 PROFILE_ID = "e2e-vinohrady"
 MAX_PLATFORM_RUNS = 6
 RUN_BUDGET_SEC = 600
+REFETCH_GAP_SEC = 1.5
 PHONE_PORT = 4230
 NOTION = "https://api.notion.com/v1"
 APIFY = "https://api.apify.com/v2"
@@ -584,7 +585,7 @@ class Round:
                 else:
                     verified += 1
                 found += checks.check_quotes(item, texts, run_id)
-            self.notes.append("L3.quotes_verified: %d items re-fetched, %d could not be re-fetched" % (verified, skipped))
+            self.notes.append("L3.quotes_verified: %d items re-fetched (every source), %d skipped (a source could not be fetched)" % (verified, skipped))
         if self.args.offline_items:
             for cid in cids[7:]:
                 self.skip(cid, "offline")
@@ -787,6 +788,9 @@ class Round:
             return "BLOCKERS"
         if self.incomplete:
             return "INCOMPLETE (%s)" % "; ".join(self.incomplete)
+        majors = sum(1 for f in self.findings if f["severity"] == "major")
+        if majors:
+            return "MAJORS (%d)" % majors  # never GREEN with a major recorded
         return "GREEN" if self.args.only is None and self.args.layers is None else "PASS (partial: %s)" % (
             self.args.only or self.args.layers)
 
@@ -827,18 +831,32 @@ class Round:
 
 
 def refetch_texts(item: dict) -> list[str] | None:
-    """The primary listing's text as the portal serves it now: every string of the Sreality API detail, or the
-    visible text plus every JSON string of the HTML page (Bezrealitky, iDNES). None when it cannot be fetched."""
-    primary = next((s for s in item.get("sources") or [] if s.get("url") == item.get("url")), None)
-    if primary is None:
+    """The text of every source listing of the flat as the portals serve it now. The extractor reads a composite
+    primary whose missing fields (price_note, description, ...) are filled from the other sources (dedup _primary,
+    FILLABLE), so a quote can come from any of them. None unless every source could be fetched: a missing source
+    would turn its quotes into false findings."""
+    sources = item.get("sources") or []
+    if not sources:
         return None
-    time.sleep(1.5)  # polite: one request per 1.5 s
+    texts: list[str] = []
+    for source in sources:
+        fetched = fetch_source_texts(source)
+        if fetched is None:
+            return None
+        texts += fetched
+    return texts
+
+
+def fetch_source_texts(source: dict) -> list[str] | None:
+    """One listing: every string of the Sreality API detail, or the visible text plus every JSON string of the HTML
+    page (Bezrealitky, iDNES). None when it cannot be fetched."""
+    time.sleep(REFETCH_GAP_SEC)  # polite: one request per 1.5 s
     try:
-        if primary["portal"] == "sreality":
-            r = httpx.get("https://www.sreality.cz/api/v1/estates/%s" % primary["source_id"], timeout=30,
+        if source.get("portal") == "sreality":
+            r = httpx.get("https://www.sreality.cz/api/v1/estates/%s" % source["source_id"], timeout=30,
                           headers={"User-Agent": "DOMOVOY-actor/0.1", "Accept": "application/json"})
             return list(json_strings(r.json())) if r.status_code == 200 else None
-        r = httpx.get(primary["url"], timeout=30, headers={"Accept": "text/html"}, follow_redirects=True)
+        r = httpx.get(source["url"], timeout=30, headers={"Accept": "text/html"}, follow_redirects=True)
         if r.status_code != 200:
             return None
         from bs4 import BeautifulSoup
@@ -850,7 +868,7 @@ def refetch_texts(item: dict) -> list[str] | None:
             except ValueError:
                 pass
         return texts
-    except (httpx.HTTPError, ValueError):
+    except (httpx.HTTPError, ValueError, KeyError):
         return None
 
 

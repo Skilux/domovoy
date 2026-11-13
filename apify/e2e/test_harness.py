@@ -226,3 +226,41 @@ def test_round_without_candidates_is_incomplete_not_green(harness):
     rnd.l5()
     assert rnd.status().startswith("INCOMPLETE")
     rnd.config.close()
+
+
+# Round-1 harness bugs
+
+
+def test_quotes_are_checked_against_every_source_of_the_flat(monkeypatch):
+    """A flat whose quotes come from two portals (the composite primary takes price_note from iDNES) passes."""
+    pages = {"https://bezrealitky.example/936": "<html><body>Pets allowed. Furnished.</body></html>",
+             "https://idnes.example/6af": "<html><body>Kauce 40 000 Kč, provize RK.</body></html>"}
+
+    class Reply:
+        def __init__(self, text):
+            self.status_code, self.text = (200, text) if text else (404, "")
+
+    monkeypatch.setattr(run_e2e, "REFETCH_GAP_SEC", 0)
+    monkeypatch.setattr(run_e2e.httpx, "get", lambda url, **kw: Reply(pages.get(url)))
+    item = {"property_id": "p-AAAAAAAAAA", "url": "https://bezrealitky.example/936",
+            "sources": [{"portal": "bezrealitky", "source_id": "936", "url": "https://bezrealitky.example/936"},
+                        {"portal": "idnes", "source_id": "6af", "url": "https://idnes.example/6af"}],
+            "evidence": [{"field": "pets_allowed", "quote": "Pets allowed.", "confidence": 0.9},
+                         {"field": "kauce", "quote": "Kauce 40 000 Kč", "confidence": 0.9}]}
+    texts = run_e2e.refetch_texts(item)
+    assert checks.check_quotes(item, texts, "r") == []
+    assert [f["severity"] for f in checks.check_quotes(item, texts[:1], "r")] == ["major"]  # primary text alone
+    item["sources"][1]["url"] = "https://idnes.example/gone"
+    assert run_e2e.refetch_texts(item) is None  # one source missing: skipped, never a false finding
+
+
+def test_status_is_never_green_with_a_major(harness):
+    rnd = run_e2e.Round(harness())
+    assert rnd.status() == "GREEN"
+    rnd.findings.append({"severity": "minor"})
+    assert rnd.status() == "GREEN"
+    rnd.findings.append({"severity": "major"})
+    assert rnd.status() == "MAJORS (1)"
+    rnd.findings.append({"severity": "blocker"})
+    assert rnd.status() == "BLOCKERS"
+    rnd.config.close()

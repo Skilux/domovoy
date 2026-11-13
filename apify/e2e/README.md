@@ -13,7 +13,7 @@ no real call happens. The tester owns this folder and nothing else: a failing ch
 
 Exit 0: green (or a passing partial run). 1: at least one blocker. 2: refused (safety guard). 3: harness error.
 4: incomplete, e.g. L4 or L5 found no candidate pages; an incomplete round is never green. A report with a
-**Status** line is written in every case.
+**Status** line is written in every case: BLOCKERS, INCOMPLETE, MAJORS (n) or GREEN (no blocker and no major).
 
 `--only` takes check ids or layers. L3 checks reuse the round's recorded datasets from L1/L2; L4 always makes a new
 platform run. Offline tests of the checks and the safety rails: `cd apify && .venv/bin/python -m pytest -q --rootdir=e2e e2e/`.
@@ -46,7 +46,7 @@ platform run. Offline tests of the checks and the safety rails: `cd apify && .ve
 | L0 | `pytest -m "not live"` in `apify/`, `unittest discover` in `skill/domovoy/` | `L0.apify_pytest`, `L0.skill_unittest` |
 | L1 | local `apify run`, e2e Notion target, `includeUnchanged` | `L1.exit_zero`, `L1.summary_valid`, `L1.sources_ok`, `L1.time_budget` (600 s), `L1.notion_errors` |
 | L2 | `search.py run --include-unchanged` with the e2e config (platform run 1 of the round) | `L2.run_succeeded`, `L2.summary_readable`, `L2.summary_valid`, `L2.sources_ok`, `L2.time_budget`, `L2.notion_errors` |
-| L3 | L1 + L2 datasets, the e2e database | `L3.dataset_schema`, `L3.flatitem_schema`, `L3.money_int`, `L3.time_offset`, `L3.url_collected`, `L3.quotes_verified` (re-fetches up to 15 listings, 1.5 s apart), `L3.dedup_missed`, `L3.one_page_per_property`, `L3.new_page_shortlisted`, `L3.page_body`, `L3.item_has_page`, `L3.page_matches_item`, `L3.summary_counts`, `L3.body_no_contacts` |
+| L3 | L1 + L2 datasets, the e2e database | `L3.dataset_schema`, `L3.flatitem_schema`, `L3.money_int`, `L3.time_offset`, `L3.url_collected`, `L3.quotes_verified` (re-fetches every source of up to 15 flats, 1.5 s apart: the extracted text is the merged primary, whose missing fields come from the other portals; a flat with an unreachable source is skipped), `L3.dedup_missed`, `L3.one_page_per_property`, `L3.new_page_shortlisted`, `L3.page_body`, `L3.item_has_page`, `L3.page_matches_item`, `L3.summary_counts`, `L3.body_no_contacts` |
 | L4 | edit one page (Status Not interested, Reason, a body marker), then `search.py run` again (platform run 2) | `L2b.run_succeeded`, `L4.no_new_pages`, `L4.unchanged_reported`, `L4.edits_kept`, `L4.property_ids_stable` |
 | L5 | two Shortlisted pages: one set to Status Interested, one to Interested? = Yes; `call.py check`, then `call.py run` against the fake phone server with a synthetic `not_booked` result | `L5.context_schema`, `L5.context_matches_page`, `L5.budget_cap`, `L5.interested_trigger`, `L5.fake_phone_run` |
 | L6 | the round's reports and logs, `git diff origin/main`, test fixtures | `L6.no_secrets`, `L6.no_contacts_reports`, `L6.no_contacts_repo`, `L6.fixture_scrub` |
