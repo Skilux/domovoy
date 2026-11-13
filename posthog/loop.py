@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """DOMOVOY self-improvement loop on PostHog's free plan. Standard library only.
 
-  loop.py sync                      shortlist -> PostHog events (shortlisted, rejected, interested), each sent once
+  loop.py sync                      shortlist -> PostHog events (shortlisted, rejected, interested, filtered), each sent once
   loop.py report                    wait until PostHog shows what sync sent, then read today's rejections,
                                     earlier decisions and the scout instructions from PostHog
   loop.py propose --key K --title T --change JSON --ids a,b,c
                                     file the report: an inactive feature flag that holds the change, and a notebook
   loop.py decide --key K --yes|--no [--real]
                                     record the human answer; on yes switch the flag on and re-filter the shortlist
-  loop.py measure [--key K]         after a later search: compare shown and rejected flats before and after each approved
-                                    change, write the result into its notebook and into the agent's memory
+  loop.py measure [--key K]         after a later search: for each approved change, count the flats that break its rule
+                                    and still reach the renter, before and after; write the result into its notebook
+                                    and into the agent's memory
   loop.py apply [--real]            re-filter the shortlist by every approved change (safe to repeat)
   loop.py overrides                 print the approved requirement changes, for search.py to merge into the profile
 
@@ -143,11 +144,44 @@ def describe(name, value):
     }[name]
 
 
+RULE_FIELD = {"elevator": "elevator", "furnished": "furnished", "min_floor": "floor", "max_total_monthly": "total_monthly",
+              "max_upfront": "upfront", "max_commission": "commission", "max_metro_m": "metro_m"}
+COLUMN = {"floor": "flat_floor"}
+
+
+def number_sql(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("a numeric requirement is needed, got %r" % (value,))
+    return "%s" % value
+
+
+def breaks_sql(change):
+    """HogQL for "the flat breaks the rule": the same tests as fails(), over the per-flat columns of measure_sql.
+    A null value never breaks a rule, so unknown never fails here either."""
+    tests = []
+    if change.get("elevator") == "required":
+        tests.append("(isNotNull(elevator) and elevator = 'No')")
+    if change.get("furnished") == "required":
+        tests.append("(isNotNull(furnished) and furnished = 'No')")
+    if change.get("min_floor") is not None:
+        tests.append("(isNotNull(flat_floor) and toFloat(flat_floor) < %s)" % number_sql(change["min_floor"]))
+    for name, field in (("max_total_monthly", "total_monthly"), ("max_upfront", "upfront"),
+                        ("max_commission", "commission"), ("max_metro_m", "metro_m")):
+        if change.get(name) is not None:
+            tests.append("(isNotNull(%s) and toFloat(%s) > %s)" % (field, field, number_sql(change[name])))
+    return " or ".join(tests) or "false"
+
+
 def rejected_by_renter(flat):
     """The renter's own no: Status = Not interested, or "Interested?" = No, each with a typed Reason."""
     reason = flat.get("reason") or ""
     said_no = flat["status"] == "Not interested" or flat.get("interested") == "No"
     return said_no and bool(reason) and not reason.startswith(FILTERED)
+
+
+def filtered_by_agent(flat):
+    """Moved to Not interested by apply or decide --yes, not by the renter."""
+    return flat["status"] == "Not interested" and (flat.get("reason") or "").startswith(FILTERED)
 
 
 def wanted_by_renter(flat):
@@ -177,13 +211,15 @@ def cmd_sync(args):
         props = dict(base_props(args, flags), property_id=pid, portal=flat["portal"], elevator=flat["elevator"],
                      floor=flat["floor"], total_monthly=flat["total_monthly"], upfront=flat["upfront"],
                      furnished=flat.get("furnished"), commission=flat.get("commission"), metro_m=flat.get("metro_m"))
-        events = [("listing_shortlisted", {})]
+        events = [("listing_shortlisted", {}, "")]
         if rejected_by_renter(flat):
-            events.append(("listing_rejected", {"reason": flat["reason"]}))
+            events.append(("listing_rejected", {"reason": flat["reason"]}, flat["reason"]))
         if wanted_by_renter(flat):
-            events.append(("listing_interested", {}))
-        for event, extra in events:
-            mark = "%s:%s:%s:%s" % (args.dataset, event, pid, extra.get("reason", ""))
+            events.append(("listing_interested", {}, ""))
+        if filtered_by_agent(flat):
+            events.append(("listing_filtered", {"reason": flat["reason"]}, ""))
+        for event, extra, reason_mark in events:
+            mark = "%s:%s:%s:%s" % (args.dataset, event, pid, reason_mark)
             if state.get(mark):
                 continue
             capture(event, renter(), dict(props, **extra))
@@ -243,16 +279,24 @@ NOTHING_YET = "Nothing yet. This part fills in by itself after the answer."
 RESULT = "**Result:** "
 
 
-def measure_sql(ds, base_version, pretty=False):
-    """Flats shown and rejected by the renter, before and after the change that follows rules version base_version."""
-    names = ("`When`", "`Flats shown`", "`Rejected by the renter`", "`Rejection rate`") if pretty else ("period", "shown", "rejected", "rate")
+def measure_sql(ds, base_version, change, pretty=False):
+    """One row per period: flats shown, flats that break the change's rule, and those that still reach the renter.
+    Before the change every breaking flat reached the renter. After it, a breaking flat reached the renter unless the
+    agent filtered it out. A flat's period comes from the smallest criteria_version on its listing_shortlisted events."""
+    names = ("`When`", "`Flats shown`", "`Break the rule`", "`Reached the renter anyway`") if pretty else ("period", "shown", "breaking", "reached")
+    fields = sorted({RULE_FIELD[key] for key in change if key in RULE_FIELD})
+    columns = "".join(", argMax(properties.%s, timestamp) as %s" % (field, COLUMN.get(field, field)) for field in fields)
+    flats = (
+        "select if(min(toInt(properties.criteria_version)) <= %d, 'Before this change', 'After this change') as period, "
+        "properties.property_id in (select properties.property_id from events where event = 'listing_filtered' "
+        "and properties.dataset = '%s') as filtered%s "
+        "from events where event = 'listing_shortlisted' and properties.dataset = '%s' "
+        "group by properties.property_id" % (base_version, ds, columns, ds))
     return (
-        "select if(toInt(properties.criteria_version) <= %d, 'Before this change', 'After this change') as %s, "
-        "count(distinct if(event = 'listing_shortlisted', properties.property_id, null)) as %s, "
-        "count(distinct if(event = 'listing_rejected', properties.property_id, null)) as %s, "
-        "concat(toString(round(100 * %s / %s)), ' %%') as %s "
-        "from events where event in ('listing_shortlisted', 'listing_rejected') and properties.dataset = '%s' "
-        "group by 1 order by 1 desc" % (base_version, names[0], names[1], names[2], names[2], names[1], names[3], ds))
+        "select period as %s, count() as %s, countIf(%s) as %s, "
+        "countIf((%s) and (period = 'Before this change' or not filtered)) as %s "
+        "from (%s) group by 1 order by 1 desc" % (names[0], names[1], breaks_sql(change), names[2],
+                                                 breaks_sql(change), names[3], flats))
 
 
 def edit_notebook(short_id, replace):
@@ -294,6 +338,10 @@ def cmd_propose(args):
     unknown_names = sorted(set(change) - set(SUPPORTED))
     if unknown_names:
         return out({"refused": True, "reason": "unsupported change %s; supported: %s" % (unknown_names, ", ".join(SUPPORTED))}, 2)
+    try:
+        breaks_sql(change)
+    except ValueError as e:
+        return out({"refused": True, "reason": str(e)}, 2)
     flats = shortlist.list_flats()
     would_remove = [f["property_id"] for f in flats if open_for_review(f) and fails(f, change)]
     base_version = sum(1 for f in criteria_flags(args.dataset) if f["active"])
@@ -342,8 +390,8 @@ def cmd_propose(args):
         table = api("POST", "insights/", {
             "name": "DOMOVOY before and after: %s (%s)" % (args.title, ds), "saved": True, "tags": ["domovoy"],
             "query": {"kind": "DataVisualizationNode", "display": "ActionsTable",
-                      "source": {"kind": "HogQLQuery", "query": measure_sql(ds, base_version, pretty=True)}}})
-        cell("saved_insight", insight_short_id=table["short_id"], title="Flats shown and rejected, before and after this change")
+                      "source": {"kind": "HogQLQuery", "query": measure_sql(ds, base_version, change, pretty=True)}}})
+        cell("saved_insight", insight_short_id=table["short_id"], title="Flats that break this rule, before and after")
         cell("markdown", markdown="---\n\nWritten by the DOMOVOY agent from PostHog events. Its instructions and memory: skill `%s`. "
                                   "The switch: feature flag `%s`." % (SCOUT_SKILL, flag_key))
         api("PATCH", "feature_flags/%s/" % flag["id"], {"filters": {
@@ -444,9 +492,30 @@ def cmd_decide(args):
     return out(result)
 
 
+def share(row):
+    """Percent of the shown flats that broke the rule and still reached the renter."""
+    return round(100.0 * row.get("reached", 0) / row["shown"]) if row.get("shown") else 0
+
+
+def verdict(before, after):
+    """Did the approved change help? Compares the share of shown flats that break its rule and still reach the renter.
+    Returns (helped, text). helped is None when no flat was shown after the change yet."""
+    if not after.get("shown"):
+        return None, "not measurable yet: no flat was shown after the change"
+    small = " Small sample: %d flats so far." % after["shown"] if after["shown"] < 10 else ""
+    if not before.get("breaking"):
+        return False, "no effect: no flat broke this rule before the change." + small
+    b_shown, b_reached = before.get("shown", 0), before.get("reached", 0)
+    a_shown, a_reached = after["shown"], after.get("reached", 0)
+    helped = a_reached * b_shown < b_reached * a_shown
+    return helped, "%s: before %d of %d flats shown broke this rule and reached the renter (%d %%), after %d of %d (%d %%); the agent filtered out %d.%s" % (
+        "helped" if helped else "no improvement yet", b_reached, b_shown, share(before), a_reached, a_shown, share(after),
+        after.get("breaking", 0) - a_reached, small)
+
+
 def cmd_measure(args):
-    """Compare flats shown and rejected before and after each approved change; write the result into its notebook
-    and into the agent's memory."""
+    """Compare flats that break each approved rule and still reach the renter, before and after the change; write the
+    result into its notebook and into the agent's memory."""
     ds, results = args.dataset.replace("'", ""), []
     for flag in criteria_flags(args.dataset):
         payload = flag["payload"]
@@ -455,35 +524,33 @@ def cmd_measure(args):
         key = payload.get("reason_key")
         if args.key and key != re.sub(r"[^a-z0-9_]", "", args.key.lower()):
             continue
-        rows = {r["period"]: r for r in query(measure_sql(ds, int(payload["base_version"])))}
+        requirements = payload.get("requirements") or {}
+        rows = {r["period"]: r for r in query(measure_sql(ds, int(payload["base_version"]), requirements))}
         before, after = rows.get("Before this change") or {}, rows.get("After this change") or {}
-        entry = {"change": key, "before": before, "after": after}
-        if not after.get("shown"):
-            entry["verdict"] = "not measurable yet: no flat was shown after the change"
+        helped, text = verdict(before, after)
+        entry = {"change": key, "before": before, "after": after, "verdict": text}
+        if helped is None:
             results.append(entry)
             continue
-        rate = lambda r: round(100.0 * r["rejected"] / r["shown"]) if r.get("shown") else 0
-        numbers = "before %d of %d flats shown were rejected (%d %%), after %d of %d (%d %%)" % (
-            before.get("rejected", 0), before.get("shown", 0), rate(before), after["rejected"], after["shown"], rate(after))
-        better = rate(after) < rate(before)
-        small = " Small sample: %d flats so far." % after["shown"] if after["shown"] < 10 else ""
-        entry["verdict"] = ("helped: " if better else "no improvement yet: ") + numbers
-        status = STATUS + ("✅ Helped: rejection rate %d %% → %d %%**" if better else "🟠 No improvement yet: rejection rate %d %% → %d %%**") % (rate(before), rate(after))
+        if not before.get("breaking"):
+            status = STATUS + "⚪ No effect: no flat broke this rule before the change**"
+        else:
+            status = STATUS + ("✅ Helped: rule-breaking flats reaching the renter %d %% → %d %%**" if helped else
+                               "🟠 No improvement yet: rule-breaking flats reaching the renter %d %% → %d %%**") % (share(before), share(after))
         entry["notebook_updated"] = edit_notebook(payload.get("notebook"), {
             STATUS: status,
-            RESULT: RESULT + "%s at %s: %s.%s The agent wrote this result into its memory too." % (
-                "it helped" if better else "no improvement yet", clock(), numbers, small)})
+            RESULT: RESULT + "%s Measured at %s. The agent wrote this result into its memory too." % (text[0].upper() + text[1:], clock())})
         skill = api("GET", "llm_skills/name/%s/" % SCOUT_SKILL)
         mark = "measured `%s`, dataset `%s`:" % (key, ds)
         kept = [line for line in skill["body"].rstrip("\n").split("\n") if mark not in line]
-        line = "- %s %s %s.%s" % (datetime.date.today().isoformat(), mark, entry["verdict"], small)
+        line = "- %s %s %s" % (datetime.date.today().isoformat(), mark, text)
         mcp("skill-update", {"skill_name": SCOUT_SKILL, "body": "\n".join(kept + [line]) + "\n", "base_version": skill["version"],
                              "version_description": "Measured: %s (%s)" % (key, ds)})
         entry["learned"] = {"skill": SCOUT_SKILL, "version": skill["version"] + 1, "line": line}
         capture("criteria_change_measured", renter(), dict(
-            base_props(args, criteria_flags(args.dataset)), change=key, helped=better,
-            shown_before=before.get("shown", 0), rejected_before=before.get("rejected", 0),
-            shown_after=after["shown"], rejected_after=after["rejected"]))
+            base_props(args, criteria_flags(args.dataset)), change=key, helped=helped,
+            shown_before=before.get("shown", 0), breaking_before=before.get("breaking", 0), reached_before=before.get("reached", 0),
+            shown_after=after["shown"], breaking_after=after.get("breaking", 0), reached_after=after.get("reached", 0)))
         results.append(entry)
     return out({"measured": results})
 

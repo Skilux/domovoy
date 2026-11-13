@@ -45,6 +45,7 @@ flowchart LR
 | `listing_shortlisted` | `search.py` sees a new page in the Actor run summary | `total_monthly`, `upfront` |
 | `listing_rejected` | Card is in Not interested with a `Reason` | `reason` |
 | `listing_interested` | Card moved to Interested | |
+| `listing_filtered` | Agent moved a shown card to Not interested for an approved rule (`Reason` starts with `filtered:`) | `reason` |
 | `call_started` | Context posted | |
 | `call_finished` | Result handled | `outcome`, `new_costs_count` |
 | `extraction_low_confidence` | Featherless confidence under the threshold (phase 2: sent from the Actor) | `field`, `confidence` |
