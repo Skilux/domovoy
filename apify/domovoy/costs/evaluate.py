@@ -57,6 +57,14 @@ def _verdicts(
 ) -> list[Verdict]:
     # Energy is the only estimate inside total_monthly and upfront.
     energy_estimate = (costs.energy or 0) if "energy" in costs.estimated else 0
+    # Lower bounds from the known, stated parts only (estimated energy left out). They decide a cap
+    # check when the full value is unknown: a known part already over the cap is a fail.
+    stated_energy = 0 if "energy" in costs.estimated else costs.energy
+    monthly_floor = _known_sum(costs.rent, costs.services, stated_energy)
+    fees = ex.one_time_fees.value or []
+    upfront_floor = monthly_floor + _known_sum(
+        costs.kauce, costs.commission, *(fee.czk for fee in fees)
+    )
     verdicts = [
         _cap_verdict(
             "max_total_monthly",
@@ -65,6 +73,7 @@ def _verdicts(
             req.max_total_monthly,
             "total_monthly" in costs.estimated,
             energy_estimate,
+            monthly_floor,
         )
     ]
     if req.max_upfront is not None:
@@ -76,6 +85,7 @@ def _verdicts(
                 req.max_upfront,
                 "upfront" in costs.estimated,
                 energy_estimate,
+                upfront_floor,
             )
         )
     if req.elevator == "required":
@@ -96,13 +106,21 @@ def _cap_verdict(
     cap: int,
     estimated: bool,
     energy_estimate: int,
+    floor: int,
 ) -> Verdict:
     """`estimated`: the value includes estimated energy, worth `energy_estimate` CZK.
 
     Over the cap only because of that estimate is unknown, not a fail (decision 13 Nov): the call
-    can ask about energy, so the flat lands in needs_info.
+    can ask about energy, so the flat lands in needs_info. When the value is unknown, `floor` (the
+    sum of its known stated parts) over the cap is still a fail.
     """
     if value is None:
+        if floor > cap:
+            return _verdict(
+                name,
+                "fail",
+                f"{label} is at least {floor:,} CZK from stated costs, above the {cap:,} CZK limit",
+            )
         return _verdict(name, "unknown", f"{label} is unknown")
     note = " (estimated)" if estimated else ""
     if value <= cap:
@@ -125,6 +143,11 @@ def _cap_verdict(
         f"{label} {value:,} CZK is above the {cap:,} CZK limit{note}",
         estimated,
     )
+
+
+def _known_sum(*parts: int | None) -> int:
+    """Sum of the known parts; unknown parts count as nothing (a lower bound, never shown as a cost)."""
+    return sum(part for part in parts if part is not None)
 
 
 def _elevator_verdict(elevator: bool | None) -> Verdict:
@@ -262,7 +285,8 @@ def _risk_flags(ex: Extraction, costs: Costs, verdicts: list[Verdict]) -> list[s
     # Only a cap check is unknown and estimated: over the cap only because of estimated energy.
     if any(v.verdict == "unknown" and v.estimated for v in verdicts):
         flags.append("over budget (est.)")
-    if costs.services is None or ex.one_time_fees.value is None:
+    # costs.one_time_fees is None when the fees are not stated or any fee has no amount.
+    if costs.services is None or costs.one_time_fees is None:
         flags.append("fees not stated")
     if (
         ex.lease_length_months.value is not None

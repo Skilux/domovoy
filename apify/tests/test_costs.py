@@ -777,6 +777,78 @@ def test_only_the_budget_cap_is_checked_when_nothing_else_is_set() -> None:
     assert [verdict.name for verdict in result.requirements] == ["max_total_monthly"]
 
 
+# Unknown totals: a known stated lower bound over the cap is still a fail (review fix round 1).
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "requirements", "name", "verdict", "match"),
+    [
+        pytest.param(
+            {"rent": 31000, "services": None, "energy": Charge(included=True)},
+            {},
+            "max_total_monthly",
+            "fail",
+            "rejected",
+            id="rent 31,000 alone is over the 30,000 cap, services unknown: fail",
+        ),
+        pytest.param(
+            {
+                "services": Charge(czk=0),
+                "energy": Charge(included=True),
+                "kauce": Charge(czk=100000),
+                "commission": None,
+                "one_time_fees": None,
+            },
+            {"max_upfront": 80000},
+            "max_upfront",
+            "fail",
+            "rejected",
+            id="known upfront 123,000 over the 80,000 cap, commission and fees unknown: fail",
+        ),
+        pytest.param(
+            {"rent": 23000, "services": None, "energy": Charge(included=True)},
+            {},
+            "max_total_monthly",
+            "unknown",
+            "needs_info",
+            id="known 23,000 under the cap, services unknown: still unknown",
+        ),
+        pytest.param(
+            {
+                "services": Charge(czk=0),
+                "energy": Charge(included=True),
+                "kauce": Charge(czk=23000),
+                "one_time_fees": [OneTimeFee(label="key", czk=None)],
+            },
+            {"max_upfront": 80000},
+            "max_upfront",
+            "unknown",
+            "needs_info",
+            id="known upfront 46,000 under the cap: still unknown",
+        ),
+        pytest.param(
+            {"rent": 29000, "services": None, "energy": None, "area": 49.0},
+            {},
+            "max_total_monthly",
+            "unknown",
+            "needs_info",
+            id="estimated energy is left out of the lower bound: still unknown",
+        ),
+    ],
+)
+def test_unknown_total_with_known_lower_bound(
+    kwargs: dict[str, Any],
+    requirements: dict[str, Any],
+    name: str,
+    verdict: str,
+    match: str,
+) -> None:
+    result = _assess(requirements=requirements, **kwargs)
+    found = _verdict(result, name)
+    assert found is not None
+    assert (found.verdict, found.estimated, result.match) == (verdict, False, match)
+
+
 def test_flat_over_budget_only_by_estimated_energy_is_needs_info() -> None:
     # Sreality 688549964: rent 28,000 + fees 1,500 + estimated energy 2,200 (55 m² x 40) = 31,700 CZK.
     flat: dict[str, Any] = {
@@ -985,6 +1057,11 @@ CLEAN: dict[str, Any] = {
             {"rent": 31000, "services": Charge(czk=0), "energy": Charge(included=True)},
             [],
             id="stated over budget is a fail, not an estimate flag",
+        ),
+        pytest.param(
+            {"one_time_fees": [OneTimeFee(label="key", czk=None)]},
+            ["fees not stated"],
+            id="a one-time fee without an amount",
         ),
     ],
 )
