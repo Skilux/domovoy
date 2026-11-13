@@ -5,12 +5,12 @@ Three-minute hard stop; also rehearse a 60–90 second cut. Times below are elap
 | Time | Action |
 | --- | --- |
 | 0:00–0:30 | Vladimir's actual problem; what DOMOVOY is |
-| 0:30–1:06 | Voice request to ChatGPT → live Apify search streams flats into an empty Notion database → Vladimir sets `Interested?` = Yes on one flat → voice request for a viewing |
-| 1:06–2:10 | Calendar read → live browser call with Danila as the demo realtor |
-| 2:10–2:47 | Receipt: recheck, Notion update to Viewing booked, katastr check on an LV bought before the stage, Calendar event with the summary |
-| 2:47–3:00 | "Install the skill in your own agent", repository and demo links |
+| 0:30–1:18 | Voice request to ChatGPT → the public Apify Actor, explained on the stage ACTOR screen with its Store QR, streams flats into an empty Notion database → `Interested?` = Yes on one flat, No on another → voice request for a viewing |
+| 1:18–2:13 | Calendar read → live browser call with Danila as the demo realtor |
+| 2:13–2:45 | Receipt: Viewing booked and the Calendar event, then the katastr check on an LV bought before the stage |
+| 2:45–3:00 | What each part did, PostHog learning from Vladimir's rejections (synced from Notion, real data), install QR |
 
-The spoken script, beat by beat, is [demo-script.md](demo-script.md). PostHog is not on stage; it does not fit next to the live search and the katastr check.
+The spoken script, beat by beat, is [demo-script.md](demo-script.md).
 
 Never rush past the receipt.
 
