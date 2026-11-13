@@ -3,6 +3,7 @@ fixture refuses socket connects. The live test runs only with DOMOVOY_LIVE=1 and
 the fixture, edits it the way Vladimir and Claude do, upserts again, and archives the page it created."""
 
 import json
+import logging
 import os
 import socket
 import time
@@ -21,6 +22,7 @@ from domovoy.notion.sink import (
     NotionSink,
     SchemaDrift,
     Throttle,
+    _error_code,
     body_blocks,
     owned_values,
     schema_problems,
@@ -232,13 +234,56 @@ async def test_a_429_waits_for_retry_after_and_then_creates_the_page():
     assert len([1 for m, p, _ in fake.sent if (m, p) == ("POST", "/pages")]) == 2
 
 
-async def test_api_errors_name_the_code_and_never_the_token():
+async def test_api_errors_name_the_code_but_never_the_message_or_token():
     fake = FakeNotion()
     fake.reply("GET", "/data_sources/%s" % DS, (400, {"code": "validation_error", "message": "bad schema"}, {}))
     with pytest.raises(NotionError) as caught:
         await run_validate(fake)
-    assert "validation_error" in str(caught.value) and "bad schema" in str(caught.value)
-    assert TOKEN not in str(caught.value)
+    error = caught.value
+    assert (error.method, error.path, error.status, error.code) == (
+        "GET", "/data_sources/%s" % DS, 400, "validation_error")
+    assert "validation_error" in str(error)
+    assert "bad schema" not in str(error)
+    assert TOKEN not in str(error)
+
+
+async def test_validation_error_echoing_a_contact_stays_out_of_the_exception_and_the_log(caplog):
+    """Notion can echo a rejected value in its message. The synthetic contact must reach neither the exception nor
+    a log record, even when a caller logs the exception with logger.exception (WP7 review, fix round 1)."""
+    email, phone = "synthetic@example.com", "+420 000 000 000"
+    echoed = "body.properties.Email.email is not valid: '%s'. Phone '%s' is not valid." % (email, phone)
+    fake = FakeNotion()
+    fake.reply("POST", "/data_sources/%s/query" % DS, no_match_query())
+    fake.reply("POST", "/pages", (400, {"object": "error", "status": 400, "code": "validation_error",
+                                        "message": echoed}, {}))
+    data = fixture_item().model_dump(mode="json")
+    data["sources"][0]["contact"].update(name="Synthetic Agent", email=email, phone=phone)
+    item = FlatItem.model_validate(data)
+    caplog.set_level(logging.DEBUG)
+    try:
+        await run_upsert(fake, item)
+    except NotionError as error:
+        logging.getLogger("domovoy.test.notion_sink").exception("upsert failed for %s", item.property_id)
+        caught = error
+    else:
+        raise AssertionError("a 400 reply must raise NotionError")
+    assert (caught.method, caught.path, caught.status, caught.code) == ("POST", "/pages", 400, "validation_error")
+    seen = [str(caught), repr(caught), str(vars(caught)), caplog.text, *(r.getMessage() for r in caplog.records)]
+    for text in seen:
+        assert email not in text and phone not in text
+
+
+@pytest.mark.parametrize("payload, expected", [
+    ({"code": "validation_error", "message": "x"}, "validation_error"),
+    ({"code": "Phone synthetic@example.com"}, "unknown"),
+    ({"message": "no code here"}, "unknown"),
+])
+def test_error_code_is_read_only_when_it_is_a_plain_slug(payload, expected):
+    assert _error_code(httpx.Response(400, json=payload)) == expected
+
+
+def test_a_non_json_error_reply_gives_an_unknown_code():
+    assert _error_code(httpx.Response(502, content=b"<html>synthetic@example.com</html>")) == "unknown"
 
 
 async def test_throttle_spaces_requests():

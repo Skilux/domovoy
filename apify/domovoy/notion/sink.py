@@ -33,7 +33,9 @@ MATCH_NAMES = {"strong": "Strong", "needs_info": "Needs info"}
 FURNISHED_NAMES = {"full": "Yes", "partial": "Partly", "none": "No"}
 PORTAL_NAMES = {"sreality": "Sreality", "bezrealitky": "Bezrealitky", "idnes": "iDNES"}
 TEXT_LIMIT = 2000  # Notion: characters per rich text object
-BODY_LIMITS = {"photos": 12, "reasons": 20, "quotes": 20, "unknowns": 20, "sources": 10}  # one create request < 100
+# Caps keep one create request under Notion's 100 top-level blocks (89 at most, with every cap reached). A flat has at
+# most one source link per portal (3 today), so the source cap of 10 never drops a link from a real item.
+BODY_LIMITS = {"photos": 12, "reasons": 20, "quotes": 20, "unknowns": 20, "sources": 10}
 RATE_PER_SECOND = 3.0
 MAX_RETRIES = 5
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
@@ -45,7 +47,16 @@ class SchemaDrift(RuntimeError):
 
 
 class NotionError(RuntimeError):
-    """A Notion call failed. The message names the code and the reason, never the token."""
+    """A Notion call failed. It carries the method, path, HTTP status and Notion's error code, and nothing else from
+    the reply. Notion's free-text message is never kept: validation messages can echo the submitted values, and those
+    include realtor contacts, which would then reach logs and tracebacks (WP7 review, fix round 1)."""
+
+    def __init__(self, message: str, *, method: str = "", path: str = "", status: int = 0, code: str = "") -> None:
+        super().__init__(message)
+        self.method = method
+        self.path = path
+        self.status = status
+        self.code = code
 
 
 class Throttle:
@@ -252,15 +263,17 @@ def _retry_after(response: httpx.Response, fallback: float) -> float:
         return min(fallback, 60.0)
 
 
-def _describe(method: str, path: str, response: httpx.Response) -> str:
+ERROR_CODE = re.compile(r"[a-z_]{1,40}")  # Notion codes are slugs such as validation_error and rate_limited
+
+
+def _error_code(response: httpx.Response) -> str:
+    """Notion's error code, or "unknown". Only a plain slug counts; the reply's message is never read into the error."""
     try:
         data = response.json()
     except ValueError:
-        data = {}
-    if not isinstance(data, dict):
-        data = {}
-    return "Notion %s %s failed: %s %s %s" % (
-        method, path, response.status_code, data.get("code", ""), data.get("message", ""))
+        return "unknown"
+    code = data.get("code") if isinstance(data, dict) else None
+    return code if isinstance(code, str) and ERROR_CODE.fullmatch(code) else "unknown"
 
 
 class NotionSink:
@@ -296,7 +309,9 @@ class NotionSink:
             await asyncio.sleep(_retry_after(response, self.retry_base * 2 ** attempt))
             attempt += 1
         if response.status_code >= 400:
-            raise NotionError(_describe(method, path, response))
+            code = _error_code(response)
+            raise NotionError("Notion %s %s failed: HTTP %d %s" % (method, path, response.status_code, code),
+                              method=method, path=path, status=response.status_code, code=code)
         return response.json()
 
     async def validate(self) -> None:
@@ -310,7 +325,8 @@ class NotionSink:
         query = {"filter": {"property": UPSERT_KEY, "rich_text": {"equals": property_id}}, "page_size": 2}
         found = (await self._request("POST", "/data_sources/%s/query" % self.data_source_id, query))["results"]
         if len(found) > 1:
-            raise NotionError("two pages have %s = %s; fix the database before the next run" % (UPSERT_KEY, property_id))
+            raise NotionError("two pages have %s = %s; fix the database before the next run"
+                              % (UPSERT_KEY, property_id))
         return found[0]["id"] if found else None
 
     def _create_body(self, item: FlatItem) -> dict[str, Any]:
