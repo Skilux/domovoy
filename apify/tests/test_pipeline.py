@@ -226,6 +226,7 @@ def fake_notion(
     *, validate_error: Exception | None = None, upsert_error: Exception | None = None, action: str = "created"
 ) -> tuple[SimpleNamespace, list[str]]:
     upserts: list[str] = []
+    closed: list[bool] = []
 
     class Sink:
         def __init__(self, *, token: str, data_source_id: str) -> None:
@@ -236,12 +237,16 @@ def fake_notion(
             if validate_error is not None:
                 raise validate_error
 
+        async def aclose(self) -> None:
+            closed.append(True)
+
         async def upsert(self, item: Any) -> UpsertResult:
             upserts.append(item.property_id)
             if upsert_error is not None:
                 raise upsert_error
             return UpsertResult(page_id=f"page-{item.property_id}", action=action)
 
+    Sink.closed = closed
     return SimpleNamespace(NotionSink=Sink), upserts
 
 
@@ -300,6 +305,17 @@ async def test_notion_schema_drift_stops_the_run_before_any_portal_is_contacted(
             actor_input={"notion": {"dataSourceId": "ds-1"}}, environ={"NOTION_TOKEN": "ntn_test"},
         )
     assert source.called is False
+    assert sink.NotionSink.closed == [True]  # the sink is closed even when validation fails
+
+
+async def test_the_notion_sink_is_closed_after_a_run():
+    ns, _ = fake_notion()
+    sources = {"sreality": FakeSource("sreality", [make_listing("1")])}
+    await run_pipeline(
+        sources, Modules(notion=ns), actor_input={"notion": {"dataSourceId": "ds-1"}},
+        environ={"NOTION_TOKEN": "fake-notion-token-for-tests"},
+    )
+    assert ns.NotionSink.closed == [True]
 
 
 async def test_a_notion_data_source_needs_a_token_before_scraping():

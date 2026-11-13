@@ -183,7 +183,11 @@ async def open_notion(
         log.warning("Notion: fallback in use; results go to the dataset only")
         return None
     sink = modules.notion.NotionSink(token=token, data_source_id=data_source_id)
-    await sink.validate()  # raises on schema drift, before any portal is contacted
+    try:
+        await sink.validate()  # raises on schema drift, before any portal is contacted
+    except BaseException:
+        await sink.aclose()
+        raise
     log.info("Notion: schema checked before scraping")
     return sink
 
@@ -362,12 +366,33 @@ async def run_search(
     modules: Modules,
     environ: Mapping[str, str] = os.environ,
 ) -> RunSummary:
+    """Open the Notion sink (its schema is checked before any portal is contacted), run, then close the sink."""
+    sink = await open_notion(actor_input, modules, environ, log)
+    try:
+        return await _search(
+            profile, actor_input, platform, log, sources=sources, modules=modules, environ=environ, sink=sink
+        )
+    finally:
+        if sink is not None:
+            await sink.aclose()
+
+
+async def _search(
+    profile: SearchProfile,
+    actor_input: Mapping[str, Any],
+    platform: Platform,
+    log: Logger,
+    *,
+    sources: Mapping[str, Source],
+    modules: Modules,
+    environ: Mapping[str, str],
+    sink: Any,
+) -> RunSummary:
     started = datetime.now(PRAGUE)
     run_id = environ.get("APIFY_ACTOR_RUN_ID") or f"local-{uuid4().hex[:8]}"
     include_unchanged = bool(actor_input.get("includeUnchanged"))
     skip_extraction = bool(actor_input.get("skipExtraction"))
 
-    sink = await open_notion(actor_input, modules, environ, log)  # before any portal is contacted
     statuses, listings = await collect_listings(profile, sources, log)
 
     dd = modules.dedup
