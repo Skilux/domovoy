@@ -130,7 +130,7 @@ flowchart TD
 | **2 APPROVE** | Each flat becomes one Notion page with its source link, collection time and evidence quotes. You set `Interested?` to Yes on one flat. Nothing is contacted before that, and Claude never sets it for you. | You |
 | **3 CALL** | Claude reads your free calendar windows and sends the flat's context to the phone page. A voice agent talks to the realtor in English, asks about the unknown fees and proposes a time. | Claude, ElevenLabs |
 | **4 BOOK** | Claude does not take the agent's word. It rechecks that the agreed time is inside a free window and the monthly total is within your budget. Then it sets `Viewing booked` or `Not booked`, appends the summary to the Notion page and creates the Calendar event. | Claude |
-| **5 LEARN** | When 3 or more rejected flats share one reason, DOMOVOY proposes one criteria change, for example "elevator required". It applies the change only after your yes. | PostHog, you |
+| **5 LEARN** | When 3 or more rejected flats share one reason, DOMOVOY proposes one criteria change, for example "elevator required". It applies the change only after your yes, then filters later searches by it and measures the result. It checks when you ask, or every 10 minutes by itself with the optional timer in [posthog/README.md](posthog/README.md#run-the-loop-on-a-schedule). | PostHog, you |
 
 The two halves meet at two JSON contracts, [`call_context`](docs/plan.md#contracts) and [`submit_call_result`](docs/plan.md#contracts). The Notion `Status` property is the only workflow state.
 

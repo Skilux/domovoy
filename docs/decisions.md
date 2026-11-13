@@ -95,6 +95,9 @@ Made by Danila for the call half of the Skill lane.
 | Loop on the free plan | Report = PostHog notebook; approval = feature flag `domovoy-criteria-<key>`; memory = decision events plus versions of the stored scout instructions; all through `posthog/loop.py` | Native self-driving scouts and Inbox, which are paid |
 | Where an approved change lives | In the feature flag's payload. `search.py` merges approved flags into the profile's `requirements` (issue #43) | Saving the change to the profile in `config.json` |
 | Stage timing | `sync` runs before the PostHog minute (after rejections, and in the background at the start of the call command); `report` returns at once when the events are in | A fixed 60 s wait inside the improve command |
+| Who starts the loop | The renter by asking, or a local macOS timer (`posthog/schedule.py`, every 10 minutes, not installed by default). The timer may only propose: flag off and a notebook. It never answers and never writes to Notion | The loop runs only when someone says "improve my search" |
+| Approved rules after a search | The research command runs `loop.py apply --real` and `sync` in the background after `search.py run`, with a time limit; it stands in for issue #43 | Waiting for `search.py` to merge approved flags |
+| What `measure` counts | Flats that break an approved rule and still reach the renter, before and after | Rejection rate before and after, which called unreviewed flats a win |
 | Local event log | None. A report is complete from PostHog or marked incomplete | "A local event log may back up the report" |
 | `notion.py` and `call.py` | `scripts/notion.py` (#53) loads through `backend.module` with no change to `call.py`; run on a synthetic Notion test database on 13 Nov 2026 | Open item 14 |
 
