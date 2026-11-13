@@ -13,3 +13,7 @@ def register(source: Source) -> None:
 
 
 register(SrealitySource())
+
+from domovoy.sources import bezrealitky as _bezrealitky  # noqa: E402  (WP2)
+
+register(_bezrealitky.SOURCE)

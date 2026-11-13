@@ -1,0 +1,147 @@
+{
+ "advert": {
+  "__typename": "Advert",
+  "id": "1089140",
+  "uri": "1089140-nabidka-pronajem-bytu-cimburkova-praha",
+  "type": "FLATIO",
+  "locale": "CS",
+  "address": "Cimburkova, Praha - Žižkov",
+  "street": "Cimburkova",
+  "city": "Praha",
+  "zip": "130 00",
+  "estateType": "BYT",
+  "offerType": "PRONAJEM",
+  "disposition": "UNDEFINED",
+  "surface": 31,
+  "etage": 1,
+  "lift": true,
+  "equipped": "VYBAVENY",
+  "tags": [
+   "Vybaveno",
+   "Výtah"
+  ],
+  "price": 31570,
+  "originalPrice": 31570,
+  "isDiscounted": false,
+  "charges": 5571,
+  "utilityCharges": 5571,
+  "serviceCharges": 0,
+  "deposit": 0,
+  "fee": 23290,
+  "currency": "CZK",
+  "availableFrom": 1796166000,
+  "datePosted": 1794569840,
+  "ownership": "UNDEFINED",
+  "shortTerm": true,
+  "roommate": false,
+  "gps": {
+   "__typename": "GPSPoint",
+   "lat": 50.0862662,
+   "lng": 14.450773
+  },
+  "description": "Moderní byt 1+kk po rekonstrukci na Žižkově. Nabízíme k pronájmu útulný a moderně zrekonstruovaný byt 1+kk o velikosti 31 m², který se nachází v 1. NP bytového domu v oblíbené pražské čtvrti Žižkov, v ulici Cimburkova.\n\nByt je ideální pro jednotlivce nebo pár, kteří hledají příjemné a praktické bydlení s veškerým komfortem. Hlavní obytná místnost nabízí dostatek prostoru pro odpočinek i každodenní život a je propojena s kuchyňským koutem. K dispozici je moderní kuchyňská linka vybavená spotřebiči včetně myčky nádobí. Součástí vybavení je také pračka a nábytek, takže byt nabízí vše potřebné pro pohodlné bydlení.\n\nKoupelna je vybavena sprchovým koutem a toaletou.\n\nSkvělá lokalita na Žižkově\n\nŽižkov patří mezi oblíbené pražské čtvrti díky své jedinečné atmosféře, množství kaváren, restaurací, obchodů a kulturních podniků. V pěší dostupnosti najdete také park Parukářka, Žižkovskou televizní věž nebo kulturní centrum Palác Akropolis.\n\nV okolí je k dispozici veškerá občanská vybavenost včetně supermarketů, lékáren a dalších služeb. Výhodou je také blízkost Vysoké školy ekonomické (VŠE).\n\nVýborná dopravní dostupnost\n\nPouhé 2 minuty chůze od domu se nachází tramvajové a autobusové zastávky, odkud se pohodlně dostanete do centra Prahy i dalších částí města.\n\nTento byt je skvělou volbou pro každého, kdo hledá pohodlné bydlení v dobře dostupné lokalitě s autentickou atmosférou pražského Žižkova.",
+  "dataJson": "{\"imageChangeHash\":\"f<phone>dee8f644e3227bc7d78e54\",\"links\":{\"cs\":\"https:\\/\\/www.flatio.cz\\/pronajem\\/bytu\\/98558-praha_3?from=2026-12-02&to=2027-11-12&utm_source=bezrealitky&utm_medium=cpc&utm_content=98558\",\"sk\":\"https:\\/\\/www.flatio.sk\\/prenajom\\/bytu\\/98558-praha_3?from=2026-12-02&to=2027-11-12&utm_source=bezrealitky&utm_medium=cpc&utm_content=98558\",\"en\":\"https:\\/\\/www.flatio.com\\/rent\\/apartment\\/98558-prague_3?from=2026-12-02&to=2027-11-12&utm_source=bezrealitky&utm_medium=cpc&utm_content=98558\"},\"priceNote\":{\"cs\":\"N\\u00e1jemn\\u00e9 i poplatky plat\\u00ed pro pron\\u00e1jem na 12 m\\u011bs\\u00edc\\u016f. Tuto nab\\u00eddku je v\\u0161ak mo\\u017en\\u00e9 si pronajmout p\\u0159es Flatio ji\\u017e od 1 m\\u011bs\\u00edce. Administrativn\\u00ed poplatek je pro krat\\u0161\\u00ed pron\\u00e1jmy ni\\u017e\\u0161\\u00ed. Pron\\u00e1jmy krat\\u0161\\u00ed ne\\u017e 6 m\\u011bs\\u00edc\\u016f jsou v\\u017edy bez kauce.\",\"en\":\"The rent and fees apply for an 12-month lease. However, this offer can be rented through Flatio starting from 1 month. The administrative fee is lower for shorter rentals. Rentals shorter than 6 months are always without a deposit.\",\"sk\":\"N\\u00e1jom a poplatky platia pre pren\\u00e1jom na 12 mesiacov. T\\u00fato ponuku je v\\u0161ak mo\\u017en\\u00e9 prenaja\\u0165 cez Flatio u\\u017e od 1 mesiaca. Administrat\\u00edvny poplatok je pre krat\\u0161ie pren\\u00e1jmy ni\\u017e\\u0161\\u00ed. Pren\\u00e1jmy krat\\u0161ie ako 6 mesiacov s\\u00fa v\\u017edy bez kaucie.\"}}",
+  "regionTree": [
+   {
+    "__typename": "Region",
+    "id": "486",
+    "name": "Praha",
+    "uri": "praha",
+    "subType": "REGION",
+    "osmId": 435514
+   },
+   {
+    "__typename": "Region",
+    "id": "15465",
+    "name": "Praha-Žižkov",
+    "uri": "praha-zizkov",
+    "subType": "CITY_DISTRICT",
+    "osmId": 428824
+   }
+  ],
+  "pageTitle": "Pronájem bytu • 31 m² • Cimburkova • Praha - Žižkov • bez RK",
+  "publicImages": [
+   {
+    "id": "28542110",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/1089k/1089140/flatiolam0e3sp9vtn4s8l9ez.jpeg"
+   },
+   {
+    "id": "28542111",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/1089k/1089140/flatio3tjtsuksdd934rycd1x.jpeg"
+   },
+   {
+    "id": "28542112",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/1089k/1089140/flatio6e5lsjp24rvv2d2xump.jpeg"
+   },
+   {
+    "id": "28542113",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/1089k/1089140/flatioqe2t1tqpssfpdan6it3.jpeg"
+   },
+   {
+    "id": "28542114",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/1089k/1089140/flatiosg4lslbo0cdq4owuh4i.jpeg"
+   },
+   {
+    "id": "28542115",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/1089k/1089140/flatiokg9g2fdupoc0fsnjqch.jpg"
+   },
+   {
+    "id": "28542116",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/1089k/1089140/flatiosra2i8q2u1jv7ren5eh.jpg"
+   },
+   {
+    "id": "28542117",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/1089k/1089140/flatio6baapc3qtvlc0e6wwqh.jpg"
+   },
+   {
+    "id": "28542118",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/1089k/1089140/flation7vrjtcaeoqvbtblous.jpg"
+   }
+  ],
+  "messageData": {
+   "messageType": "LINK",
+   "requireLogin": false,
+   "url": "<form-url>"
+  }
+ },
+ "jsonld": {
+  "@type": "RealEstateListing",
+  "name": "Pronájem bytu • 31 m² • Cimburkova • Praha - Žižkov • bez RK",
+  "url": "https://www.bezrealitky.cz/nemovitosti-byty-domy/1089140-nabidka-pronajem-bytu-cimburkova-praha",
+  "identifier": "1089140",
+  "datePosted": "2026-11-13",
+  "description": "Moderní byt 1+kk po rekonstrukci na Žižkově. Nabízíme k pronájmu útulný a moderně zrekonstruovaný byt 1+kk o velikosti 31 m², který se nachází v 1. NP bytového domu v oblíbené pražské čtvrti Žižkov, v ulici Cimburkova. Byt je ideální pro jednotlivce nebo pár, kteří hledají příjemné a praktické bydlení s veškerým komfortem. Hlavní obytná místnost nabízí dostatek prostoru pro odpočinek i každodenní život a je propojena s kuchyňským koutem. K dispozici je moderní kuchyňská linka vybavená spotřebiči včetně myčky nádobí. Součástí vybavení je také pračka a nábytek, takže byt nabízí vše potřebné pro pohodlné bydlení. Koupelna je vybavena sprchovým koutem a toaletou. Skvělá lokalita na Žižkově Žižkov patří mezi oblíbené pražské čtvrti díky své jedinečné atmosféře, množství kaváren, restaurací, obchodů a kulturních podniků. V pěší dostupnosti najdete také park Parukářka, Žižkovskou televizní věž nebo kulturní centrum Palác Akropolis. V okolí je k dispozici veškerá občanská vybavenost včetně supermarketů, lékáren a dalších služeb. Výhodou je také blízkost Vysoké školy ekonomické (VŠE). Výborná dopravní dostupnost Pouhé 2 minuty chůze od domu se nachází tramvajové a autobusové zastávky, odkud se pohodlně dostanete do centra Prahy i dalších částí města. Tento byt je skvělou volbou pro každého, kdo hledá pohodlné bydlení v dobře dostupné lokalitě s autentickou atmosférou pražského Žižkova.",
+  "about": {
+   "@type": "Apartment",
+   "name": "Byt, 31 m²",
+   "floorLevel": "1. podlaží",
+   "floorSize": {
+    "@type": "QuantitativeValue",
+    "value": 31,
+    "unitCode": "MTK"
+   },
+   "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "Cimburkova",
+    "addressLocality": "Praha",
+    "addressRegion": "Praha",
+    "addressCountry": "CZ"
+   },
+   "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": 50.0862662,
+    "longitude": 14.450773
+   }
+  },
+  "offers": {
+   "@type": "Offer",
+   "price": 31570,
+   "priceCurrency": "CZK",
+   "seller": {
+    "@type": "Person",
+    "name": "<name>"
+   }
+  }
+ },
+ "source_url": "https://www.bezrealitky.cz/nemovitosti-byty-domy/1089140-nabidka-pronajem-bytu-cimburkova-praha"
+}

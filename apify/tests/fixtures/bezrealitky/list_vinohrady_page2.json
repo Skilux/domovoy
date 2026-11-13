@@ -1,0 +1,385 @@
+{
+ "pageProps": {
+  "filter": {
+   "currency": "CZK",
+   "estateType": [
+    "BYT"
+   ],
+   "limit": 15,
+   "location": "exact",
+   "offerType": [
+    "PRONAJEM"
+   ],
+   "offset": 15,
+   "order": "TIMEORDER_DESC",
+   "regionOsmIds": [
+    "R428841"
+   ],
+   "construction": [],
+   "page": 2
+  },
+  "apolloCache": {
+   "ROOT_QUERY": {
+    "listAdverts({\"construction\":[],\"currency\":\"CZK\",\"estateType\":[\"BYT\"],\"limit\":15,\"offerType\":[\"PRONAJEM\"],\"offset\":15,\"order\":\"TIMEORDER_DESC\",\"preferredLocale\":\"CS\",\"regionOsmIds\":[\"R428841\"]})": {
+     "__typename": "AdvertList",
+     "totalCount": 71,
+     "list": [
+      {
+       "__ref": "Advert:1054021"
+      },
+      {
+       "__ref": "Advert:1065414"
+      },
+      {
+       "__ref": "Advert:1056103"
+      },
+      {
+       "__ref": "Advert:1048707"
+      },
+      {
+       "__ref": "Advert:590026"
+      },
+      {
+       "__ref": "Advert:620170"
+      },
+      {
+       "__ref": "Advert:1063165"
+      },
+      {
+       "__ref": "Advert:1086538"
+      },
+      {
+       "__ref": "Advert:1053703"
+      },
+      {
+       "__ref": "Advert:1048713"
+      },
+      {
+       "__ref": "Advert:661115"
+      },
+      {
+       "__ref": "Advert:1077714"
+      },
+      {
+       "__ref": "Advert:432912"
+      },
+      {
+       "__ref": "Advert:1083948"
+      },
+      {
+       "__ref": "Advert:1083935"
+      }
+     ]
+    }
+   },
+   "Advert:1054021": {
+    "__typename": "Advert",
+    "id": "1054021",
+    "uri": "1054021-nabidka-pronajem-bytu-na-folimance-praha",
+    "disposition": "DISP_3_KK",
+    "surface": 64,
+    "price": 42000,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Na Folimance, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.065918,
+     "lng": 14.4337521
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "Vybaveno",
+     "Výtah",
+     "Sklep 2 m²"
+    ],
+    "dataJson": "null"
+   },
+   "Advert:1065414": {
+    "__typename": "Advert",
+    "id": "1065414",
+    "uri": "1065414-nabidka-pronajem-bytu-korunni-praha",
+    "disposition": "DISP_2_KK",
+    "surface": 54,
+    "price": 32000,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Korunní, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.0754915,
+     "lng": 14.4501673
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "Vybaveno",
+     "Výtah"
+    ],
+    "dataJson": "null"
+   },
+   "Advert:1056103": {
+    "__typename": "Advert",
+    "id": "1056103",
+    "uri": "1056103-nabidka-pronajem-bytu-namesti-jiriho-z-lobkovic-praha",
+    "disposition": "DISP_3_KK",
+    "surface": 73,
+    "price": 35000,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "náměstí Jiřího z Lobkovic, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.0770734,
+     "lng": 14.4679936
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "Vybaveno",
+     "Výtah",
+     "Sklep 4 m²"
+    ],
+    "dataJson": "null"
+   },
+   "Advert:1048707": {
+    "__typename": "Advert",
+    "id": "1048707",
+    "uri": "1048707-nabidka-pronajem-bytu-sazavska-praha",
+    "disposition": "DISP_2_KK",
+    "surface": 41,
+    "price": 36317,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Sázavská, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.0747874,
+     "lng": 14.440417
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "MHD 2 minuty pěšky",
+     "Vybaveno",
+     "Parkování"
+    ],
+    "dataJson": "{\"priceTextNote\":\"platba v eurech\",\"costOfLiving\":\"4860\"}"
+   },
+   "Advert:590026": {
+    "__typename": "Advert",
+    "id": "590026",
+    "uri": "590026-nabidka-pronajem-bytu-jagellonska-praha",
+    "disposition": "DISP_1_1",
+    "surface": 50,
+    "price": 24990,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Jagellonská, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.079409,
+     "lng": 14.453223
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "Částečně vybaveno"
+    ],
+    "dataJson": "{\"brizCount\":9}"
+   },
+   "Advert:620170": {
+    "__typename": "Advert",
+    "id": "620170",
+    "uri": "620170-nabidka-pronajem-bytu-korunni-praha",
+    "disposition": "DISP_2_KK",
+    "surface": 50,
+    "price": 28000,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Korunní, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.0754888,
+     "lng": 14.447482
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "MHD 2 minuty pěšky",
+     "Vybaveno",
+     "Výtah",
+     "Parkování",
+     "Sklep 5 m²"
+    ],
+    "dataJson": "{\"brizCount\":18}"
+   },
+   "Advert:1063165": {
+    "__typename": "Advert",
+    "id": "1063165",
+    "uri": "1063165-nabidka-pronajem-bytu-sazavska-praha",
+    "disposition": "DISP_2_KK",
+    "surface": 43,
+    "price": 37592,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Sázavská, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.0747874,
+     "lng": 14.440417
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "Vybaveno"
+    ],
+    "dataJson": "{\"priceTextNote\":\"platba v eurech\",\"costOfLiving\":\"5248\"}"
+   },
+   "Advert:1086538": {
+    "__typename": "Advert",
+    "id": "1086538",
+    "uri": "1086538-nabidka-pronajem-bytu-lucemburska-praha",
+    "disposition": "DISP_2_1",
+    "surface": 50,
+    "price": 20000,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Lucemburská, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.0790199,
+     "lng": 14.4559023
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "Částečně vybaveno",
+     "Výtah"
+    ],
+    "dataJson": "null"
+   },
+   "Advert:1053703": {
+    "__typename": "Advert",
+    "id": "1053703",
+    "uri": "1053703-nabidka-pronajem-bytu-italska-praha",
+    "disposition": "UNDEFINED",
+    "surface": 0,
+    "price": 129677,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Italská, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.0805964,
+     "lng": 14.4383319
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "MHD 1 minuta pěšky",
+     "Vybaveno"
+    ],
+    "dataJson": "{\"imageChangeHash\":\"dfde5d3f04503240a001ba094e1fcd00\",\"links\":{\"cs\":\"https:\\/\\/www.flatio.cz\\/pronajem\\/bytu\\/131207-praha_2-vinohrady?from=2026-11-13&to=2027-11-13&utm_source=bezrealitky&utm_medium=cpc&utm_content=131207\",\"sk\":\"https:\\/\\/www.flatio.sk\\/prenajom\\/bytu\\/131207-praha_2-vinohrady?from=2026-11-13&to=2027-11-13&utm_source=bezrealitky&utm_medium=cpc&utm_content=131207\",\"en\":\"https:\\/\\/www.flatio.com\\/rent\\/apartment\\/131207-prague_2-vinohrady?from=2026-11-13&to=2027-11-13&utm_source=bezrealitky&utm_medium=cpc&utm_content=131207\"},\"priceNote\":{\"cs\":\"N\\u00e1jemn\\u00e9 i poplatky plat\\u00ed pro pron\\u00e1jem na 12 m\\u011bs\\u00edc\\u016f. Tuto nab\\u00eddku je v\\u0161ak mo\\u017en\\u00e9 si pronajmout p\\u0159es Flatio ji\\u017e od 1 m\\u011bs\\u00edce. Administrativn\\u00ed poplatek je pro krat\\u0161\\u00ed pron\\u00e1jmy ni\\u017e\\u0161\\u00ed. Pron\\u00e1jmy krat\\u0161\\u00ed ne\\u017e 6 m\\u011bs\\u00edc\\u016f jsou v\\u017edy bez kauce.\",\"en\":\"The rent and fees apply for an 12-month lease. However, this offer can be rented through Flatio starting from 1 month. The administrative fee is lower for shorter rentals. Rentals shorter than 6 months are always without a deposit.\",\"sk\":\"N\\u00e1jom a poplatky platia pre pren\\u00e1jom na 12 mesiacov. T\\u00fato ponuku je v\\u0161ak mo\\u017en\\u00e9 prenaja\\u0165 cez Flatio u\\u017e od 1 mesiaca. Administrat\\u00edvny poplatok je pre krat\\u0161ie pren\\u00e1jmy ni\\u017e\\u0161\\u00ed. Pren\\u00e1jmy krat\\u0161ie ako 6 mesiacov s\\u00fa v\\u017edy bez kaucie.\"}}"
+   },
+   "Advert:1048713": {
+    "__typename": "Advert",
+    "id": "1048713",
+    "uri": "1048713-nabidka-pronajem-bytu-sazavska-praha",
+    "disposition": "DISP_2_KK",
+    "surface": 42,
+    "price": 36317,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Sázavská, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.0747874,
+     "lng": 14.440417
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "MHD 2 minuty pěšky",
+     "Vybaveno",
+     "Parkování"
+    ],
+    "dataJson": "{\"priceTextNote\":\"platba v eurech\",\"costOfLiving\":\"4860\"}"
+   },
+   "Advert:661115": {
+    "__typename": "Advert",
+    "id": "661115",
+    "uri": "661115-nabidka-pronajem-bytu-vinohradska-praha",
+    "disposition": "DISP_3_1",
+    "surface": 133,
+    "price": 39000,
+    "isDiscounted": true,
+    "address({\"locale\":\"CS\"})": "Vinohradská, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.07783,
+     "lng": 14.43667
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "MHD 1 minuta pěšky",
+     "Částečně vybaveno",
+     "Balkón 2 m²"
+    ],
+    "dataJson": "{\"brizCount\":9}"
+   },
+   "Advert:1077714": {
+    "__typename": "Advert",
+    "id": "1077714",
+    "uri": "1077714-nabidka-pronajem-bytu-korunni-praha",
+    "disposition": "DISP_1_KK",
+    "surface": 41,
+    "price": 22000,
+    "isDiscounted": true,
+    "address({\"locale\":\"CS\"})": "Korunní, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.0750909,
+     "lng": 14.4586737
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "Vybaveno",
+     "Výtah",
+     "Lodžie 6 m²"
+    ],
+    "dataJson": "null"
+   },
+   "Advert:432912": {
+    "__typename": "Advert",
+    "id": "432912",
+    "uri": "432912-nabidka-pronajem-bytu-premyslovska",
+    "disposition": "DISP_5_KK",
+    "surface": 160,
+    "price": 49500,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Přemyslovská, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.078327416966,
+     "lng": 14.455739663754
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "MHD 2 minuty pěšky",
+     "Vybaveno",
+     "Výtah",
+     "Balkón 20 m²",
+     "Terasa 80 m²"
+    ],
+    "dataJson": "null"
+   },
+   "Advert:1083948": {
+    "__typename": "Advert",
+    "id": "1083948",
+    "uri": "1083948-nabidka-pronajem-bytu-moravska-praha",
+    "disposition": "DISP_2_1",
+    "surface": 84,
+    "price": 44000,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Moravská, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.0743259,
+     "lng": 14.4446764
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "Vybaveno"
+    ],
+    "dataJson": "null"
+   },
+   "Advert:1083935": {
+    "__typename": "Advert",
+    "id": "1083935",
+    "uri": "1083935-nabidka-pronajem-bytu-vinohradska-praha",
+    "disposition": "DISP_3_1",
+    "surface": 98,
+    "price": 54000,
+    "isDiscounted": false,
+    "address({\"locale\":\"CS\"})": "Vinohradská, Praha - Vinohrady",
+    "gps": {
+     "__typename": "GPSPoint",
+     "lat": 50.0779389,
+     "lng": 14.4376016
+    },
+    "tags({\"locale\":\"CS\"})": [
+     "Vybaveno"
+    ],
+    "dataJson": "null"
+   }
+  }
+ }
+}
