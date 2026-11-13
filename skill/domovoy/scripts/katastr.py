@@ -878,8 +878,9 @@ def lookup(args, backend_loader=None):
     number = args.unit or answers.get("unit")
     landlord = args.landlord or answers.get("landlord")
     floor, door = args.floor or answers.get("floor"), args.door or answers.get("door")
-    out = {"page_id": safe(flat.get("id"), PAGE_ID_RE), "inputs": {"unit_number": bool(number), "floor_door": bool(floor or door),
-                                             "landlord_name": bool(landlord)}}
+    out = {"page_id": safe(flat.get("id"), PAGE_ID_RE),
+           "inputs": {"unit_number": bool(number), "floor_door": bool(floor or door),
+                      "landlord_name": bool(landlord)}}
     extra_plomba, billing = [], None
     if cached:
         source = "cached_lv"
