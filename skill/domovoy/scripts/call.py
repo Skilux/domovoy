@@ -61,6 +61,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_DIR = os.path.expanduser(os.environ.get("DOMOVOY_STATE_DIR") or os.path.join(ROOT, ".state"))
 DEFAULT_ENV_FILE = "~/.config/domovoy/.env"
 MARKER = "domovoy-call: %s"
+MAX_ASK_ALSO = 2
 PAGE_ID = "notion_page_id"
 TYPES = {
     "string": lambda v: isinstance(v, str),
@@ -232,6 +233,22 @@ def find_listing(page, listing_arg):
     return data
 
 
+def with_ask_also(unknowns, ask_also):
+    """The flat's unknowns, then up to MAX_ASK_ALSO config questions it does not already hold."""
+    merged = list(unknowns or [])
+    seen = {u.strip().lower() for u in merged if isinstance(u, str)}
+    added = 0
+    for question in ask_also or []:
+        if added == MAX_ASK_ALSO:
+            break
+        if not isinstance(question, str) or not question.strip() or question.strip().lower() in seen:
+            continue
+        merged.append(question.strip())
+        seen.add(question.strip().lower())
+        added += 1
+    return merged
+
+
 def build_context(cfg, page, windows, listing_arg=None):
     schema = load_schema("call_context")
     context = dict(find_listing(page, listing_arg))
@@ -240,7 +257,11 @@ def build_context(cfg, page, windows, listing_arg=None):
             context[key] = []
         elif key not in context and (None in sub.get("enum", []) or "null" in sub.get("type", [])):
             context[key] = None
-    context.update(cfg["call_context"])
+    settings = dict(cfg["call_context"])
+    ask_also = settings.pop("ask_also", None)
+    context.update(settings)
+    if ask_also:
+        context["unknowns"] = with_ask_also(context.get("unknowns"), ask_also)
     context["budget_cap"] = budget_cap(cfg)
     context[PAGE_ID] = page[PAGE_ID]
     context["available_windows"] = windows
