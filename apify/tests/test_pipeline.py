@@ -4,7 +4,6 @@ the real stages are tested in their own packages. An autouse fixture refuses eve
 import json
 import logging
 import socket
-import sys
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +11,10 @@ from typing import Any
 
 import pytest
 
+import domovoy.costs as costs_stage
+import domovoy.dedup as dedup_stage
+import domovoy.notion.sink as notion_stage
+import domovoy.pipeline as pipeline_module
 from domovoy.assemble import address_for, build_flat_item
 from domovoy.models import (
     Costs,
@@ -26,7 +29,7 @@ from domovoy.models import (
     UpsertResult,
     Verdict,
 )
-from domovoy.pipeline import Modules, empty_extraction, llm_config, open_extractor, run_search
+from domovoy.pipeline import Modules, empty_extraction, llm_config, open_extractor, resolve_modules, run_search
 from domovoy.profile import load_profile
 from domovoy.sources.base import SourceError
 
@@ -518,11 +521,12 @@ def test_llm_defaults_follow_the_wp4_decisions():
     assert (custom.model, custom.concurrency, custom.fallback_model, custom.timeout_sec) == ("m2", 3, "f2", 30)
 
 
-async def test_open_extractor_falls_back_when_the_extraction_module_is_missing(monkeypatch, caplog):
-    monkeypatch.setitem(sys.modules, "domovoy.extraction", None)  # an import of it fails, as if not on main
-    caplog.set_level(logging.WARNING)
-    assert await open_extractor({}, {}, LOG) is None
-    assert "stage extraction: fallback in use" in caplog.text
+def test_resolve_modules_returns_the_merged_stages():
+    modules = resolve_modules(LOG)
+    assert modules.dedup is dedup_stage
+    assert modules.costs is costs_stage
+    assert modules.notion is notion_stage
+    assert modules.extraction is None  # the extractor is opened by open_extractor() inside the run
 
 
 async def test_skip_extraction_never_opens_the_cache(monkeypatch):
@@ -531,8 +535,7 @@ async def test_skip_extraction_never_opens_the_cache(monkeypatch):
     async def open_cache() -> None:
         opened.append(True)
 
-    module = SimpleNamespace(Extractor=lambda *args, **kwargs: None, open_apify_cache=open_cache)
-    monkeypatch.setitem(sys.modules, "domovoy.extraction", module)
+    monkeypatch.setattr(pipeline_module, "open_apify_cache", open_cache)
     assert await open_extractor({"skipExtraction": True}, {}, LOG) is None
     assert opened == []
 
@@ -549,9 +552,8 @@ async def test_open_extractor_builds_the_extractor_over_the_cache(monkeypatch):
     async def open_cache() -> object:
         return cache
 
-    monkeypatch.setitem(
-        sys.modules, "domovoy.extraction", SimpleNamespace(Extractor=Extractor, open_apify_cache=open_cache)
-    )
+    monkeypatch.setattr(pipeline_module, "open_apify_cache", open_cache)
+    monkeypatch.setattr(pipeline_module, "Extractor", Extractor)
     extractor = await open_extractor(
         {"llm": {"concurrency": 1}}, {"FEATHERLESS_API_KEY": "fake-featherless-key-for-tests"}, LOG
     )

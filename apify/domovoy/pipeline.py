@@ -6,29 +6,31 @@ build the FlatItem, push it to the dataset and upsert new and changed flats (not
 property-id map and the profile state are saved only when every Notion write of the run succeeded, so a
 failed write is never recorded as seen.
 
-The extraction stage (WP4) is an Extractor opened inside the Actor run by open_extractor(), because its
-cache is an Apify store. A stage that is not importable is replaced by a fallback, and the log says which
-are active. A failing source, extraction or Notion write is counted in the run summary; it never stops the run.
+The stages are the merged modules: dedup (WP6), costs (WP5), the Notion sink (WP7) and the extractor (WP4).
+The extractor is opened inside the Actor run by open_extractor(), because its cache is an Apify store.
+A failing source, extraction or Notion write is counted in the run summary; it never stops the run.
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
-import importlib
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from logging import Logger
-from types import SimpleNamespace
 from typing import Any, Protocol
 from uuid import uuid4
 
 import httpx
 from pydantic import SecretStr
 
+import domovoy.costs as costs_stage
+import domovoy.dedup as dedup_stage
+import domovoy.notion.sink as notion_stage
 from domovoy.assemble import build_flat_item
+from domovoy.extraction import Extractor, open_apify_cache
 from domovoy.models import (
     PRAGUE,
     Costs,
@@ -52,20 +54,6 @@ DEFAULT_CONCURRENCY = 1
 DEFAULT_TIMEOUT_SEC = 60
 CONFIDENCE_THRESHOLD = 0.5  # Extractor(min_confidence=...): answers below it become unknown (open item 7)
 NO_EXTRACTION_PROMPT_VERSION = "none"
-DEDUP_NAMES = (
-    "PROPERTY_IDS_STORE",
-    "PROFILE_STATE_STORE",
-    "load_property_ids",
-    "save_property_ids",
-    "load_profile_state",
-    "save_profile_state",
-    "merge",
-    "diff",
-    "record_run",
-    "cross_source",
-)
-COSTS_NAMES = ("compute_costs", "evaluate")
-NOTION_NAMES = ("NotionSink",)
 EVIDENCE_FIELDS = tuple(
     name for name in Extraction.model_fields if name not in {"provider", "model", "prompt_version", "status"}
 )
@@ -86,39 +74,25 @@ class Platform(Protocol):
 
 @dataclass
 class Modules:
-    """Stage objects from other work packages. None means that stage's fallback is used."""
+    """The stage modules and objects. None means that stage's fallback is used; tests build partial sets."""
 
-    dedup: Any = None  # WP6: DEDUP_NAMES
-    extraction: Any = None  # WP4 Extractor, opened inside the run by open_extractor()
-    costs: Any = None  # WP5: compute_costs(listing, ex, profile), evaluate(listing, ex, costs, profile)
-    notion: Any = None  # WP7: NotionSink(token=, data_source_id=) with validate() and upsert(item)
+    dedup: Any = None  # domovoy.dedup (WP6)
+    extraction: Any = None  # the Extractor (WP4), opened inside the run by open_extractor()
+    costs: Any = None  # domovoy.costs (WP5)
+    notion: Any = None  # domovoy.notion.sink (WP7)
 
 
 @dataclass
 class Analysis:
     extraction: Extraction
-    ran: bool  # False: extraction was skipped, missing or failed, so every field is unknown
+    ran: bool  # False: extraction was skipped or failed, so every field is unknown
     costs: Costs
 
 
 def resolve_modules(log: Logger) -> Modules:
-    """Import each stage when a run starts. A stage that is not importable is logged and replaced by a fallback."""
-    return Modules(
-        dedup=_import_stage("dedup", "domovoy.dedup", DEDUP_NAMES, log),
-        costs=_import_stage("costs", "domovoy.costs", COSTS_NAMES, log),
-        notion=_import_stage("notion", "domovoy.notion.sink", NOTION_NAMES, log),
-    )
-
-
-def _import_stage(label: str, path: str, names: tuple[str, ...], log: Logger) -> SimpleNamespace | None:
-    try:
-        module = importlib.import_module(path)
-        found = {name: getattr(module, name) for name in names}
-    except (ImportError, AttributeError) as exc:
-        log.warning("stage %s: fallback in use (%s: %s)", label, type(exc).__name__, exc)
-        return None
-    log.info("stage %s: active (%s)", label, path)
-    return SimpleNamespace(**found)
+    """The merged stages: dedup, costs and the Notion sink. The extractor is opened by open_extractor()."""
+    log.info("stages: dedup, costs and notion are the merged modules; extraction opens inside the run")
+    return Modules(dedup=dedup_stage, costs=costs_stage, notion=notion_stage)
 
 
 def _secret(actor_input: Mapping[str, Any], input_key: str, env_key: str, environ: Mapping[str, str]) -> str | None:
@@ -140,32 +114,25 @@ def llm_config(actor_input: Mapping[str, Any], environ: Mapping[str, str]) -> Ll
     )
 
 
-async def open_extractor(actor_input: Mapping[str, Any], environ: Mapping[str, str], log: Logger) -> Any | None:
-    """The extraction stage, opened inside the Actor run: an Extractor over the Apify cache.
+async def open_extractor(actor_input: Mapping[str, Any], environ: Mapping[str, str], log: Logger) -> Extractor | None:
+    """The extraction stage (WP4), opened inside the Actor run: an Extractor over the Apify cache.
 
-    Returns None, the fallback, when skipExtraction is set or domovoy.extraction is not importable yet.
-    The log says whether each key is set, never the key itself. The caller closes the result with aclose().
+    Returns None when skipExtraction is set. The log says whether each key is set, never the key itself.
+    The caller closes the result with aclose().
     """
     if actor_input.get("skipExtraction"):
         log.info("skipExtraction: extraction is off; costs and requirements run on unknown fields")
         return None
-    try:
-        extraction = importlib.import_module("domovoy.extraction")
-        extractor_cls = extraction.Extractor
-        open_cache = extraction.open_apify_cache
-    except (ImportError, AttributeError) as exc:
-        log.warning("stage extraction: fallback in use (%s: %s)", type(exc).__name__, exc)
-        return None
     cfg = llm_config(actor_input, environ)
     log.info(
-        "stage extraction: active (model %s, fallback %s); Featherless key %s; OpenAI last-resort key %s",
+        "extraction: model %s, fallback %s; Featherless key %s; OpenAI last-resort key %s",
         cfg.model,
         cfg.fallback_model,
         "set" if cfg.featherless_api_key else "not set",
         "set" if cfg.openai_api_key else "not set",
     )
-    cache = await open_cache()
-    return extractor_cls(cfg, cache, min_confidence=CONFIDENCE_THRESHOLD)
+    cache = await open_apify_cache()
+    return Extractor(cfg, cache, min_confidence=CONFIDENCE_THRESHOLD)
 
 
 async def open_notion(

@@ -2,7 +2,7 @@
 
 katastr_lookup returns NOT_IMPLEMENTED. search runs the pipeline in domovoy.pipeline and writes its RunSummary to
 the key OUTPUT. Sources register themselves when domovoy.sources is imported (see domovoy/sources/__init__.py).
-The extractor is opened by __main__ inside the Actor run and passed in; None means the extraction fallback.
+The extractor is opened by __main__ inside the Actor run and passed in; None means extraction is off (skipExtraction).
 """
 
 from logging import Logger

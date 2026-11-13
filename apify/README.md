@@ -10,11 +10,11 @@ The Actor turns a search profile into flats. It collects listings from the three
 | Dedup and profile state | `domovoy/dedup/` | Live (WP6). Property ids and profile state live in the named stores `domovoy-property-ids` and `domovoy-profile-state`. |
 | Costs and requirements | `domovoy/costs/` | Live (WP5). Without extraction, most costs are unknown and most flats are `needs_info`. |
 | Notion sink | `domovoy/notion/` | Live (WP7). Runs only when `notion.dataSourceId` is set. |
-| Extraction | `domovoy/extraction/` | Not on main yet (WP4, in re-review). Until it merges, every field is unknown and `extraction` is null. |
+| Extraction | `domovoy/extraction/` | Live (WP4). Needs a Featherless or OpenAI key; without one, every field is unknown and `extraction` is null. |
 
-Each stage is imported when a run starts. A stage that is not importable is replaced by its fallback, and the run log names every fallback in use. A failing stage inside one flat is counted, not fatal.
+The stages are imported directly from their merged packages; there is no fallback in production. A failing stage inside one flat is counted, not fatal.
 
-## Extraction chain (WP4, once merged)
+## Extraction chain (WP4)
 
 For each listing, in order:
 
@@ -69,7 +69,7 @@ The summary is the key `OUTPUT` in `storage/key_value_stores/default/` (a JSON f
 
 ## Not done yet
 
-Extraction (WP4) until it merges. The dataset schema in `.actor/dataset_schema.json` is still an empty placeholder. Phase 2: `katastr_lookup` and the PostHog events.
+The dataset schema in `.actor/dataset_schema.json` is still an empty placeholder. Phase 2: `katastr_lookup` and the PostHog events.
 
 ## Fixtures
 
