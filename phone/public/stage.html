@@ -240,18 +240,18 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
   var STATUS = {
     chipText: { BUILT: "BUILT TODAY", PARTLY: "PARTLY", PLANNED: "PLANNED" },
     closeTitles: { BUILT: "BUILT TODAY", PARTLY: "PARTLY", PLANNED: "PLANNED" },
-    steps: { find: "PARTLY", approve: "BUILT", call: "BUILT", book: "PARTLY", learn: "PARTLY" },
+    steps: { find: "BUILT", approve: "BUILT", call: "BUILT", book: "PARTLY", learn: "PARTLY" },
     features: {
       voice:    { label: "Live AI voice call",          chip: "BUILT" },
       skill:    { label: "Call skill, Notion in and out", chip: "BUILT" },
       gate:     { label: "Approval gate",               chip: "BUILT" },
       learn:    { label: "PostHog learning loop",       chip: "PARTLY" },
-      listings: { label: "Listings from 3 portals",     chip: "PARTLY" },
+      listings: { label: "Listings from 3 portals",     chip: "BUILT" },
       costs:    { label: "Honest cost math",            chip: "PARTLY" },
       fees:     { label: "Fee reading from text",       chip: "PARTLY" },
       calendar: { label: "Calendar event",              chip: "PLANNED" },
       flow:     { label: "Whole flow in one piece",     chip: "PLANNED" },
-      install:  { label: "One-command install",         chip: "PLANNED" },
+      install:  { label: "One-command install",         chip: "PARTLY" },
       business: { label: "Next: a business edition for real estate agents", chip: "PLANNED" },
       later:    { label: "Real phone calls, Czech", chip: "PLANNED" }
     },
@@ -264,7 +264,7 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
   var DEMO = "domovoy-phone.vercel.app/start";
 
   var STEPS = [
-    { id: "find",    name: "FIND",    say: [["listings", "Three portals, one shortlist"], ["costs", "Monthly cost and move-in cost"]] },
+    { id: "find",    name: "FIND",    say: [["listings", "Three portals, one shortlist"], ["costs", "Monthly cost and move-in total"]] },
     { id: "approve", name: "APPROVE", say: [["gate", "Nobody is contacted before this move"]] },
     { id: "call",    name: "CALL",    say: [["voice", "Live, unscripted AI voice call"]] },
     { id: "book",    name: "BOOK",    say: [["skill", "Notion status and call summary"], ["calendar", "Calendar event"]] },
@@ -338,7 +338,7 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
         '<p class="ans">Commission: <b>about 30,000 CZK</b></p><p class="ans">Pets: <b>depends on the pets</b></p></div>';
     }
     return '<div class="fcard ' + (kind === 'hot' ? 'hot' : '') + '"><h3>Korunni 88</h3><p class="ar">Praha 2 - Vinohrady</p>' +
-      '<p class="mny">Monthly 27,500 CZK</p><p class="mny">Move-in 75,500 CZK</p>' +
+      '<p class="mny">Monthly 27,500 CZK</p><p class="mny">Move-in total 75,500&nbsp;CZK</p>' +
       '<p class="unk">Commission: unknown</p><p class="unk">Pets: unknown</p></div>';
   }
   function board(where, foot) {
@@ -407,7 +407,7 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
   }
   function zone(n) {
     var cls = '', body = '';
-    if (n === 1) body = board(0, '<p class="foot"><b>Monthly</b> = rent 24,000 + services 3,500 CZK. Budget cap 30,000 CZK.<br><b>Move-in cost</b> = everything paid to move in: first month 27,500 + deposit 48,000 CZK. Commission not stated, so not included.</p>');
+    if (n === 1) body = board(0, '<p class="foot"><b>Monthly</b> = rent 24,000 + services 3,500 CZK. Budget cap 30,000 CZK.<br><b>Move-in total</b> = everything paid to move in: first month 27,500 + deposit 48,000 CZK. Commission not stated, so not included.</p>');
     if (n === 2) body = board(1, '<p class="foot">Vladimir moved one flat to <b>Interested</b>. Only now may the agent make contact.</p>');
     if (n === 3) { cls = 'two'; body = terminal() + phone('incoming'); }
     if (n === 4) { cls = 'two'; body = terminal() + phone('call'); }
