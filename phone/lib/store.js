@@ -1,4 +1,5 @@
 const TTL = 3600;
+const RESULT_TTL = 86400;
 const PENDING = 'domovoy:pending';
 const resultKey = (propertyId) => `domovoy:result:${propertyId}`;
 const seenKey = (conversationId) => `domovoy:seen:${conversationId}`;
@@ -35,9 +36,9 @@ export async function takeCallToken(callToken) {
 }
 
 export async function setResult(result) {
-  const first = await redis('SET', seenKey(result.conversation_id), '1', 'NX', 'EX', TTL);
+  const first = await redis('SET', seenKey(result.conversation_id), '1', 'NX', 'EX', RESULT_TTL);
   if (first !== 'OK') return false;
-  await redis('SET', resultKey(result.property_id), JSON.stringify(result), 'EX', TTL);
+  await redis('SET', resultKey(result.property_id), JSON.stringify(result), 'EX', RESULT_TTL);
   return true;
 }
 
