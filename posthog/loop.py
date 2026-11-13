@@ -129,6 +129,18 @@ def fails(flat, requirements):
             or over("max_metro_m", "metro_m", "metro farther than %s m"))
 
 
+def describe(name, value):
+    return {
+        "elevator": "only flats with an elevator",
+        "furnished": "only furnished flats",
+        "min_floor": "only flats on floor %s or higher" % value,
+        "max_total_monthly": "only flats that cost %s CZK a month or less in total" % value,
+        "max_upfront": "only flats with a move-in cost of %s CZK or less" % value,
+        "max_commission": "only flats with a commission of %s CZK or less" % value,
+        "max_metro_m": "only flats within %s m of a metro station" % value,
+    }[name]
+
+
 def rejected_by_renter(flat):
     """The renter's own no: Status = Not interested, or "Interested?" = No, each with a typed Reason."""
     reason = flat.get("reason") or ""
@@ -242,7 +254,8 @@ def cmd_propose(args):
     unknown_names = sorted(set(change) - set(SUPPORTED))
     if unknown_names:
         return out({"refused": True, "reason": "unsupported change %s; supported: %s" % (unknown_names, ", ".join(SUPPORTED))}, 2)
-    would_remove = [f["property_id"] for f in shortlist.list_flats() if open_for_review(f) and fails(f, change)]
+    flats = shortlist.list_flats()
+    would_remove = [f["property_id"] for f in flats if open_for_review(f) and fails(f, change)]
     flag = api("POST", "feature_flags/", {
         "key": flag_key,
         "name": "DOMOVOY approved criteria change: %s. Off = proposed or declined, on = approved." % args.title,
@@ -252,35 +265,58 @@ def cmd_propose(args):
                     "payloads": {"true": json.dumps({"requirements": change, "reason_key": key})}},
     })
     id_list = ", ".join("'%s'" % i.replace("'", "") for i in ids)
-    markdown = "\n\n".join([
-        "**Finding.** %s" % (args.finding or args.title),
-        "**Proposal.** Add `%s` to the search requirements." % json.dumps(change),
-        "**Expected effect.** %d flats now in Shortlisted would be removed%s." % (
-            len(would_remove), (": " + ", ".join(would_remove)) if would_remove else ""),
-        "**Measurement pending.** One change shows that it was applied, not that results got better. "
-        "Later rejections and Interested rate, split by this flag, will show the effect.",
-        "**Your answer.** Yes switches the flag below on. No leaves it off. Either answer is recorded, "
-        "so this proposal is not made twice.",
-        "Dataset: `%s`. Written by the DOMOVOY agent from scout instructions `%s` stored in PostHog." % (ds, SCOUT_SKILL),
-    ])
-    title = "DOMOVOY report: " + args.title
-    mcp("notebooks-create-markdown", {"title": title, "markdown": markdown})
+    by_id = {f["property_id"]: f for f in flats}
+    rows = "\n".join("| %s | %s | %s |" % (i, (by_id.get(i) or {}).get("portal") or "unknown",
+                                          ((by_id.get(i) or {}).get("reason") or "not in the shortlist now").replace("|", "/"))
+                     for i in ids)
+    wish = "; ".join(describe(name, value) for name, value in sorted(change.items()))
+    synthetic = "" if ds == "live" else "> Test run on synthetic flats (dataset `%s`). Nothing here is a real listing.\n\n" % ds
+    title = "DOMOVOY suggests: " + args.title
+    env = load_env()
+    mcp("notebooks-create-markdown", {"title": title, "markdown": synthetic + "\n\n".join([
+        "DOMOVOY is the agent that finds flats and calls realtors for %s. It watches which flats get rejected and why. "
+        "When the same reason comes back 3 times, it suggests one change to the search and asks here. "
+        "Nothing changes until the switch in step 3 is turned on." % (renter() if renter() != "renter" else "the renter"),
+        "## 1. What the agent noticed",
+        args.finding or args.title,
+        "| Flat | Portal | The renter's own words |\n| --- | --- | --- |\n" + rows,
+        "## 2. What it suggests",
+        "From now on show **%s**." % wish,
+        "- Right now: %s." % ("%d flat%s still on the shortlist would be removed (%s)" % (
+            len(would_remove), "" if len(would_remove) == 1 else "s", ", ".join(would_remove)) if would_remove
+            else "no flat on the shortlist would be removed"),
+        "- Every later search: flats that fail this are not shown. A flat where the answer is unknown stays.",
+        "## 3. Your answer",
+        "**Yes:** turn the switch below on. **No:** leave it off. Either answer is remembered, so the agent does not ask this twice.",
+    ])})
     short_id = next((n["short_id"] for n in api("GET", "notebooks/?limit=50").get("results", []) if n.get("title") == title), None)
     notebook_url = None
     if short_id:
-        notebook_url = "%s/project/%s/notebooks/%s" % (load_env()["POSTHOG_APP_HOST"], load_env()["POSTHOG_PROJECT_ID"], short_id)
-        mcp("notebooks-add-cell", {
-            "notebook_id": short_id, "cell_type": "sql", "title": "Evidence: the rejections behind this report",
-            "code": "select properties.property_id as flat, properties.portal as portal, properties.reason as reason, "
-                    "timestamp from events where event = 'listing_rejected' and properties.dataset = '%s' "
-                    "and properties.property_id in (%s) order by timestamp" % (ds, id_list)})
-        mcp("notebooks-add-cell", {"notebook_id": short_id, "cell_type": "component", "tag_name": "FeatureFlag",
-                                   "props": {"id": flag["id"], "view": "editor"}})
+        notebook_url = "%s/project/%s/notebooks/%s" % (env["POSTHOG_APP_HOST"], env["POSTHOG_PROJECT_ID"], short_id)
+
+        def cell(cell_type, **fields):
+            mcp("notebooks-add-cell", dict(fields, notebook_id=short_id, cell_type=cell_type))
+
+        def text(*parts):
+            cell("markdown", markdown="\n\n".join(parts))
+
+        cell("component", tag_name="FeatureFlag", props={"id": flag["id"], "view": "editor"})
         chart = next((i["short_id"] for i in api("GET", "insights/?search=DOMOVOY&saved=true&limit=20").get("results", [])
                       if (i.get("name") or "").startswith(MEASURE_INSIGHT)), None)
         if chart:
-            mcp("notebooks-add-cell", {"notebook_id": short_id, "cell_type": "saved_insight", "insight_short_id": chart,
-                                       "title": "Measure: flats by criteria version"})
+            text("## 4. Did it help?",
+                 "Not known yet. One change proves that it was applied, not that the results got better. "
+                 "The chart counts flats shown, rejected and liked, split by the version of the search rules. "
+                 "After a yes, a new version starts; fewer rejections per flat shown in the new version means the change helped.")
+            cell("saved_insight", insight_short_id=chart, title="Flats shown, rejected and liked, by version of the search rules")
+        text("## How this page was made",
+             "The agent wrote it from the rejections stored as PostHog events, following its instructions `%s` kept in PostHog. "
+             "The answer is a PostHog feature flag (`%s`); the search reads it before every run. "
+             "The query below shows the raw events behind step 1." % (SCOUT_SKILL, flag_key))
+        cell("sql", title="Raw events behind step 1",
+             code="select properties.property_id as flat, properties.portal as portal, properties.reason as reason, "
+                  "timestamp from events where event = 'listing_rejected' and properties.dataset = '%s' "
+                  "and properties.property_id in (%s) order by timestamp" % (ds, id_list))
     capture("criteria_change_proposed", renter(), dict(
         base_props(args, criteria_flags(args.dataset)), change=key, flag=flag_key, requirements=change,
         evidence_property_ids=ids, would_remove=len(would_remove), notebook=notebook_url))

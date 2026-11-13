@@ -53,7 +53,7 @@ PostHog's own scouts and Inbox are paid (0 free credits; a scout run returned 42
 | Signals | `loop.py sync` reads the Notion shortlist and sends `listing_shortlisted`, `listing_rejected` (with the typed `Reason`) and `listing_interested`, each once | Events |
 | Instructions | `loop.py report` returns today's rejections, earlier decisions, and the scout instructions `domovoy-rejections` | HogQL query API, skills store |
 | Judgement | Claude normalizes the free-text reasons to a short key and groups them. One undecided key on 3 or more flats makes a proposal | none, this is the agent |
-| Report | `loop.py propose` creates an inactive flag `domovoy-criteria-<key>` whose payload holds the change, and a notebook with the finding, a live evidence query, the flag editor and the measurement chart | Feature flags, notebooks |
+| Report | `loop.py propose` creates an inactive flag `domovoy-criteria-<key>` whose payload holds the change, and a notebook "DOMOVOY suggests: ..." written for a reader who has never seen the project: what the agent noticed (the renter's own words in a table), what it suggests in plain words, the flag switch as the answer, the measurement chart, and the raw events last | Feature flags, notebooks |
 | Yes or no | `loop.py decide --key K --yes` switches the flag on, moves Shortlisted flats that now fail to Not interested with `Reason = filtered: ...`, and adds a chart annotation. `--no` only records the answer | Feature flags, annotations |
 | Memory | Every decision is appended to the scout instructions as a new version, and sent as `criteria_change_decided`. A decided key is refused the second time | Skills store, events |
 | Measure | Every event carries `criteria_version` and `$feature/<flag>`. The saved chart "DOMOVOY: shown, rejected and interested flats by criteria version" splits by it | Insights |
@@ -85,6 +85,7 @@ python3 posthog/loop.py decide --key no_elevator --yes --real
 - `Interested?` column, Notion test database: `sync` counted 5 rejections (3 by `Status`, 2 by `Interested?` = No) and 2 interested; `decide --yes` for "furnished required" moved the one unanswered unfurnished flat and kept the one marked `Interested?` = Yes. `sync` on a shortlist without the column sent the same 15 events as before.
 - Stage timing on the Notion test database, events already ingested: `report` 3.3 s, `propose` 6.9 s, `decide` 3.6 s. `sync` 3.3 s, run beforehand.
 
+- Report layout, fake shortlist, dataset `example`: `propose` took 8.2 s and made https://eu.posthog.com/project/348322/notebooks/kWN1ftB2 with its flag off. Read back through the API; the sections are in the order above.
 - Fake shortlist: `sync` sent 15 events, a second `sync` sent 0. `report` read back 5 rejections. `propose` with 2 flats was refused. `propose` with 3 created the flag and the notebook. `decide --no` recorded the answer, and proposing the same key again was refused.
 - Notion test database with 9 synthetic flats: `decide --yes` took 4 s, moved the one Shortlisted flat without an elevator to Not interested with `Reason = filtered: elevator required`, and published version 4 of the instructions.
 - Not run: the real "DOMOVOY shortlist" database (it did not exist yet), and nobody has looked at the notebook or the chart in a browser.
