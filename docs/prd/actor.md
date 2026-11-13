@@ -61,7 +61,7 @@ One Actor with a `mode` input. Claude calls it through `search.py`, which uses t
 | Mode | Status | Notes |
 | --- | --- | --- |
 | `search` | P0 | Async run. Items stream into the dataset, so partial reads are possible. The summary goes to the default key-value store under the key `OUTPUT`. |
-| `katastr_lookup` | Phase 2 | Returns `NOT_IMPLEMENTED`. See [Phase 2](#phase-2). |
+| `katastr_lookup` | Reserved | Returns `NOT_IMPLEMENTED`. The katastr check runs locally instead; see [Katastr check](#katastr-check-stretch). |
 | `schedule` | After the hackathon | Apify task + schedule per profile |
 
 **Input fields:**
@@ -291,16 +291,22 @@ Every step leaves a working Actor. Times are targets for 13 Nov. Work packages, 
 - Featherless does the extraction, with a cache and OpenAI as fallback. No eval and no labeled set.
 - The model extracts, Python computes. Energy and furniture come from fixed tables and are marked as estimates.
 - Deduplication is heuristic, with a stable `property_id`.
-- The katastr owner check and PostHog events from the Actor are phase 2.
+- PostHog events from the Actor are phase 2. The katastr owner check moved to a stretch for today (see [Katastr check](#katastr-check-stretch)).
+
+## Katastr check (stretch)
+
+Moved from phase 2 on 13 Nov (Vladimir). It's a stretch for today: built after the 14:00 checkpoint holds, shown if it works, and kept out of the scripted demo. The ticket with the full plan is [#57](https://github.com/Skilux/domovoy/issues/57).
+
+- **When:** after `Viewing booked`.
+- **Inputs:** before the call, Claude adds the unit number and the landlord's name to `unknowns`. The call returns them in `answers`, so no contract changes.
+- **How:** the local skill script `skill/domovoy/scripts/katastr.py`, not an Actor run. It resolves address → building → unit → ownership sheet (LV) through API KN (free REST) and WSDP (paid; Vladimir's production account). Live WSDP calls are capped at 10 billed outputs per day by default.
+- **Output:** unit type (flat, studio or non-residential), owner types and shares, restrictions (mortgage, distraint, insolvency, pending change), whether the landlord matches an owner (`yes`, `no` or `unknown`), and a sublease risk for co-op or company owners. It's appended to the Notion page as a "Katastr check" section. Claude gets the same result without names.
+- **Owner names:** personal data under GDPR, even though the katastr is public. They're stored only in Notion, like realtor contacts. Never in the repo, logs, stdout, fixtures, Apify storage or the cached fallback. Use beyond a demo still needs compliance sign-off.
+- **Cached path:** old LV XML files from earlier WSDP lookups live outside the repo in `~/.config/domovoy/lv/`. `--cached-lv` parses one with the same parser and labels the result "Cached LV from <date>, prior lookup".
+- The Actor's `katastr_lookup` mode stays reserved and returns `NOT_IMPLEMENTED`.
 
 ## Phase 2
 
-- **`katastr_lookup`** (sync):
-  - **When:** after a viewing is agreed and the exact address and unit number are known.
-  - **How:** a WSDP lookup (Vladimir has an account).
-  - **Output:** unit type (flat / studio / non-residential), owners (name, type, share), restrictions (mortgage, distraint, insolvency, pending change), and whether the landlord matches the owner.
-  - **Where:** results go to Notion and back to Claude.
-  - **Storing owner names is personal data under GDPR, even though katastr is public. It needs compliance sign-off before use beyond a demo.**
 - **PostHog from the Actor:** `listing_scraped`, `listing_shortlisted`, `listing_rejected`, `search_run_completed`, plus `$ai_generation` traces through PostHog's OpenAI wrapper, joined on `property_id`.
 - Commute time (PangeAI), a public Notion OAuth for multiple users, and the Apify Store listing.
 
