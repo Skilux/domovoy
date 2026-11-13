@@ -66,14 +66,21 @@
           "title": "Concurrency",
           "type": "integer",
           "description": "Featherless concurrent units the run may hold at once. A Qwen3-30B call takes 1 unit, a DeepSeek-V4-Flash fallback call 4 (left out of the chain when this value is below 4). The plan allows 100 (GET /v1/plan).",
-          "default": 8,
+          "default": 16,
           "minimum": 1
         },
         "timeoutSec": {
           "title": "Timeout (seconds)",
           "type": "integer",
-          "description": "Timeout per LLM call.",
-          "default": 60,
+          "description": "Timeout per LLM call attempt. Answers take 7 to 12 s, a cold first call 5 to 15 s.",
+          "default": 20,
+          "minimum": 1
+        },
+        "flatBudgetSec": {
+          "title": "Per-flat budget (seconds)",
+          "type": "integer",
+          "description": "Time one flat may spend on model calls, from its first call (queueing does not count). When it runs out, the flat goes on with extraction status timeout and 'fees not extracted yet' in its unknowns; nothing is cached, so the next run extracts it again and delivers it as changed.",
+          "default": 45,
           "minimum": 1
         }
       }

@@ -1,7 +1,7 @@
 """Extraction of one listing: cache, provider chain, quote check and confidence threshold."""
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from openai import AsyncOpenAI
 from pydantic import SecretStr, ValidationError
@@ -10,6 +10,8 @@ from domovoy.extraction.cache import ExtractionCache, cache_key
 from domovoy.extraction.llm import (
     DEFAULT_OPENAI_MODEL,
     FEATHERLESS_BASE_URL,
+    BudgetExceeded,
+    FlatBudget,
     LlmFields,
     SlotLimiter,
     ask,
@@ -89,15 +91,15 @@ def to_extraction(
     )
 
 
-def failed_extraction() -> Extraction:
-    """Every provider failed: all fields unknown, no provider or model, status failed."""
+def failed_extraction(status: Literal["failed", "timeout"] = "failed") -> Extraction:
+    """Every provider failed (failed), or the flat's budget ran out (timeout): all fields unknown, no provider."""
     unknown = {name: _evidence(None, None, 0.0, False) for name in EVIDENCE_FIELDS}
     return Extraction(
         **unknown,
         provider=None,
         model=None,
         prompt_version=PROMPT_VERSION,
-        status="failed",
+        status=status,
     )
 
 
@@ -130,8 +132,10 @@ class Extractor:
         featherless: AsyncOpenAI | None = None,
         openai: AsyncOpenAI | None = None,
         openai_model: str = DEFAULT_OPENAI_MODEL,
+        flat_budget_sec: float | None = None,
     ) -> None:
         self._cfg = cfg
+        self._flat_budget_sec = flat_budget_sec
         self._cache = cache
         self._min_confidence = min_confidence
         self._gate = SlotLimiter(cfg.concurrency)
@@ -194,7 +198,12 @@ class Extractor:
                     provider="cache",
                     model=model,
                 )
-        answer = await self._ask_chain(text)
+        try:
+            answer = await self._ask_chain(text, FlatBudget(self._flat_budget_sec))
+        except BudgetExceeded:
+            # Nothing is cached, so a later run extracts this flat again.
+            log.warning("extraction budget of %s s ran out: status timeout", self._flat_budget_sec)
+            return failed_extraction("timeout")
         if answer is None:
             return failed_extraction()
         fields, provider, model = answer
@@ -209,7 +218,7 @@ class Extractor:
             model=model,
         )
 
-    async def _ask_chain(self, text: str) -> tuple[LlmFields, Provider, str] | None:
+    async def _ask_chain(self, text: str, budget: FlatBudget) -> tuple[LlmFields, Provider, str] | None:
         """Qwen (one attempt and one retry), then the Featherless fallback (one attempt), then OpenAI (one attempt).
 
         The answer records the provider and the model that actually answered.
@@ -223,6 +232,7 @@ class Extractor:
                 gate=self._gate,
                 attempts=attempts,
                 cost=cost,
+                budget=budget,
             )
             if fields is not None:
                 return fields, provider, model

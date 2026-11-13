@@ -534,8 +534,8 @@ def test_llm_defaults_follow_the_wp4_decisions():
     cfg = llm_config({}, {})
     assert cfg.model == "Qwen/Qwen3-30B-A3B-Instruct-2507"
     assert cfg.fallback_model == "deepseek-ai/DeepSeek-V4-Flash"
-    assert cfg.concurrency == 8
-    assert cfg.timeout_sec == 60
+    assert cfg.concurrency == 16
+    assert cfg.timeout_sec == 20
     assert cfg.featherless_api_key is None and cfg.openai_api_key is None
     custom = llm_config({"llm": {"model": "m2", "concurrency": 3, "fallbackModel": "f2", "timeoutSec": 30}}, {})
     assert (custom.model, custom.concurrency, custom.fallback_model, custom.timeout_sec) == ("m2", 3, "f2", 30)
@@ -579,7 +579,7 @@ async def test_open_extractor_builds_the_extractor_over_the_cache(monkeypatch):
     )
     assert isinstance(extractor, Extractor)
     assert built["cache"] is cache
-    assert built["kwargs"] == {"min_confidence": 0.5}
+    assert built["kwargs"] == {"min_confidence": 0.5, "flat_budget_sec": 45}
     assert built["cfg"].model == "Qwen/Qwen3-30B-A3B-Instruct-2507"
     assert built["cfg"].featherless_api_key.get_secret_value() == "fake-featherless-key-for-tests"
 
@@ -726,3 +726,106 @@ async def test_an_unexpected_error_in_one_flat_leaves_it_retryable_and_the_rest_
     summary2, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform, environ={"NOTION_TOKEN": "t"})
     assert summary2.change == {"new": 1, "changed": 0, "unchanged": 1}
     assert upserts2 == ["p-sreality-2"]
+
+
+async def test_open_extractor_passes_the_flat_budget_input(monkeypatch):
+    built: dict[str, Any] = {}
+
+    class Extractor:
+        def __init__(self, cfg: Any, cache: Any, **kwargs: Any) -> None:
+            built.update(kwargs)
+
+    async def open_cache() -> object:
+        return object()
+
+    monkeypatch.setattr(pipeline_module, "open_apify_cache", open_cache)
+    monkeypatch.setattr(pipeline_module, "Extractor", Extractor)
+    await open_extractor({"llm": {"flatBudgetSec": 30}}, {}, LOG)
+    assert built["flat_budget_sec"] == 30
+
+
+async def test_a_timed_out_flat_is_delivered_with_a_note_and_the_next_run_delivers_its_fees():
+    """Run 1: flat 2's extraction times out. It still reaches the dataset and Notion, with status timeout and
+    "fees not extracted yet"; flat 1 is unaffected. Run 2: flat 2 extracts, counts as changed and is upserted
+    again with its fees; flat 1 is unchanged."""
+    timed_out = {"2"}
+
+    async def extract(listing: Listing) -> Extraction:
+        if listing.source_id in timed_out:
+            data = empty_extraction().model_dump(mode="json")
+            data.update(status="timeout", prompt_version="v2")
+            return Extraction.model_validate(data)
+        return extraction_with(rent=listing.rent)
+
+    dedup = fake_dedup()
+    sink, upserts = fake_notion()
+    platform = FakePlatform()
+    sources = {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2")])}
+    modules = Modules(dedup=dedup, extraction=SimpleNamespace(extract=extract), costs=fake_costs(), notion=sink)
+    run = {"skipExtraction": False, "notion": {"dataSourceId": "ds"}}
+    summary, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform, environ={"NOTION_TOKEN": "t"})
+    by_id = {item["property_id"]: item for item in platform.items}
+    assert by_id["p-sreality-2"]["extraction"]["status"] == "timeout"
+    assert "fees not extracted yet" in by_id["p-sreality-2"]["unknowns"]
+    assert "fees not extracted yet" not in by_id["p-sreality-1"]["unknowns"]
+    assert sorted(upserts) == ["p-sreality-1", "p-sreality-2"]
+    assert summary.notion.created == 2
+
+    timed_out.clear()
+    real_diff = dedup.diff
+
+    def diff(flats: list[Flat], state: ProfileState) -> list[tuple[Flat, str]]:
+        """Like WP6 diff: a stored hash that differs from the flat's ("fake" here) means changed."""
+        return [
+            (flat, "changed" if state.flats[flat.property_id].content_hash != "fake" else change)
+            if flat.property_id in state.flats else (flat, change)
+            for flat, change in real_diff(flats, state)
+        ]
+
+    dedup.diff = diff
+    sink2, upserts2 = fake_notion(action="updated")
+    modules = Modules(dedup=dedup, extraction=SimpleNamespace(extract=extract), costs=fake_costs(), notion=sink2)
+    summary2, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform, environ={"NOTION_TOKEN": "t"})
+    assert summary2.change == {"new": 0, "changed": 1, "unchanged": 1}
+    assert upserts2 == ["p-sreality-2"]
+
+
+async def test_sources_run_concurrently_and_keep_profile_order():
+    """bezrealitky yields only after sreality has started and idnes has finished: sequential collection would hang."""
+    sreality_started = asyncio.Event()
+    idnes_done = asyncio.Event()
+
+    class Waiting(FakeSource):
+        def __init__(self, name: str, listings: list[Listing], before=None, after=None) -> None:
+            super().__init__(name, listings)
+            self.before, self.after = before, after
+
+        async def collect(self, profile: SearchProfile, ctx: Any):
+            if self.after is not None:
+                self.after.set()
+            if self.before is not None:
+                await self.before.wait()
+            for listing in self.listings:
+                yield listing
+            if self.name == "idnes":
+                idnes_done.set()
+
+    class Bezrealitky(FakeSource):
+        async def collect(self, profile: SearchProfile, ctx: Any):
+            await sreality_started.wait()
+            await idnes_done.wait()
+            for listing in self.listings:
+                yield listing
+
+    sources = {
+        "sreality": Waiting("sreality", [make_listing("1")], after=sreality_started),
+        "bezrealitky": Bezrealitky("bezrealitky", [make_listing("2", portal="bezrealitky")]),
+        "idnes": Waiting("idnes", [make_listing("3", portal="idnes")]),
+        "broken": FakeSource("broken", [], error=SourceError("down")),
+    }
+    search = profile()
+    async with asyncio.timeout(2):
+        statuses, listings = await pipeline_module.collect_listings(search, sources, LOG)
+    assert [s.portal for s in statuses] == list(search.filters.sources)
+    assert [listing.portal for listing in listings] == ["sreality", "bezrealitky", "idnes"]
+    assert all(s.status == "ok" for s in statuses)

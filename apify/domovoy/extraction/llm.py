@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from collections import deque
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -236,6 +237,32 @@ def failure_reason(exc: BaseException) -> str:
     return "transport:" + type(exc).__name__
 
 
+class BudgetExceeded(Exception):
+    """The flat's extraction budget ran out. The Extractor turns it into status "timeout"; nothing is cached."""
+
+
+class FlatBudget:
+    """Wall time one flat may spend on model calls (llm.flatBudgetSec). The clock starts when the flat's first call
+    holds its slots, so time queued behind other flats does not count. None: no budget."""
+
+    def __init__(self, seconds: float | None) -> None:
+        self.seconds = seconds
+        self._deadline: float | None = None
+
+    def start(self) -> None:
+        if self.seconds is not None and self._deadline is None:
+            self._deadline = time.monotonic() + self.seconds
+
+    def remaining(self) -> float | None:
+        """Seconds left, or None while the clock has not started (or there is no budget)."""
+        return None if self._deadline is None else self._deadline - time.monotonic()
+
+    def check(self) -> None:
+        left = self.remaining()
+        if left is not None and left <= 0:
+            raise BudgetExceeded()
+
+
 class InvalidAnswer(ValueError):
     """The call answered, but the answer cannot be used. `reason` is the class that is logged."""
 
@@ -293,6 +320,7 @@ async def ask(
     gate: SlotLimiter,
     attempts: int,
     cost: int = 1,
+    budget: FlatBudget | None = None,
 ) -> LlmFields | None:
     """One model's answer, or None once its attempts are used up.
 
@@ -300,7 +328,9 @@ async def ask(
     is retried with a repair message. A 429 (Featherless concurrent units or model switch) is waited out with
     backoff, outside the slots and without using an attempt, up to RATE_LIMIT_RETRIES times per call.
     Every failure is logged with its reason class only (failure_reason, InvalidAnswer), never the content.
+    With a budget, each attempt (slot wait included) is cut at the time left; once it is spent, BudgetExceeded.
     """
+    budget = budget if budget is not None else FlatBudget(None)
     messages: list[dict[str, str]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_text},
@@ -308,24 +338,29 @@ async def ask(
     attempt = 0
     rate_limited = 0
     while attempt < attempts:
+        budget.check()
         attempt += 1
         try:
-            async with gate.slots(cost):
-                async with asyncio.timeout(timeout_sec):
-                    response = await client.chat.completions.create(
-                        model=model,
-                        messages=messages,
-                        temperature=0,
-                        max_tokens=MAX_TOKENS,
-                        response_format={"type": "json_object"},
-                    )
+            async with asyncio.timeout(budget.remaining()):  # the slot wait counts once the flat's clock runs
+                async with gate.slots(cost):
+                    budget.start()
+                    left = budget.remaining()
+                    async with asyncio.timeout(timeout_sec if left is None else min(timeout_sec, left)):
+                        response = await client.chat.completions.create(
+                            model=model,
+                            messages=messages,
+                            temperature=0,
+                            max_tokens=MAX_TOKENS,
+                            response_format={"type": "json_object"},
+                        )
         except RateLimitError as exc:
             if rate_limited < RATE_LIMIT_RETRIES:
                 wait = _retry_after(exc, rate_limited)
                 rate_limited += 1
                 attempt -= 1  # a 429 is the plan saying "not now", not a failed attempt
                 log.warning("%s: HTTP 429, waiting %.1f s (%d of %d)", model, wait, rate_limited, RATE_LIMIT_RETRIES)
-                await asyncio.sleep(wait)
+                left = budget.remaining()
+                await asyncio.sleep(wait if left is None else max(0.0, min(wait, left)))
                 continue
             log.warning("%s attempt %d failed: http_429, retries for 429 used up", model, attempt)
             continue

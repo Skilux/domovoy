@@ -20,7 +20,7 @@
 - `GET /account/concurrency/stream` (free, SSE) shows `"limit": 100` and the in-flight requests with their unit cost: a Qwen call showed `"cost": 1`.
 - Docs (featherless.ai/docs/concurrency-limits, /docs/api-reference-error-codes): each request reserves its model's units while in flight; a request that would push the organization over the limit gets HTTP 429 ("concurrent-unit or model-switch limit"). The limit is shared by every app on the account.
 - Probe: 10 Qwen calls on the five fixture texts with 8 in flight at once: 10 of 10 valid, no 429, 7 to 12 s each, the same as one at a time.
-- Default `llm.concurrency` is now **8** units: up to 8 Qwen calls, or a DeepSeek fallback (4 units) beside 4 Qwen calls. That is 8 % of the plan, leaving room for other apps on the account. With request pricing, the number of requests per run, not the concurrency, sets the cost.
+- Default `llm.concurrency` was **8** units after the perf ticket and is **16** since perf2 (16 % of the plan). At 8: up to 8 Qwen calls, or a DeepSeek fallback (4 units) beside 4 Qwen calls. That is 8 % of the plan, leaving room for other apps on the account. With request pricing, the number of requests per run, not the concurrency, sets the cost.
 
 ## Bench as relayed from issue #35
 
@@ -58,8 +58,9 @@ Paid model calls in this session: about 37 (Qwen 29, DeepSeek-V4-Flash 3, OpenAI
 | --- | --- | --- |
 | `model` | `Qwen/Qwen3-30B-A3B-Instruct-2507` | primary, one slot per call |
 | `fallbackModel` | `deepseek-ai/DeepSeek-V4-Flash` | first fallback, four slots per call |
-| `concurrency` | `8` | Featherless units held at once (weighted: Qwen 1, DeepSeek-V4-Flash 4). The plan allows 100. Was 1 before the perf ticket |
-| `timeoutSec` | `60` | covers the 5 to 15 s cold start |
+| `concurrency` | `16` | Featherless units held at once (weighted: Qwen 1, DeepSeek-V4-Flash 4). The plan allows 100. Was 1 before the perf ticket, 8 after it |
+| `timeoutSec` | `20` | per attempt. Answers take 7 to 12 s and a cold first call 5 to 15 s, so no separate first-call allowance. Was 60: on platform run MbC62afDfIfoKehgQ six flats waited out 60 s timeouts and finished at 391 s |
+| `flatBudgetSec` | `45` | per flat, from its first call (queueing does not count). Then status `timeout`, nothing cached, retried by the next run |
 | (no input field) | `gpt-4o-mini` | OpenAI last resort, `DEFAULT_OPENAI_MODEL`. An assumption: it answered on this account, Vladimir has not chosen it |
 
 `featherlessApiKey`, `openaiApiKey` and the env file are read as before. `OPENAI_API_KEY` is only needed for the last resort.

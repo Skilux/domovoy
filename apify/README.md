@@ -23,12 +23,12 @@ For each listing, in order:
 3. Featherless, the fallback model `llm.fallbackModel` (DeepSeek-V4-Flash), one attempt.
 4. OpenAI `gpt-4o-mini`, a last resort set in code, one attempt. It runs only when an OpenAI key is set.
 
-An answer whose confidence is below 0.5 becomes unknown. `llm.concurrency` is the number of Featherless concurrent units the run may hold, 8 by default (the plan allows 100): a Qwen call takes 1, a DeepSeek fallback call 4 (below 4 the fallback is left out of the chain). A 429 is waited out with backoff. Every failed attempt is logged with its reason class (for example `truncated` or `schema:kauce.value.rent_multiple`), never the content. See `research/featherless.md`. The extractor is opened in `__main__` inside the Actor run and closed after it.
+An answer whose confidence is below 0.5 becomes unknown. `llm.concurrency` is the number of Featherless concurrent units the run may hold, 16 by default (the plan allows 100): a Qwen call takes 1, a DeepSeek fallback call 4 (below 4 the fallback is left out of the chain). A 429 is waited out with backoff. Each attempt times out after `llm.timeoutSec` (20 s). Each flat has `llm.flatBudgetSec` (45 s) from its first call; when that runs out, the flat goes on with extraction `status` `timeout`, every field unknown and "fees not extracted yet" in its unknowns. Nothing is cached for it, and its profile state is recorded as pending, so the next Notion run extracts it again and delivers it as `changed`. Every failed attempt is logged with its reason class (for example `truncated` or `schema:kauce.value.rent_multiple`), never the content. See `research/featherless.md`. The extractor is opened in `__main__` inside the Actor run and closed after it.
 
 ## Run order
 
 1. Validate the profile. With `notion.dataSourceId` set, the Notion schema is checked before any portal is contacted.
-2. Collect each source in `filters.sources`, one at a time. A source that raises is `failed`. A source whose stats report failed or skipped items is `degraded`.
+2. Collect every source in `filters.sources` at the same time; each keeps its own pacing, and their results keep the profile's order. A source that raises is `failed`. A source whose stats report failed or skipped items is `degraded`.
 3. Merge listings into flats across portals (dedup).
 4. Every flat then runs as its own task, as soon as its extraction is done: extract (skipped when `skipExtraction` is set) and cost, set `cross_source` from its commissions, diff against the profile state, evaluate, build the FlatItem and push it to the dataset. Unchanged flats are extracted too, because `cross_source` needs their commissions before diff; the cache makes that cheap. The tasks share the extraction slot limit and the Notion sink's throttle (3 requests per second in total), so dataset items arrive in completion order.
 5. In the same task, upsert `new` and `changed` flats that are not `rejected` to Notion, and with `includeUnchanged` the unchanged ones too. A failed upsert is counted in `notion.errors`. An unexpected error in one flat is logged by its class, counted in the `run done` log line and leaves that flat out of the profile state, so the next run retries it; the other flats go on.
@@ -41,7 +41,7 @@ An answer whose confidence is below 0.5 becomes unknown. `llm.concurrency` is th
 - Risk flag `cheaper on another portal`: added when `cross_source.cheapest_portal` is a different portal from the primary listing.
 - `change`: `new`, `changed` or `unchanged`. Unchanged flats reach the dataset and Notion only with `includeUnchanged`.
 - `rejected_by_requirement` (run summary): counts every failed requirement of each rejected flat, so one flat can count under several requirements.
-- `extraction`: null when extraction did not run (skipped, stage missing, or the run skipped it). When every model fails, it is an object with `status` `failed` and no provider.
+- `extraction`: null when extraction did not run (skipped, stage missing, or the run skipped it). When every model fails, it is an object with `status` `failed` and no provider; when the flat's budget ran out, `status` `timeout`.
 
 ## Secrets
 

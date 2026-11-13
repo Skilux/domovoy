@@ -690,3 +690,38 @@ async def test_an_answer_cut_after_a_complete_object_is_used_without_a_retry() -
     result = await run_one(make_listing(DESCRIPTION, rent=28000), client)
     assert len(calls.calls) == 1
     assert result.rent.value == 28000 and result.rent.verified
+
+
+class SlowCompletions:
+    def __init__(self, delay: float) -> None:
+        self.delay = delay
+        self.calls = 0
+
+    async def create(self, **kwargs: Any) -> Any:
+        self.calls += 1
+        await asyncio.sleep(self.delay)
+        return completion(answer(rent=field(28000, RENT_QUOTE)))
+
+
+async def test_a_flat_over_its_budget_gets_status_timeout_and_nothing_is_cached() -> None:
+    slow = SlowCompletions(0.5)
+    client = cast(AsyncOpenAI, SimpleNamespace(chat=SimpleNamespace(completions=slow)))
+    cache = MemoryCache()
+    openai, openai_calls = scripted()
+    extractor = Extractor(make_cfg(), cache, featherless=client, openai=openai, flat_budget_sec=0.1)
+    started = asyncio.get_running_loop().time()
+    result = await extractor.extract(make_listing(DESCRIPTION, rent=28000))
+    assert asyncio.get_running_loop().time() - started < 0.4  # cut at the budget, not after the slow answer
+    assert result.status == "timeout" and result.provider is None
+    assert all(getattr(result, name).value is None for name in EVIDENCE_FIELDS)
+    assert slow.calls == 1 and openai_calls.calls == []  # the rest of the chain is not tried
+    assert await cache.get(cache_key(listing_input(make_listing(DESCRIPTION, rent=28000)), DEFAULT_MODEL)) is None
+
+
+async def test_the_budget_starts_at_the_first_call_so_queueing_does_not_count() -> None:
+    slow = SlowCompletions(0.05)
+    client = cast(AsyncOpenAI, SimpleNamespace(chat=SimpleNamespace(completions=slow)))
+    extractor = Extractor(make_cfg(concurrency=1), featherless=client, openai=silent_client(), flat_budget_sec=0.08)
+    listings = [make_listing(DESCRIPTION, rent=28000, source_id=str(i)) for i in range(4)]
+    results = await asyncio.gather(*(extractor.extract(item) for item in listings))
+    assert [r.status for r in results] == ["ok"] * 4  # the fourth waited 0.15 s in the queue, over its budget

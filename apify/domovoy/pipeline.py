@@ -55,8 +55,11 @@ from domovoy.sources.base import Source, SourceContext, SourceError
 
 DEFAULT_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"  # decided in #35
 DEFAULT_FALLBACK_MODEL = "deepseek-ai/DeepSeek-V4-Flash"  # Featherless; takes 4 concurrency slots
-DEFAULT_CONCURRENCY = 8  # Featherless units; the plan allows 100 (GET /v1/plan), see research/featherless.md
-DEFAULT_TIMEOUT_SEC = 60
+DEFAULT_CONCURRENCY = 16  # Featherless units; the plan allows 100 (GET /v1/plan), see research/featherless.md
+DEFAULT_TIMEOUT_SEC = 20  # per attempt: answers take 7 to 12 s, a cold first call 5 to 15 s
+DEFAULT_FLAT_BUDGET_SEC = 45  # per flat, from its first call; then status "timeout" and the flat goes on
+TIMEOUT_UNKNOWN = "fees not extracted yet"
+PENDING_HASH = "extraction-pending"  # state hash of a timed-out flat: the next run sees it as changed
 CONFIDENCE_THRESHOLD = 0.5  # Extractor(min_confidence=...): answers below it become unknown (open item 7)
 NO_EXTRACTION_PROMPT_VERSION = "none"
 EVIDENCE_FIELDS = tuple(
@@ -137,7 +140,8 @@ async def open_extractor(actor_input: Mapping[str, Any], environ: Mapping[str, s
         "set" if cfg.openai_api_key else "not set",
     )
     cache = await open_apify_cache()
-    return Extractor(cfg, cache, min_confidence=CONFIDENCE_THRESHOLD)
+    budget = (actor_input.get("llm") or {}).get("flatBudgetSec") or DEFAULT_FLAT_BUDGET_SEC
+    return Extractor(cfg, cache, min_confidence=CONFIDENCE_THRESHOLD, flat_budget_sec=budget)
 
 
 async def open_notion(
@@ -167,18 +171,19 @@ async def open_notion(
 async def collect_listings(
     profile: SearchProfile, sources: Mapping[str, Source], log: Logger
 ) -> tuple[list[SourceStatus], list[Listing]]:
-    statuses: list[SourceStatus] = []
-    listings: list[Listing] = []
+    """Every source at once. Each keeps its own pacing and isolation (_collect_one); results stay in profile order."""
+
+    async def one(portal: str, http: httpx.AsyncClient) -> tuple[SourceStatus, list[Listing]]:
+        source = sources.get(portal)
+        if source is None:
+            log.warning("source %s: not registered, reported as failed", portal)
+            return SourceStatus(portal=portal, status="failed", error="source not registered"), []
+        return await _collect_one(portal, source, profile, http, log)
+
     async with httpx.AsyncClient(trust_env=False) as http:
-        for portal in profile.filters.sources:
-            source = sources.get(portal)
-            if source is None:
-                log.warning("source %s: not registered, reported as failed", portal)
-                statuses.append(SourceStatus(portal=portal, status="failed", error="source not registered"))
-                continue
-            status, collected = await _collect_one(portal, source, profile, http, log)
-            statuses.append(status)
-            listings.extend(collected)
+        results = await asyncio.gather(*(one(portal, http) for portal in profile.filters.sources))
+    statuses = [status for status, _ in results]
+    listings = [listing for _, collected in results for listing in collected]
     return statuses, listings
 
 
@@ -397,6 +402,7 @@ async def _search(
     rejected_by: dict[str, int] = {}
     notion = NotionCounts()
     final: list[Flat] = list(flats)  # each task puts its flat back with cross_source set, for record_run
+    pending: set[str] = set()  # flats whose extraction timed out: recorded so the next run sees them as changed
 
     failed: set[str] = set()  # property ids of flats whose task raised: never recorded as seen
 
@@ -431,6 +437,9 @@ async def _search(
             evaluation = modules.costs.evaluate(flat.primary, analysis.extraction, analysis.costs, profile)
         else:
             evaluation = fallback_evaluation()
+        if analysis.extraction.status == "timeout":
+            pending.add(flat.property_id)
+            evaluation = evaluation.model_copy(update={"unknowns": [*evaluation.unknowns, TIMEOUT_UNKNOWN]})
         seen = state.flats.get(flat.property_id) if state is not None else None
         item = build_flat_item(
             flat,
@@ -471,6 +480,10 @@ async def _search(
                 log.info("profile state not saved: this run had no Notion sink")
             else:
                 new_state = dd.record_run(state, delivered, started).model_copy(update={"profile_hash": current_hash})
+                for property_id in pending & set(new_state.flats):
+                    # The fees reach Notion on a later run: its fresh extraction (no cache entry) counts as changed.
+                    entry = new_state.flats[property_id]
+                    new_state.flats[property_id] = entry.model_copy(update={"content_hash": PENDING_HASH})
                 await dd.save_profile_state(state_store, new_state)
                 log.info("state saved for profile %s: %d flats recorded", profile.id, len(delivered))
 
