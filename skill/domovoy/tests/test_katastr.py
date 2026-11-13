@@ -27,11 +27,13 @@ EASEMENT = os.path.join(FIX, "lv_synth_easement.xml")
 SJM = os.path.join(FIX, "lv_synth_sjm.xml")
 COMPANY = os.path.join(FIX, "lv_synth_company_plomba.xml")
 BUILDING = os.path.join(FIX, "lv_synth_building_owner.xml")
+ATTIC = os.path.join(FIX, "lv_synth_attic_company.xml")
+EASEMENTS = os.path.join(FIX, "lv_synth_easements.xml")
 PAGE = "cccccccc-0000-4000-8000-000000000003"
 # Every invented person or company name in the fixtures. None of them may appear on stdout.
 NAMES = ["Vzorová", "Jana", "Fiktivní Petr", "Petr", "Smyšlený", "Karel", "Smyšlená", "Eva",
          "Testovací nemovitosti", "Fiktivní banka", "Vzorový", "Tomáš", "Lenka", "Nájemná", "Alena",
-         "Pokusný", "Ondřej"]
+         "Pokusný", "Ondřej", "Smyšlená půda", "Fiktivní stavební banka", "Bydlící", "Marie"]
 LIVE = {"CUZK_API_KN_KEY": "test-key", "WSDP_USERNAME": "test-user", "WSDP_PASSWORD": "test-pass",
         "WSDP_ENV": "prod", "WSDP_MAX_BILLED_PER_DAY": "10"}
 
@@ -58,6 +60,10 @@ class FakeBackend:
     def get_flat(self, cfg, flat_id):
         self.calls.append(("get_flat", flat_id))
         return dict(self.flat)
+
+    def attach_file(self, cfg, flat_id, path, caption=None, marker=None):
+        self.calls.append(("attach_file", flat_id, path, caption, marker))
+        self.flat["text"] += "\n" + (marker or "")
 
     def append(self, cfg, flat_id, text):
         self.calls.append(("append", flat_id, text))
@@ -391,7 +397,7 @@ class LiveLookupTest(unittest.TestCase):
         backend = FakeBackend("- Asked: What is the unit number? Answer: 12")
         with mock.patch.object(katastr, "api_kn", self.fake_api_kn([11, 12])), \
                 mock.patch.object(katastr, "wsdp_call", self.fake_wsdp):
-            code, out = run(["lookup", "--page", PAGE], backend)
+            code, out = run(["lookup", "--page", PAGE, "--confirm-billed"], backend)
         self.assertEqual(code, 0, out)
         data = json.loads(out)
         self.assertEqual(data["result"]["source"], "wsdp")
@@ -413,13 +419,24 @@ class LiveLookupTest(unittest.TestCase):
         self.assertFalse([c for c in backend.calls if c[0] == "append"])
         self.assertFalse(os.path.exists(katastr.BILLING_FILE))
 
+    def test_live_lookup_without_confirmation_bills_nothing(self):
+        backend = FakeBackend("- Asked: What is the unit number? Answer: 12")
+        with mock.patch.object(katastr, "api_kn", self.fake_api_kn([11, 12])), \
+                mock.patch.object(katastr, "wsdp_call", self.fake_wsdp):
+            code, out = run(["lookup", "--page", PAGE], backend)
+        self.assertEqual(code, 2)
+        self.assertIn("--confirm-billed", json.loads(out)["refused"])
+        self.assertEqual(self.wsdp_ops, [])
+        self.assertFalse(os.path.exists(katastr.BILLING_FILE))
+        self.assertFalse([c for c in backend.calls if c[0] == "append"])
+
     def test_cap_reached_refuses_before_wsdp(self):
         with open(katastr.BILLING_FILE, "w") as f:
             json.dump({katastr.datetime.datetime.now(katastr.PRAGUE).date().isoformat(): 10}, f)
         backend = FakeBackend("- Asked: What is the unit number? Answer: 12")
         with mock.patch.object(katastr, "api_kn", self.fake_api_kn([11, 12])), \
                 mock.patch.object(katastr, "wsdp_call", self.fake_wsdp):
-            code, out = run(["lookup", "--page", PAGE], backend)
+            code, out = run(["lookup", "--page", PAGE, "--confirm-billed"], backend)
         self.assertEqual(code, 2)
         self.assertIn("10 of 10", json.loads(out)["refused"])
         self.assertEqual(self.wsdp_ops, [])
@@ -552,7 +569,7 @@ class ErrorTextTest(unittest.TestCase):
     def lookup_with_wsdp(self, answer):
         backend = FakeBackend()
         with mock.patch.object(katastr, "wsdp_call", lambda *a: answer):
-            code, out, err = run_both(["lookup", "--page", PAGE], backend)
+            code, out, err = run_both(["lookup", "--page", PAGE, "--confirm-billed"], backend)
         return code, out, err, backend
 
     def test_soap_fault_with_owner_name(self):
@@ -702,7 +719,7 @@ class WsdpFallbackTest(unittest.TestCase):
                 mock.patch.object(katastr, "api_kn", api_down), \
                 mock.patch.object(katastr, "wsdp_call", wsdp):
             backend = FakeBackend("- Asked: What is the unit number? Answer: 12")
-            code, out, err = run_both(["lookup", "--page", PAGE], backend)
+            code, out, err = run_both(["lookup", "--page", PAGE, "--confirm-billed"], backend)
         self.assertEqual(code, 0, out)
         self.assertEqual([o for o, _ in ops], ["najdiJednotku", "generujLV", "seznamSestav", "vratSestavu",
                                                "smazSestavu"])
@@ -748,6 +765,264 @@ class CoworkPathsTest(unittest.TestCase):
                 self.assertEqual(fresh.resolve_lv("missing.xml"), "missing.xml")
             with mock.patch.dict(os.environ, {"KATASTR_LV_DIR": tmp}, clear=True):
                 self.assertEqual(fresh.lv_dir(), tmp)
+class EasementTest(unittest.TestCase):
+    def test_easement_kinds(self):
+        cases = {
+            ("Věcné břemeno užívání", ""): "residence",
+            ("Věcné břemeno (podle listiny)", "doživotní užívání bytu"): "residence",
+            ("Věcné břemeno bydlení", ""): "residence",
+            ("Věcné břemeno chůze a jízdy", "přes pozemek"): "access",
+            ("Věcné břemeno zřizování a provozování vedení", "užívání pozemku pro kabel"): "utility",
+            ("Služebnost inženýrské sítě", ""): "utility",
+            ("Věcné břemeno (podle listiny)", ""): "other",
+        }
+        for (label, description), expected in cases.items():
+            with self.subTest(label=label, description=description):
+                self.assertEqual(katastr.easement_kind(label, description), expected)
+
+    def test_right_to_live_in_the_flat_is_high_and_asked(self):
+        result, _, _ = katastr.assess(katastr.parse_lv(EASEMENTS), landlord="Jana Vzorová")
+        self.assertEqual([(e["kind"], e["on_unit"], e["impact"], e["for"]) for e in result["easements"]],
+                         [("residence", True, "high", "person"), ("access", True, "medium", "property"),
+                          ("utility", False, "low", "unknown")])
+        self.assertEqual(result["lease_risk"], "high")
+        self.assertTrue(any("live in or use the flat" in r for r in result["risk_reasons"]))
+        joined = " ".join(result["questions"])
+        self.assertIn("Who holds it, and will they use the flat during the lease?", joined)
+        self.assertIn("pass through or enter the flat", joined)
+        self.assertNotIn("utility", joined)                      # a line on a parcel is reported, not asked
+
+    def test_utility_line_alone_stays_low(self):
+        result, _, _ = katastr.assess(katastr.parse_lv(EASEMENT), landlord="Petr Fiktivní")
+        self.assertEqual(result["lease_risk"], "low")
+        self.assertEqual([e["kind"] for e in result["easements"]], ["utility"])
+
+    def test_stdout_has_easements_and_questions_but_no_names(self):
+        code, out = run(["parse", "--cached-lv", EASEMENTS])
+        self.assertEqual(code, 0, out)
+        data = json.loads(out)["result"]
+        self.assertEqual({e["kind"] for e in data["easements"]}, {"residence", "access", "utility"})
+        self.assertTrue(data["questions"])
+        self.assertEqual(leaked_names(out), [])
+        self.assertNotIn("doživotní", out)                       # LV text stays out of stdout
+
+    def test_notion_section_explains_easements_with_names(self):
+        backend = FakeBackend()
+        code, out = run(["lookup", "--page", PAGE, "--cached-lv", EASEMENTS], backend)
+        self.assertEqual(code, 0, out)
+        section = [c for c in backend.calls if c[0] == "append"][0][2]
+        self.assertIn("Easements (věcná břemena) on this LV: 3", section)
+        self.assertIn("right to live in or use, on the flat itself, in favour of Marie Bydlící", section)
+        self.assertIn("Questions for the landlord or the realtor:", section)
+        self.assertEqual(leaked_names(out), [])
+
+
+class PlaceholderTest(unittest.TestCase):
+    def test_empty_jpvs_are_not_entries(self):
+        parsed = katastr.parse_lv(ATTIC)
+        self.assertEqual([(r["section"], r["category"]) for r in parsed["rights"]],
+                         [("C", "mortgage"), ("C", "ban_on_sale"), ("C", "mortgage"), ("C", "ban_on_sale")])
+
+    def test_attic_flat_of_a_company(self):
+        result, _, _ = katastr.assess(katastr.parse_lv(ATTIC), number="65")
+        self.assertEqual(result["unit_number"], "102/65")
+        self.assertEqual([(r["section"], r["type"]) for r in result["restrictions"]],
+                         [("C", "mortgage"), ("C", "ban_on_sale")])     # the pair on 63 + 65 only
+        self.assertEqual(result["easements"], [])
+        self.assertEqual(result["building_lvs"], ["90010"])
+        self.assertEqual(result["lease_risk"], "medium")
+        joined = " ".join(result["questions"])
+        self.assertIn("Does the lender have to agree to the lease", joined)
+        self.assertIn("A company owns the flat. Who signs the lease for it", joined)
+        self.assertIn("Who exactly will be the landlord in the contract?", joined)
+
+    def test_notion_section_names_the_unchecked_building_lv(self):
+        backend = FakeBackend()
+        code, out = run(["lookup", "--page", PAGE, "--cached-lv", ATTIC, "--unit", "65"], backend)
+        self.assertEqual(code, 0, out)
+        section = [c for c in backend.calls if c[0] == "append"][0][2]
+        self.assertIn("Not checked: LV 90010", section)
+        self.assertIn("Easements (věcná břemena) on this LV: none", section)
+        self.assertIn("Smyšlená půda s.r.o.", section)
+        self.assertNotIn("Section D, notes: 1", section)
+        self.assertEqual(json.loads(out)["result"]["building_lvs_not_checked"], ["90010"])
+        self.assertEqual(leaked_names(out), [])
+
+
+class RealShapeTest(unittest.TestCase):
+    """Shapes seen in a real LV 1.0 export (13 Nov 2026), rebuilt here with invented values."""
+
+    def test_unit_label_joins_the_building_number_kept_apart(self):
+        real = katastr.ET.fromstring("<jednotka><cp_ident>102</cp_ident><jed_ident>65</jed_ident></jednotka>")
+        synthetic = katastr.ET.fromstring("<jednotka><cp_ident>č.p. 101</cp_ident><jed_ident>101/12</jed_ident>"
+                                          "</jednotka>")
+        self.assertEqual(katastr.jednotka_label(real), "102/65")
+        self.assertEqual(katastr.jednotka_label(synthetic), "101/12")
+
+    def test_section_lists_a_lender_once_and_keeps_descriptions_on_one_line(self):
+        with open(ATTIC, encoding="utf-8") as f:
+            xml = f.read()
+        pro = re.search(r"<JPV_PRO_OS>.*?</JPV_PRO_OS>", xml).group(0)
+        xml = xml.replace(pro, pro + pro, 1).replace("budoucí pohledávky do výše 9 000 000 Kč",
+                                                     "pohledávka 1 Kč\nbudoucí pohledávky do výše 9 000 000 Kč", 1)
+        parsed = katastr.parse_lv(xml.encode("utf-8"))
+        result, owners, _ = katastr.assess(parsed, number="61")
+        lines = katastr.notion_section(result, parsed, owners, "Source: test")
+        mortgage = [line for line in lines if line.startswith("- Zástavní právo smluvní")][0]
+        self.assertEqual(mortgage.count("Fiktivní stavební banka"), 1)
+        self.assertIn("pohledávka 1 Kč budoucí pohledávky", mortgage)
+        self.assertTrue(all("\n" not in line for line in lines))
+
+
+class FetchTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.lv_dir = os.path.join(self.dir.name, "lv")
+        env = dict(LIVE, KATASTR_LV_DIR=self.lv_dir)
+        self.ops = []
+        patches = [
+            mock.patch.object(katastr, "settings", lambda names: {n: env.get(n, "") for n in names}),
+            mock.patch.object(katastr, "BILLING_FILE", os.path.join(self.dir.name, "billed.json")),
+            mock.patch.object(katastr, "REPORT_POLL_SECONDS", 0),
+            mock.patch.object(katastr, "wsdp_call", self.fake_wsdp),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        self.payload = open(MORTGAGE, "rb").read()
+
+    def fake_wsdp(self, creds, service, operation, body):
+        self.ops.append((operation, body))
+        if operation == "generujLVZjednodusene":
+            return soap("<reportList><report><id>42</id></report></reportList>")
+        if operation == "seznamSestav":
+            return soap("<reportList><report><stav>zpracován</stav></report></reportList>")
+        if operation == "vratSestavu":
+            return soap("<souborSestavy>%s</souborSestavy>" % base64.b64encode(self.payload).decode())
+        return soap("")
+
+    def test_without_confirmation_nothing_is_ordered(self):
+        code, out = run(["fetch", "--area", "999901", "--lv", "90001"])
+        self.assertEqual(code, 2)
+        self.assertIn("100 CZK", json.loads(out)["refused"])
+        self.assertEqual(self.ops, [])
+        self.assertFalse(os.path.exists(katastr.BILLING_FILE))
+
+    def test_xml_is_saved_outside_the_repo_and_billed_once(self):
+        code, out = run(["fetch", "--area", "999901", "--lv", "90001", "--confirm-billed"])
+        self.assertEqual(code, 0, out)
+        data = json.loads(out)
+        self.assertEqual(data["billing"], {"billed_today": 1, "cap": 10})
+        self.assertTrue(data["file"].startswith(self.lv_dir))
+        self.assertEqual(oct(os.stat(data["file"]).st_mode & 0o777), "0o600")
+        self.assertIn("<v:verze>1.0</v:verze>", self.ops[0][1])
+        self.assertEqual(katastr.parse_lv(data["file"])["lv"]["number"], "90001")
+        self.assertEqual(leaked_names(out), [])
+
+    def test_pdf_is_ordered_without_an_xml_version(self):
+        self.payload = b"%PDF-1.7 synthetic"
+        code, out = run(["fetch", "--area", "999901", "--lv", "90001", "--format", "pdf", "--confirm-billed"])
+        self.assertEqual(code, 0, out)
+        self.assertIn("<v:format>pdf</v:format>", self.ops[0][1])
+        self.assertNotIn("verze", self.ops[0][1])
+        self.assertTrue(json.loads(out)["file"].endswith(".pdf"))
+
+    def test_a_folder_inside_a_git_checkout_is_refused(self):
+        os.makedirs(os.path.join(self.dir.name, "repo", ".git"))
+        env = dict(LIVE, KATASTR_LV_DIR=os.path.join(self.dir.name, "repo", "lv"))
+        with mock.patch.object(katastr, "settings", lambda names: {n: env.get(n, "") for n in names}):
+            code, out = run(["fetch", "--area", "999901", "--lv", "90001", "--confirm-billed"])
+        self.assertEqual(code, 2)
+        self.assertIn("git checkout", json.loads(out)["refused"])
+        self.assertEqual(self.ops, [])
+
+
+class AttachTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.pdf = os.path.join(self.dir.name, "LV_999901_90001_2026-11-13.pdf")
+        with open(self.pdf, "wb") as f:
+            f.write(b"%PDF-1.7 synthetic")
+
+    def test_attaches_once(self):
+        backend = FakeBackend()
+        code, out = run(["attach", "--page", PAGE, "--file", self.pdf], backend)
+        self.assertEqual((code, json.loads(out)["status"]), (0, "attached"))
+        code, out = run(["attach", "--page", PAGE, "--file", self.pdf], backend)
+        self.assertEqual((code, json.loads(out)["status"]), (0, "already_attached"))
+        attached = [c for c in backend.calls if c[0] == "attach_file"]
+        self.assertEqual(len(attached), 1)
+        self.assertEqual(attached[0][4], "domovoy-katastr-file: LV_999901_90001_2026-11-13.pdf")
+
+    def test_not_a_pdf_is_refused(self):
+        backend = FakeBackend()
+        code, out = run(["attach", "--page", PAGE, "--file", MORTGAGE], backend)
+        self.assertEqual(code, 2)
+        self.assertEqual(backend.calls, [])
+
+
+class LocateTest(unittest.TestCase):
+    def setUp(self):
+        self.calls = []
+        patches = [mock.patch.object(katastr, "settings", lambda names: {n: LIVE.get(n, "") for n in names}),
+                   mock.patch.object(katastr, "api_kn", self.fake_api_kn)]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def fake_api_kn(self, path, key):
+        self.calls.append(path)
+        if path.startswith("/Stavby/"):
+            return {"id": 9, "cislaDomovni": [102], "zpusobVyuziti": {"nazev": "bytový dům"},
+                    "jednotky": [{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}], "rizeniPlomby": [],
+                    "lv": {"cislo": 90010, "katastralniUzemi": {"kod": 999901, "nazev": "Fiktivní Ves"}}}
+        n = int(path.rsplit("/", 1)[1])
+        number, use, num, lv = {1: (1020061, "byt", 491, 90011), 2: (1020063, "byt", 495, 90011),
+                                3: (1020065, "byt", 563, 90011), 4: (1020101, "dílna nebo provozovna", 585, 90013)}[n]
+        return {"cisloJednotky": number, "zpusobVyuziti": {"nazev": use}, "rizeniPlomby": [],
+                "podilNaSpolecnychCastechDomu": {"citatel": num, "jmenovatel": 2134},
+                "lv": {"cislo": lv, "katastralniUzemi": {"kod": 999901}}}
+
+    def test_point_in_listing_text(self):
+        idnes = '"listing_area":61,\n\t\t"listing_lat":50.07659113,\n\t\t"listing_lon":14.43543066,'
+        self.assertEqual(katastr.point_in_text(idnes), (50.07659113, 14.43543066))
+        self.assertEqual(katastr.point_in_text('"center": [14.43543066,50.07659113]'), (50.07659113, 14.43543066))
+        self.assertIsNone(katastr.point_in_text('"lat": 40.7128, "lng": -74.0060'))
+
+    def test_areas_from_shares(self):
+        units = [{"share": (491, 1549)}, {"share": (495, 1549)}, {"share": (563, 1549)}]
+        self.assertEqual(katastr.areas_from_shares(units), [49.1, 49.5, 56.3])
+        self.assertIsNone(katastr.areas_from_shares([{"share": (1, 2)}, {"share": (1, 2)}]))
+        self.assertIsNone(katastr.areas_from_shares([{"share": (5000, 10000)}, {"share": (5000, 10000)}]))
+
+    def test_exact_point_lists_units_ranked_by_area(self):
+        near = [{"address": "Smyšlená 102/1", "address_point": 5, "building_code": 6, "distance_m": 0.0}]
+        with mock.patch.object(katastr, "listing_point", lambda url: (50.0, 14.4)), \
+                mock.patch.object(katastr, "address_points_near", lambda lat, lon: near):
+            backend = FakeBackend()
+            backend.flat["listing"]["url"] = "https://reality.example/detail/1"
+            code, out = run(["locate", "--page", PAGE, "--area-m2", "58"], backend)
+        self.assertEqual(code, 0, out)
+        data = json.loads(out)
+        self.assertEqual(data["status"], "located")
+        self.assertFalse(data["billed"])
+        self.assertEqual([(u["unit"], u["area_m2_estimated"], u["lv"]) for u in data["units"]],
+                         [("102/61", 49.1, "90011"), ("102/63", 49.5, "90011"), ("102/65", 56.3, "90011"),
+                          ("102/101", 58.5, "90013")])
+        self.assertEqual(data["best_matches"][0], "102/65")                 # flats only, nearest area first
+        self.assertNotIn("102/101", data["best_matches"])
+        self.assertEqual(data["lvs_of_best_matches"], ["90011"])
+        self.assertEqual(data["building"]["lv"], "90010")
+
+    def test_point_off_an_address_lists_candidates_and_reads_no_units(self):
+        near = [{"address": "Smyšlená 1", "address_point": 5, "building_code": 6, "distance_m": 14.2}]
+        with mock.patch.object(katastr, "address_points_near", lambda lat, lon: near):
+            code, out = run(["locate", "--point", "50.0,14.4"])
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads(out)["status"], "building_not_identified")
+        self.assertEqual(self.calls, [])
 
 
 if __name__ == "__main__":

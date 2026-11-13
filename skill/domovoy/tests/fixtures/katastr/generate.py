@@ -95,9 +95,9 @@ def jednotka_ident(jed_id: str, cp: str, cislo: str) -> str:
     return el("jednotka", children=kv(id=jed_id, caobce=OBEC["nazev"], cp_ident=f"č.p. {cp}", jed_ident=f"{cp}/{cislo}"))
 
 
-def stavba(st_id: str, cp: str, with_use: bool = True) -> str:
+def stavba(st_id: str, cp: str, with_use: bool = True, building_lv: str | None = None) -> str:
     return el("stavba", children=kv(id=st_id, caobce=OBEC["nazev"], typbud_zkr="č.p.", cisla_domovni=cp,
-                                    vyuziti_zkr="byt.dům" if with_use else None))
+                                    vyuziti_zkr="byt.dům" if with_use else None, cislo_tel=building_lv))
 
 
 def parcela(par_id: str, cislo: str) -> str:
@@ -114,7 +114,7 @@ def jednotka(u: dict) -> str:
         el("PODIL_B", children=kv(citatel=u.get("podil", "6543"), jmenovatel="100000")),
         el("POPIS", ""),
         el("BUDOVY", children=[el("BUDOVA", children=[
-            el("JED_OPSUB", children=[stavba(u["building_id"], u["cp"])]),
+            el("JED_OPSUB", children=[stavba(u["building_id"], u["cp"], building_lv=u.get("building_lv"))]),
             el("PARCELY", children=[el("PAR_IDENT", children=[parcela(u["parcel_id"], u["parcel"])])]),
         ])]),
         el("PRAVA_STAVBY"),
@@ -164,11 +164,27 @@ def rizeni(typ: str, cislo: str, rok: str) -> str:
     return el("IDENT_RIZENI", children=kv(typriz_kod=typ, poradove_cislo=cislo, rok=rok, prares_kod="999"))
 
 
-def jpv(hjpv_id: str, typ: str, popis: str, pro_os: dict | None, unit: dict, listina: str) -> str:
+def burdened(obj: dict) -> str:
+    if "cislo" not in obj:   # a parcel, not a unit (units carry their own parcel too)
+        return el("K_IDENT_NEM", children=[parcela(obj["parcel_id"], obj["parcel"])])
+    return el("K_IDENT_NEM", children=[jednotka_ident(obj["id"], obj["cp"], obj["cislo"])])
+
+
+def empty_jpv() -> str:
+    """The empty JPV a real LV carries in a section with no entries (B1 and D in the attic case)."""
+    return el("JPV", children=[el(t) for t in ("HJPV_ID", "TYP_PRAVNIHO_VZTAHU", "PORADI_K", "NEZOBRAZ_K_NEM",
+                                                "NADRIZ_HJPV_ID", "JPV_POPISY", "JPV_OPRAV_PRO_OS", "JPV_POVIN_K_OS",
+                                                "JPV_LISTINY")])
+
+
+def jpv(hjpv_id: str, typ: str, popis: str, pro_os: dict | None, unit: dict, listina: str,
+        objects: list[dict] | None = None, pro_nem: dict | None = None) -> str:
     pro = []
     if pro_os is not None:
         pro = [el("JPV_PRO_OS", children=[
-            el("PRO_IDENT_OS", children=[el("oprav_subjekt", children=kv(id=pro_os["id"], ico=pro_os.get("ico"), nazev=pro_os.get("nazev")))]),
+            el("PRO_IDENT_OS", children=[el("oprav_subjekt", children=kv(
+                id=pro_os["id"], ico=pro_os.get("ico"), nazev=pro_os.get("nazev"),
+                prijmeni=pro_os.get("prijmeni"), jmeno=pro_os.get("jmeno")))]),
             el("PODIL_POHLEDAVKA", ""),
         ])]
     return el("JPV", children=[
@@ -176,10 +192,9 @@ def jpv(hjpv_id: str, typ: str, popis: str, pro_os: dict | None, unit: dict, lis
         el("TYP_PRAVNIHO_VZTAHU", typ),
         el("JPV_POPISY", children=[el("JPV_POPIS", children=[el("POPIS_PRAVNIHO_VZTAHU", popis)])]),
         el("JPV_OPRAV_PRO_OS", children=pro),
+        *([el("JPV_OPRAV_PRO_NEM", children=[el("JPV_PRO_NEM", children=[burdened(pro_nem)])])] if pro_nem else []),
         el("JPV_POVIN_K_OS"),
-        el("JPV_POVIN_K_NEM", children=[el("JPV_K_NEM", children=[
-            el("K_IDENT_NEM", children=[jednotka_ident(unit["id"], unit["cp"], unit["cislo"])]),
-        ])]),
+        el("JPV_POVIN_K_NEM", children=[el("JPV_K_NEM", children=[burdened(o)]) for o in (objects or [unit])]),
         el("JPV_LISTINY", children=[el("JPV_LISTINA", children=[
             el("NAZEV_LIST", children=kv(tlist=listina, dalsi_udaje="", por_cis_zhot="", popis="", vystav_txt="",
                                          prav_moc_txt="", podani_txt="", vykonatelnost_txt="", podani_z_txt="", zplatneni_txt="")),
@@ -252,6 +267,15 @@ FLAT_AND_CELLAR = [
 B1_COMMON = jpv("500001", "Věcné břemeno užívání", "Oprávnění pro jednotku užívat společný sklep", None, UNIT, "Smlouva o zřízení věcného břemene")
 D_COMMON = jpv("500002", "Vznik práva", "Prohlášení vlastníka o rozdělení domu na jednotky", None, UNIT, "Prohlášení vlastníka")
 
+ATTIC = dict(UNIT, cp="102", building_id="700010", parcel_id="600010", parcel="1010", building_lv="90010")
+ATTIC_UNITS = [dict(ATTIC, id="800101", cislo="61", podil="491"), dict(ATTIC, id="800103", cislo="63", podil="495"),
+               dict(ATTIC, id="800105", cislo="65", podil="563"),
+               dict(ATTIC, id="800110", cislo="101", typ="obc.z.", typ_kod="5", vyuziti="dílna nebo provozovna",
+                    vyuziti_kod="10", podil="585")]
+ATTIC_BANK = company("900010", "Fiktivní stavební banka, a.s.", "99999910")
+PARCEL = {"parcel_id": "600020", "parcel": "1020"}
+LIVER = person("400021", "Bydlící", "Marie")
+
 CASES = {
     # Single flat, one person, mortgage with the usual companion entries.
     "lv_synth_mortgage.xml": lv(
@@ -291,6 +315,32 @@ CASES = {
                                  owner=dict(id="400051", prijmeni="Nájemná", jmeno="Alena")),
                             dict(id="800052", cislo="2", podil="5000", na_lv="90052",
                                  owner=dict(id="400052", prijmeni="Pokusný", jmeno="Ondřej"))])]),
+    # Company owns several attic flats and a shop on one LV; two mortgages, each with a ban on sale, cover
+    # different pairs of units. B1 and D hold only the empty JPV the XSD requires. The unit names its building LV.
+    "lv_synth_attic_company.xml": lv(
+        "90011", [(company("400010", "Smyšlená půda s.r.o.", "99999911"), "1", "1")], ATTIC_UNITS,
+        b1=[empty_jpv()],
+        c=[jpv("550001", "Zástavní právo smluvní", "budoucí pohledávky do výše 9 000 000 Kč", ATTIC_BANK, ATTIC,
+               "Smlouva", objects=[ATTIC_UNITS[0], ATTIC_UNITS[3]]),
+           jpv("550002", "Zákaz zcizení a zatížení", "po dobu trvání zástavního práva", ATTIC_BANK, ATTIC, "Smlouva",
+               objects=[ATTIC_UNITS[0], ATTIC_UNITS[3]]),
+           jpv("550003", "Zástavní právo smluvní", "budoucí pohledávky do výše 9 000 000 Kč", ATTIC_BANK, ATTIC,
+               "Smlouva", objects=[ATTIC_UNITS[1], ATTIC_UNITS[2]]),
+           jpv("550004", "Zákaz zcizení a zatížení", "po dobu trvání zástavního práva", ATTIC_BANK, ATTIC, "Smlouva",
+               objects=[ATTIC_UNITS[1], ATTIC_UNITS[2]])],
+        d=[empty_jpv()]),
+    # One flat with three easements: a right to live in it for a person, a right of way through it for a
+    # neighbouring property, and a utility line on a parcel. B1 and D are empty.
+    "lv_synth_easements.xml": lv(
+        "90012", [(person("400020", "Vzorová", "Jana"), "1", "1")], [UNIT],
+        b1=[empty_jpv()],
+        c=[jpv("560001", "Věcné břemeno (podle listiny)", "doživotní užívání bytu", LIVER, UNIT,
+               "Smlouva o zřízení věcného břemene"),
+           jpv("560002", "Věcné břemeno chůze", "průchod bytem na terasu", None, UNIT,
+               "Smlouva o zřízení věcného břemene", pro_nem=PARCEL),
+           jpv("560003", "Věcné břemeno zřizování a provozování vedení", "kabelové vedení", None, UNIT,
+               "Smlouva o zřízení věcného břemene", objects=[PARCEL])],
+        d=[empty_jpv()]),
 }
 
 

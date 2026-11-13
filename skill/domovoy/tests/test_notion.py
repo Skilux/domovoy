@@ -262,6 +262,61 @@ class HttpTest(unittest.TestCase):
         self.assertNotIn("test-token", str(caught.exception))
 
 
+class AttachFileTest(unittest.TestCase):
+    UPLOAD_ID = "aaaaaaaa-0000-4000-8000-00000000000a"
+
+    def setUp(self):
+        patcher = mock.patch.dict(os.environ, ENV)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.pdf = os.path.join(self.dir.name, "LV_999901_90001_2026-11-13.pdf")
+        with open(self.pdf, "wb") as f:
+            f.write(b"%PDF-1.7 synthetic")
+
+    def test_upload_then_pdf_block_then_marker(self):
+        requests, sent = [], []
+
+        def fake_request(method, path, body=None, query=None):
+            requests.append((method, path, body))
+            return {"id": self.UPLOAD_ID} if path == "/file_uploads" else {}
+
+        def fake_send_bytes(url, data, content_type):
+            sent.append((url, data, content_type))
+            return 200, b'{"status": "uploaded"}'
+
+        with mock.patch.object(notion, "request", fake_request), \
+                mock.patch.object(notion, "_send_bytes", fake_send_bytes):
+            notion.attach_file({}, PAGE_ID, self.pdf, caption="LV extract", marker="domovoy-katastr-file: x.pdf")
+        self.assertEqual(requests[0], ("POST", "/file_uploads", {"filename": "LV_999901_90001_2026-11-13.pdf",
+                                                                 "content_type": "application/pdf"}))
+        url, data, content_type = sent[0]
+        self.assertEqual(url, notion.API + "/file_uploads/%s/send" % self.UPLOAD_ID)
+        self.assertTrue(content_type.startswith("multipart/form-data; boundary="))
+        self.assertIn(b'name="file"; filename="LV_999901_90001_2026-11-13.pdf"', data)
+        self.assertIn(b"%PDF-1.7 synthetic", data)
+        method, path, body = requests[1]
+        self.assertEqual((method, path), ("PATCH", "/blocks/%s/children" % PAGE_ID))
+        pdf, marker = body["children"]
+        self.assertEqual(pdf["pdf"]["file_upload"], {"id": self.UPLOAD_ID})
+        self.assertEqual(pdf["pdf"]["caption"][0]["text"]["content"], "LV extract")
+        self.assertEqual(marker["paragraph"]["rich_text"][0]["text"]["content"], "domovoy-katastr-file: x.pdf")
+
+    def test_a_failed_upload_adds_nothing_to_the_page(self):
+        requests = []
+
+        def fake_request(method, path, body=None, query=None):
+            requests.append((method, path))
+            return {"id": self.UPLOAD_ID}
+
+        with mock.patch.object(notion, "request", fake_request), \
+                mock.patch.object(notion, "_send_bytes", lambda *a: (400, b'{"code": "validation_error"}')):
+            with self.assertRaisesRegex(notion.NotionError, "validation_error"):
+                notion.attach_file({}, PAGE_ID, self.pdf)
+        self.assertEqual(requests, [("POST", "/file_uploads")])
+
+
 class SetupTest(unittest.TestCase):
     def setUp(self):
         patcher = mock.patch.dict(os.environ, ENV)
