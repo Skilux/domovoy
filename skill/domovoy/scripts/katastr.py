@@ -32,11 +32,13 @@ through curl, because the WSDP host rejects Python's urllib.
 import argparse
 import base64
 import datetime
+import fcntl
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import unicodedata
 import urllib.error
@@ -57,6 +59,7 @@ BILLED_CAP = 10
 TIMEOUT_SECONDS = 30
 USER_AGENT = "domovoy-katastr/0.1"
 MARKER = "domovoy-katastr: %s"
+PAGE_ID_RE = re.compile(r"[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}", re.IGNORECASE)
 
 RUIAN_GEOCODE = ("https://ags.cuzk.gov.cz/arcgis/rest/services/RUIAN/Vyhledavaci_sluzba_nad_daty_RUIAN/"
                  "MapServer/exts/GeocodeSOE/findAddressCandidates")
@@ -100,12 +103,45 @@ COMPANY_HINTS = re.compile(r"s\.\s?r\.\s?o|a\.\s?s\.|spol\.|druzstv|\bltd\b|gmbh
 COOP = ("druzstvo", "druzstevni")
 
 
+# What stdout may say about a restriction: internal category -> public type. Anything else is "other".
+PUBLIC_TYPES = {"mortgage": "mortgage", "enforcement_lien": "distraint", "execution": "distraint",
+                "insolvency": "insolvency", "ban_on_sale": "ban_on_sale", "easement": "easement",
+                "dispute": "pending_change"}
+SECTIONS = ("B1", "C", "D")
+NOTION_CODES = {"object_not_found", "unauthorized", "restricted_resource", "validation_error", "rate_limited",
+                "conflict_error", "internal_server_error", "service_unavailable", "invalid_request",
+                "invalid_json", "missing_version", "gateway_timeout"}
+SAFE_TYPES = {"KeyError", "ValueError", "TypeError", "OSError", "FileNotFoundError", "PermissionError",
+              "ParseError", "JSONDecodeError", "RuntimeError", "NotionError", "IndexError", "AttributeError",
+              "TimeoutError", "ConnectionError", "UnicodeDecodeError"}
+STAGE = {"now": "starting"}
+UNIT_RE = re.compile(r"\d{1,6}(/\d{1,6})?")
+SHARE_RE = re.compile(r"\d{1,15}/\d{1,15}")
+PROCEEDING_RE = re.compile(r"[A-Z]{1,4}-\d{1,8}/\d{4}-\d{1,4}")
+DIGITS_RE = re.compile(r"\d{1,20}")
+_BILLING_HOOK = None   # tests only: called inside the billing lock, after the counter is read
+
+
 class Refusal(Exception):
+    """Stopped on purpose; nothing was billed or changed. The message is a fixed local text."""
+
+
+class KatastrError(RuntimeError):
+    """A failure whose message is fixed local text with no response, fault or file content: safe to print."""
+
+
+class LVFormatError(KatastrError):
     pass
 
 
-class LVFormatError(RuntimeError):
-    pass
+def stage(name):
+    STAGE["now"] = name
+
+
+def safe(value, pattern):
+    """value if it fully matches pattern, else "unrecognised". For strings that come from outside."""
+    value = "" if value is None else str(value)
+    return value if pattern.fullmatch(value) else "unrecognised"
 
 
 # ------------------------------------------------------------------ settings
@@ -255,10 +291,10 @@ def parse_lv(source):
     """
     try:
         root = ET.fromstring(source) if isinstance(source, bytes) else ET.parse(source).getroot()
-    except ET.ParseError as e:
-        raise LVFormatError("the LV file is not well-formed XML: %s" % e)
+    except ET.ParseError:
+        raise LVFormatError("the LV is not well-formed XML")
     if root.tag != "VypisZKatastruNemovitosti":
-        raise LVFormatError("not a WSDP LV 1.0 file (root element %s)" % root.tag.split("}")[-1])
+        raise LVFormatError("the LV is not a WSDP LV 1.0 file")
     texty = root.findall("LIST_TEXT/TEXTY")
     header = next((t.find("ZAHLAVI_LV") for t in texty if t.find("ZAHLAVI_LV") is not None), None)
     lv = {"number": txt(header, "CISLO_LV"), "area_code": txt(header, "KATASTR_UZEMI/kod"),
@@ -297,7 +333,7 @@ def parse_lv(source):
                 beneficiaries = [subject_of(n) for n in
                                  jpv.findall("JPV_OPRAV_PRO_OS/JPV_PRO_OS/PRO_IDENT_OS/oprav_subjekt")]
                 rights.append({
-                    "section": section.get("SEKCE"),
+                    "section": section.get("SEKCE") if section.get("SEKCE") in SECTIONS else "unrecognised",
                     "label": label,
                     "category": category_of(label),
                     "description": joined(jpv, "JPV_POPISY/JPV_POPIS/POPIS_PRAVNIHO_VZTAHU"),
@@ -366,8 +402,8 @@ def pick_unit(units, number=None, floor=None, door=None):
         if len(hits) == 1:
             return hits[0], [], None
         if not hits:
-            return None, candidates, "unit %s is not on this LV" % want
-        return None, candidates, "unit number %s matches several units" % want
+            return None, candidates, "the unit number from the call is not on this LV"
+        return None, candidates, "the unit number from the call matches several units"
     if len(units) == 1:
         return units[0], [], None
     flats = [u for u in units if u["usage_kind"] == "flat"]
@@ -435,6 +471,34 @@ def assess(parsed, landlord=None, number=None, floor=None, door=None, extra_plom
     return result, owners, unit
 
 
+def public_result(result):
+    """The stdout view of a result: fixed vocabulary, counts, and validated numbers only.
+
+    Raw LV text (restriction labels, descriptions, names) never goes here; it goes only to the Notion section.
+    """
+    restrictions = [{"section": r["section"] if r["section"] in SECTIONS else "unrecognised",
+                     "type": PUBLIC_TYPES.get(r["type"], "other")} for r in result["restrictions"]]
+    return {
+        "unit_type": result["unit_type"],
+        "unit_regime": result["unit_regime"],
+        "unit_number": None if result["unit_number"] is None else safe(result["unit_number"], UNIT_RE),
+        "unit_candidates": [safe(c, UNIT_RE) for c in result["unit_candidates"]],
+        "unit_note": result["unit_note"],
+        "owner_types": result["owner_types"],
+        "owner_count": result["owner_count"],
+        "owner_shares": [safe(s, SHARE_RE) for s in result["owner_shares"]],
+        "restrictions": restrictions,
+        "restriction_types": sorted({r["type"] for r in restrictions}),
+        "pending_change": result["pending_change"],
+        "pending_proceedings": [safe(p, PROCEEDING_RE) for p in result["pending_proceedings"]],
+        "landlord_matches_owner": result["landlord_matches_owner"],
+        "lease_risk": result["lease_risk"],
+        "risk_reasons": result["risk_reasons"],
+        "as_of": result["as_of"],
+        "source": result.get("source"),
+    }
+
+
 # ------------------------------------------------------------------ Notion section and redaction
 
 def notion_section(result, parsed, owners, source_line):
@@ -472,10 +536,8 @@ def notion_section(result, parsed, owners, source_line):
 def private_tokens(parsed, landlord):
     """What must never reach stdout: person name words, and company names as whole phrases.
 
-    Person name words that are also words of the LV's own legal labels (e.g. a surname equal to a common noun)
-    are left out, because those labels are printed on purpose.
+    A second line of defence behind public_result(): nothing here is exempted on the strength of LV content.
     """
-    label_words = {w for r in parsed["rights"] for w in words(r["label"])}
     people, phrases = set(name_tokens(landlord)), set()
     subjects = list(parsed["owners"]) + [b for r in parsed["rights"] for b in r["beneficiaries"]]
     for s in subjects:
@@ -485,7 +547,7 @@ def private_tokens(parsed, landlord):
             core = [w for w in words(s["company"]) if w not in LEGAL_FORMS]
             if core:
                 phrases.add(" ".join(core))
-    return {"words": {t for t in people if len(t) >= 3} - label_words, "phrases": phrases}
+    return {"words": {t for t in people if len(t) >= 3}, "phrases": phrases}
 
 
 def assert_redacted(out, private):
@@ -493,7 +555,7 @@ def assert_redacted(out, private):
     text = " " + " ".join(printed) + " "
     leaked = (set(printed) & private["words"]) or [p for p in private["phrases"] if " %s " % p in text]
     if leaked:
-        raise RuntimeError("redaction check failed: %d name(s) would be printed; nothing was printed" % len(leaked))
+        raise KatastrError("redaction check failed: a name would have been printed; nothing was printed")
 
 
 # ------------------------------------------------------------------ call answers on the page
@@ -529,7 +591,7 @@ def call_answers(text):
 
 # ------------------------------------------------------------------ HTTP: RÚIAN, API KN
 
-def http_json(url, headers=None):
+def http_json(url, headers=None, label="the service"):
     req = urllib.request.Request(url, headers=dict({"User-Agent": USER_AGENT, "Accept": "application/json"},
                                                    **(headers or {})))
     try:
@@ -537,13 +599,14 @@ def http_json(url, headers=None):
             return response.status, json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         return e.code, None
-    except (urllib.error.URLError, ValueError) as e:
-        raise RuntimeError("cannot read %s: %s" % (urllib.parse.urlsplit(url).netloc, e))
+    except (urllib.error.URLError, ValueError, OSError):
+        raise KatastrError("cannot read %s" % label)
 
 
 def resolve_address(address):
     """Address text -> {"address_point", "building_code"} from RÚIAN, or a Refusal when not unique."""
-    status, data = http_json(RUIAN_GEOCODE + "?" + urllib.parse.urlencode({"SingleLine": address, "f": "json"}))
+    status, data = http_json(RUIAN_GEOCODE + "?" + urllib.parse.urlencode({"SingleLine": address, "f": "json"}),
+                             label="RÚIAN")
     hits = [c for c in (data or {}).get("candidates", []) if c.get("score") == 100
             and (c.get("attributes") or {}).get("Type") == "AdresniMisto"]
     if status != 200 or len(hits) != 1:
@@ -552,7 +615,8 @@ def resolve_address(address):
     x, y = hits[0]["location"]["x"], hits[0]["location"]["y"]
     status, data = http_json(RUIAN_LAYER % 1 + "?" + urllib.parse.urlencode({
         "geometry": "%s,%s" % (x, y), "geometryType": "esriGeometryPoint", "inSR": "5514", "distance": "2",
-        "units": "esriSRUnit_Meter", "outFields": "kod,stavebniobjekt", "returnGeometry": "false", "f": "json"}))
+        "units": "esriSRUnit_Meter", "outFields": "kod,stavebniobjekt", "returnGeometry": "false", "f": "json"}),
+        label="RÚIAN")
     features = (data or {}).get("features") or []
     if status != 200 or len(features) != 1:
         raise Refusal("the RÚIAN address point could not be read. Nothing was billed or changed.")
@@ -564,15 +628,15 @@ def ruian_building(building_code):
     status, data = http_json(RUIAN_LAYER % 3 + "?" + urllib.parse.urlencode({
         "where": "kod=%d" % int(building_code),
         "outFields": "isknbudovaid,castobce,cisladomovni,typstavebnihoobjektukod",
-        "returnGeometry": "false", "f": "json"}))
+        "returnGeometry": "false", "f": "json"}), label="RÚIAN")
     features = (data or {}).get("features") or []
     return features[0]["attributes"] if status == 200 and len(features) == 1 else None
 
 
 def api_kn(path, key):
-    status, data = http_json(API_KN + path, {"ApiKey": key})
+    status, data = http_json(API_KN + path, {"ApiKey": key}, label="API KN")
     if status != 200 or not isinstance(data, dict) or data.get("data") is None:
-        raise RuntimeError("API KN %s answered %s" % (path.split("/")[1], status))
+        raise KatastrError("API KN answered HTTP %d without data" % int(status or 0))
     return data["data"]
 
 
@@ -594,20 +658,24 @@ def wsdp_call(creds, service, operation, body):
                           "-H", "Content-Type: text/xml; charset=utf-8", "--data-binary", "@-", url],
                          input=envelope.encode("utf-8"), capture_output=True)
     if run.returncode != 0:
-        raise RuntimeError("cannot reach WSDP (%s): curl exit %d" % (service, run.returncode))
+        raise KatastrError("cannot reach WSDP (curl exit %d)" % int(run.returncode))
     return run.stdout
 
 
 def soap_root(raw):
     m = re.search(rb"<(?:[\w-]+:)?Envelope\b.*?</(?:[\w-]+:)?Envelope>", raw, re.S)
     if not m:
-        raise RuntimeError("WSDP did not answer with SOAP")
-    root = ET.fromstring(m.group(0))
+        raise KatastrError("WSDP did not answer with SOAP")
+    try:
+        root = ET.fromstring(m.group(0))
+    except ET.ParseError:
+        raise KatastrError("WSDP answered with malformed XML")
     for e in root.iter():
-        if e.tag.endswith("faultstring"):
-            raise RuntimeError("WSDP fault: %s" % (e.text or "")[:160])
+        if e.tag.endswith("Fault"):
+            raise KatastrError("WSDP returned a SOAP fault")
         if e.tag.endswith("}zprava") and e.get("uroven") == "CHYBA":
-            raise RuntimeError("WSDP error %s: %s" % (e.get("kod"), (e.text or "")[:160]))
+            code = e.get("kod") or ""
+            raise KatastrError("WSDP returned error code %s" % (code if re.fullmatch(r"\d{1,4}", code) else "?"))
     return root
 
 
@@ -622,11 +690,14 @@ def report_file(raw):
     """The report bytes from a vratSestavu answer: inline base64, or an MTOM attachment."""
     m = re.search(rb"<(?:[\w-]+:)?souborSestavy[^>]*>(.*?)</(?:[\w-]+:)?souborSestavy>", raw, re.S)
     if not m:
-        raise RuntimeError("WSDP returned no report file")
+        raise KatastrError("WSDP returned no report file")
     inner = m.group(1)
     include = re.search(rb'href="cid:([^"]+)"', inner)
     if not include:
-        return base64.b64decode(inner)
+        try:
+            return base64.b64decode(inner)
+        except ValueError:
+            raise KatastrError("WSDP returned a report file that is not base64")
     cid = urllib.parse.unquote(include.group(1).decode()).encode()
     for part in re.split(rb"\r?\n--[^\r\n]+", raw):
         head, sep, body = part.partition(b"\r\n\r\n")
@@ -634,11 +705,16 @@ def report_file(raw):
             head, sep, body = part.partition(b"\n\n")
         if cid in head:
             return body.strip()
-    raise RuntimeError("WSDP report attachment not found")
+    raise KatastrError("WSDP report attachment not found")
 
 
 def billing_guard(creds, path=None, today=None):
-    """Count one billed WSDP output before it is requested. Refuses once today's cap is reached."""
+    """Reserve one billed WSDP output before it is requested. Refuses once today's cap is reached.
+
+    The read-check-increment runs under an exclusive flock on a stable lock file next to the counter, so
+    concurrent lookups (threads or processes) cannot both take the last slot. The counter is replaced
+    atomically through a unique temporary file. An unreadable counter refuses (fails closed).
+    """
     if creds["WSDP_ENV"] != "prod":
         return None
     try:
@@ -646,35 +722,59 @@ def billing_guard(creds, path=None, today=None):
     except ValueError:
         cap = BILLED_CAP
     path = path or BILLING_FILE
+    folder = os.path.dirname(path) or "."
     day = today or (datetime.datetime.now(PRAGUE) if PRAGUE else datetime.datetime.now()).date().isoformat()
-    counts = {}
-    if os.path.isfile(path):
-        with open(path, encoding="utf-8") as f:
-            counts = json.load(f)
-    used = int(counts.get(day, 0))
-    if used >= cap:
-        raise Refusal("WSDP billed outputs today: %d of %d. Refusing another one. Nothing was billed or changed."
-                      % (used, cap))
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({day: used + 1}, f)
-    os.replace(tmp, path)
+    os.makedirs(folder, exist_ok=True)
+    with open(path + ".lock", "a") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            counts = {}
+            if os.path.isfile(path):
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        counts = json.load(f)
+                    used = int(counts.get(day, 0))
+                except (ValueError, TypeError, AttributeError):
+                    raise Refusal("the WSDP billing counter is unreadable; refusing. Nothing was billed or changed.")
+            else:
+                used = 0
+            if _BILLING_HOOK:
+                _BILLING_HOOK()
+            if used >= cap:
+                raise Refusal("WSDP billed outputs today: %d of %d. Refusing another one. "
+                              "Nothing was billed or changed." % (used, cap))
+            fd, tmp = tempfile.mkstemp(dir=folder, prefix=".katastr_billed.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump({day: used + 1}, f)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp, path)
+            finally:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     return {"billed_today": used + 1, "cap": cap}
 
 
-def fetch_lv(creds, area_code, lv_number, sleep=time.sleep):
-    """Billed: generujLVZjednodusene -> poll -> vratSestavu -> smazSestavu. Returns (LV XML bytes, billing).
+def fetch_lv(creds, area_code=None, lv_number=None, lv_id=None, sleep=time.sleep):
+    """Billed: generujLVZjednodusene (area code + LV number) or generujLV (LV id) -> poll -> vratSestavu ->
+    smazSestavu. Returns (LV XML bytes, billing).
 
     The LV is kept in memory only: owner names may be stored in Notion and nowhere else.
     """
+    if lv_id is not None:
+        operation, body = "generujLV", "<v:lvId>%d</v:lvId>" % int(lv_id)
+    else:
+        operation = "generujLVZjednodusene"
+        body = "<v:katastrUzemiKod>%d</v:katastrUzemiKod><v:lvCislo>%d</v:lvCislo>" % (int(area_code), int(lv_number))
     billing = billing_guard(creds)
-    root = soap_root(wsdp_call(creds, "sestavy", "generujLVZjednodusene",
-                               "<v:katastrUzemiKod>%d</v:katastrUzemiKod><v:lvCislo>%d</v:lvCislo>"
-                               "<v:format>xml</v:format><v:verze>1.0</v:verze>" % (int(area_code), int(lv_number))))
+    stage("ordering the LV from WSDP")
+    root = soap_root(wsdp_call(creds, "sestavy", operation, body + "<v:format>xml</v:format><v:verze>1.0</v:verze>"))
     report_id = first(root, "id")
-    if not report_id:
-        raise RuntimeError("WSDP returned no report id")
+    if not DIGITS_RE.fullmatch(report_id):
+        raise KatastrError("WSDP returned no usable report id")
     for _ in range(REPORT_POLLS):
         sleep(REPORT_POLL_SECONDS)
         state = first(soap_root(wsdp_call(creds, "sestavy", "seznamSestav",
@@ -682,15 +782,15 @@ def fetch_lv(creds, area_code, lv_number, sleep=time.sleep):
         if state.startswith("zpracov"):
             break
         if state.startswith("chyba"):
-            raise RuntimeError("WSDP could not build the LV report (%s)" % state)
+            raise KatastrError("WSDP could not build the LV report")
     else:
-        raise RuntimeError("the WSDP LV report was not ready in time; report id %s can be fetched later" % report_id)
+        raise KatastrError("the WSDP LV report was not ready in time; report id %s can be fetched later" % report_id)
     raw = wsdp_call(creds, "sestavy", "vratSestavu", "<v:idSestavy>%s</v:idSestavy>" % report_id)
     soap_root(raw)
     data = report_file(raw)
     try:
         wsdp_call(creds, "sestavy", "smazSestavu", "<v:idSestavy>%s</v:idSestavy>" % report_id)
-    except RuntimeError:
+    except Exception:
         pass
     return data, billing
 
@@ -701,9 +801,9 @@ def locate_unit(creds, address, number):
     source = "api_kn"
     try:
         building = api_kn("/Stavby/AdresniMisto/%d" % int(point["address_point"]), creds["CUZK_API_KN_KEY"])
-        units = [{"id": u["id"], "number": str(u["cisloJednotky"])} for u in building.get("jednotky") or []]
-        plomby = ["%s-%s/%s-%s" % (p.get("typRizeni"), p.get("poradoveCislo"), p.get("rok"), p.get("kodPracoviste"))
-                  for p in building.get("rizeniPlomby") or []]
+        units = [{"id": u["id"], "number": safe(u.get("cisloJednotky"), DIGITS_RE)}
+                 for u in building.get("jednotky") or []]
+        plomby = [plomba_id(p) for p in building.get("rizeniPlomby") or []]
         building_lv = building.get("lv") or {}
     except RuntimeError:
         source = "wsdp"
@@ -715,7 +815,8 @@ def locate_unit(creds, address, number):
         units = []
         for j in root.iter():
             if j.tag.endswith("}Jednotka"):
-                units.append({"id": first(j, "idJednotky"), "number": unit_number(first(j, "cislo"))[1] or "",
+                units.append({"id": first(j, "idJednotky"),
+                              "number": safe(unit_number(first(j, "cislo"))[1], DIGITS_RE),
                               "wsdp_lv_id": first(j, "lvId")})
         plomby, building_lv = [], {}
     if number:
@@ -732,14 +833,20 @@ def locate_unit(creds, address, number):
     if len(hits) != 1:
         return {"candidates": sorted(u["number"] for u in units), "source": source}
     if source == "wsdp":
-        raise Refusal("API KN is unavailable and the WSDP fallback gives the LV id, not its number; "
-                      "retry later. Nothing was billed or changed.")
+        lv_id = hits[0]["wsdp_lv_id"]
+        if not DIGITS_RE.fullmatch(lv_id or ""):
+            raise Refusal("WSDP search found the unit but no LV id. Nothing was billed or changed.")
+        return {"lv_id": lv_id, "plomby": [], "source": source, "unit": hits[0]["number"]}
     unit = api_kn("/Jednotky/%d" % int(hits[0]["id"]), creds["CUZK_API_KN_KEY"])
-    plomby += ["%s-%s/%s-%s" % (p.get("typRizeni"), p.get("poradoveCislo"), p.get("rok"), p.get("kodPracoviste"))
-               for p in unit.get("rizeniPlomby") or []]
+    plomby += [plomba_id(p) for p in unit.get("rizeniPlomby") or []]
     lv = unit.get("lv") or {}
     return {"lv_number": lv.get("cislo"), "area_code": (lv.get("katastralniUzemi") or {}).get("kod"),
-            "plomby": sorted(set(plomby)), "source": source, "unit": str(unit.get("cisloJednotky"))}
+            "plomby": sorted(set(plomby)), "source": source, "unit": safe(unit.get("cisloJednotky"), DIGITS_RE)}
+
+
+def plomba_id(p):
+    return safe("%s-%s/%s-%s" % (p.get("typRizeni"), p.get("poradoveCislo"), p.get("rok"), p.get("kodPracoviste")),
+                PROCEEDING_RE)
 
 
 # ------------------------------------------------------------------ commands
@@ -747,9 +854,11 @@ def locate_unit(creds, address, number):
 def lookup(args, backend_loader=None):
     cached = args.cached_lv
     creds = None
+    stage("checking the inputs")
     if cached:
         if not os.path.isfile(cached):
             raise Refusal("the LV file does not exist. Nothing was read or changed.")
+        stage("parsing the LV")
         parsed = parse_lv(cached)      # fail before touching Notion
     else:
         creds = require_live_credentials()
@@ -759,15 +868,17 @@ def lookup(args, backend_loader=None):
         def backend_loader():
             cfg = call.load_config()
             return cfg, call.load_backend(cfg).module
+    stage("loading the config and the shortlist backend")
     cfg, backend = backend_loader()
     if not (hasattr(backend, "get_flat") and hasattr(backend, "append")):
-        raise RuntimeError("the shortlist backend needs get_flat and append (config backend.module)")
+        raise KatastrError("the shortlist backend needs get_flat and append (config backend.module)")
+    stage("reading the Notion page")
     flat = backend.get_flat(cfg, args.page)
     answers = call_answers(flat.get("text"))
     number = args.unit or answers.get("unit")
     landlord = args.landlord or answers.get("landlord")
     floor, door = args.floor or answers.get("floor"), args.door or answers.get("door")
-    out = {"page_id": flat["id"], "inputs": {"unit_number": bool(number), "floor_door": bool(floor or door),
+    out = {"page_id": safe(flat.get("id"), PAGE_ID_RE), "inputs": {"unit_number": bool(number), "floor_door": bool(floor or door),
                                              "landlord_name": bool(landlord)}}
     extra_plomba, billing = [], None
     if cached:
@@ -778,13 +889,18 @@ def lookup(args, backend_loader=None):
         address = (flat.get("listing") or {}).get("address")
         if not address:
             raise Refusal("the page has no address. Nothing was billed or changed.")
+        stage("resolving the address and the unit")
         found = locate_unit(creds, address, number)
         if "candidates" in found:
             out.update(status="unit_not_identified", unit_candidates=found["candidates"], billed=False,
                        note="pass --unit with one of the candidates; nothing was billed or changed")
             print(json.dumps(out, indent=2, ensure_ascii=False))
             return 2
-        data, billing = fetch_lv(creds, found["area_code"], found["lv_number"])
+        if found.get("lv_id"):
+            data, billing = fetch_lv(creds, lv_id=found["lv_id"])
+        else:
+            data, billing = fetch_lv(creds, found["area_code"], found["lv_number"])
+        stage("parsing the LV")
         parsed = parse_lv(data)
         number = number or found.get("unit")
         extra_plomba = [p for p in found["plomby"] if p not in parsed["proceedings"]]
@@ -796,11 +912,12 @@ def lookup(args, backend_loader=None):
     result["source"] = source
     marker = MARKER % "%s %s %s" % (source, parsed["lv"]["number"], result["as_of"])
     if marker in (flat.get("text") or "") and not args.force:
-        out.update(status="already_checked", appended=False, result=result)
+        out.update(status="already_checked", appended=False, result=public_result(result))
     else:
         lines = notion_section(result, parsed, owners, source_line) + [marker]
+        stage("appending to the Notion page")
         backend.append(cfg, flat["id"], "\n".join(lines))
-        out.update(status="appended", appended=True, result=result)
+        out.update(status="appended", appended=True, result=public_result(result))
     if billing:
         out["billing"] = billing
     assert_redacted(out, private_tokens(parsed, landlord))
@@ -809,10 +926,11 @@ def lookup(args, backend_loader=None):
 
 
 def parse_command(args):
+    stage("parsing the LV")
     parsed = parse_lv(args.cached_lv)
     result, _, _ = assess(parsed, args.landlord, args.unit, args.floor, args.door)
     result["source"] = "cached_lv"
-    out = {"status": "parsed", "result": result}
+    out = {"status": "parsed", "result": public_result(result)}
     assert_redacted(out, private_tokens(parsed, args.landlord))
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0
@@ -837,9 +955,23 @@ def main(argv=None, backend_loader=None):
     except Refusal as e:
         print(json.dumps({"refused": str(e)}, indent=2, ensure_ascii=False))
         return 2
-    except (RuntimeError, OSError, ValueError, KeyError, LVFormatError) as e:
-        print(json.dumps({"error": "%s: %s" % (type(e).__name__, e)}, indent=2, ensure_ascii=False))
+    except KatastrError as e:
+        print(json.dumps({"error": str(e), "stage": STAGE["now"]}, indent=2, ensure_ascii=False))
         return 1
+    except Exception as e:  # noqa: BLE001 - any other failure: fixed text only, never the exception message
+        print(json.dumps({"error": error_summary(e), "stage": STAGE["now"]}, indent=2, ensure_ascii=False))
+        return 1
+
+
+def error_summary(e):
+    """A fixed description of an unexpected exception: its type if known, and an allowlisted Notion code."""
+    kind = type(e).__name__
+    text = "unexpected %s" % (kind if kind in SAFE_TYPES else "error")
+    if kind == "NotionError":
+        m = re.search(r"failed: ([a-z_]+|http_\d{3})\b", str(e))
+        if m and (m.group(1) in NOTION_CODES or re.fullmatch(r"http_\d{3}", m.group(1))):
+            text += " (Notion %s)" % m.group(1)
+    return text
 
 
 if __name__ == "__main__":

@@ -9,8 +9,11 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -447,6 +450,265 @@ class CredentialsTest(unittest.TestCase):
                 katastr.require_live_credentials()
         self.assertIn("WSDP_PASSWORD", str(e.exception))
         self.assertNotIn("CUZK_API_KN_KEY", str(e.exception))
+
+
+def run_both(argv, backend=None):
+    """main() with stdout and stderr captured separately."""
+    out, err = io.StringIO(), io.StringIO()
+    loader = (lambda: ({}, backend)) if backend is not None else None
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = katastr.main(argv, backend_loader=loader)
+    return code, out.getvalue(), err.getvalue()
+
+
+class InjectionTest(unittest.TestCase):
+    """Blocker 1: raw LV text never reaches stdout, whatever it contains."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+
+    def variant(self, source, old, new):
+        with open(source, encoding="utf-8") as f:
+            xml = f.read()
+        self.assertIn(old, xml)
+        path = os.path.join(self.dir.name, "variant.xml")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(xml.replace(old, new))
+        return path
+
+    def test_owner_name_in_section_c_label_is_not_printed(self):
+        path = self.variant(EASEMENT, "Věcné břemeno zřizování a provozování vedení",
+                            "Věcné břemeno zřizování a provozování vedení Petr Fiktivní")
+        code, out, err = run_both(["parse", "--cached-lv", path])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(leaked_names(out + err), [])
+        self.assertEqual(json.loads(out)["result"]["restrictions"][0], {"section": "C", "type": "easement"})
+
+    def test_review_reproduction_parsed_label_with_display_name(self):
+        parsed = katastr.parse_lv(EASEMENT)
+        owner = parsed["owners"][0]
+        for r in parsed["rights"]:
+            if r["section"] == "C":
+                r["label"] += " " + katastr.display_name(owner)
+        with mock.patch.object(katastr, "parse_lv", lambda source: parsed):
+            code, out, err = run_both(["parse", "--cached-lv", EASEMENT])
+        self.assertEqual(code, 0, out)
+        self.assertEqual(leaked_names(out + err), [])
+
+    def test_lookup_keeps_the_raw_label_in_notion_only(self):
+        path = self.variant(MORTGAGE, "Zákaz zcizení nebo zatížení", "Zákaz zcizení Jana Vzorová")
+        backend = FakeBackend()
+        code, out, err = run_both(["lookup", "--page", PAGE, "--cached-lv", path], backend)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(leaked_names(out + err), [])
+        self.assertIn("Zákaz zcizení Jana Vzorová", backend.calls[-1][2])
+
+    def test_names_in_other_lv_fields_are_not_printed(self):
+        cases = [("101/12", "101/12 Jana Vzorová"),               # unit label
+                 ('SEKCE="C"', 'SEKCE="C Vzorová"'),               # section attribute
+                 ("<citatel>1</citatel>", "<citatel>Vzorová</citatel>")]   # share
+        for old, new in cases:
+            with self.subTest(field=old):
+                path = self.variant(MORTGAGE, old, new)
+                code, out, err = run_both(["parse", "--cached-lv", path])
+                self.assertIn(code, (0, 1), out)
+                self.assertEqual(leaked_names(out + err), [])
+        path = self.variant(COMPANY, "<typriz_kod>V</typriz_kod>", "<typriz_kod>Vzorová</typriz_kod>")
+        code, out, err = run_both(["parse", "--cached-lv", path])
+        self.assertEqual(leaked_names(out + err), [])
+        self.assertIn("unrecognised", json.loads(out)["result"]["pending_proceedings"])
+
+    def test_stdout_types_come_from_the_allowlist(self):
+        allowed = {"mortgage", "distraint", "insolvency", "ban_on_sale", "easement", "pending_change", "other"}
+        for path in (MORTGAGE, EASEMENT, SJM, COMPANY, BUILDING):
+            code, out, _ = run_both(["parse", "--cached-lv", path])
+            types = {r["type"] for r in json.loads(out)["result"]["restrictions"]}
+            self.assertLessEqual(types, allowed)
+            self.assertNotIn("label", out)
+        code, out, _ = run_both(["parse", "--cached-lv", COMPANY])
+        self.assertEqual(json.loads(out)["result"]["restriction_types"], ["distraint", "other"])
+
+
+class ErrorTextTest(unittest.TestCase):
+    """Blocker 2: no response, fault or exception text from outside reaches stdout or stderr."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        patches = [
+            mock.patch.object(katastr, "settings", lambda names: {n: LIVE.get(n, "") for n in names}),
+            mock.patch.object(katastr, "BILLING_FILE", os.path.join(self.dir.name, "billed.json")),
+            mock.patch.object(katastr, "REPORT_POLL_SECONDS", 0),
+            mock.patch.object(katastr, "resolve_address", lambda a: {"address_point": 1, "building_code": 2}),
+            mock.patch.object(katastr, "api_kn", lambda path, key: {
+                "cisloJednotky": 12, "rizeniPlomby": [], "jednotky": [{"id": 1, "cisloJednotky": 12}],
+                "lv": {"cislo": 90001, "katastralniUzemi": {"kod": 999901}}}),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        self.addCleanup(self.dir.cleanup)
+
+    def lookup_with_wsdp(self, answer):
+        backend = FakeBackend()
+        with mock.patch.object(katastr, "wsdp_call", lambda *a: answer):
+            code, out, err = run_both(["lookup", "--page", PAGE], backend)
+        return code, out, err, backend
+
+    def test_soap_fault_with_owner_name(self):
+        fault = (b'<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Body><S:Fault>'
+                 b'<faultcode>S:Server</faultcode><faultstring>No access for Jana Vzorov\xc3\xa1</faultstring>'
+                 b'</S:Fault></S:Body></S:Envelope>')
+        code, out, err, backend = self.lookup_with_wsdp(fault)
+        self.assertEqual(code, 1)
+        self.assertEqual(leaked_names(out + err), [])
+        self.assertEqual(json.loads(out)["error"], "WSDP returned a SOAP fault")
+        self.assertFalse([c for c in backend.calls if c[0] == "append"])
+
+    def test_wsdp_error_message_with_owner_name(self):
+        answer = ('<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Body><r xmlns="urn:x">'
+                  '<zprava kod="Petr Fiktivní" uroven="CHYBA">Owner Petr Fiktivní is blocked</zprava></r></S:Body>'
+                  '</S:Envelope>').encode("utf-8")
+        code, out, err, _ = self.lookup_with_wsdp(answer)
+        self.assertEqual(code, 1)
+        self.assertEqual(leaked_names(out + err), [])
+        self.assertEqual(json.loads(out)["error"], "WSDP returned error code ?")
+
+    def test_backend_exception_text_is_not_printed(self):
+        class Boom(FakeBackend):
+            def get_flat(self, cfg, flat_id):
+                raise RuntimeError("Notion said: page of Karel Smyšlený not shared")
+        code, out, err = run_both(["lookup", "--page", PAGE, "--cached-lv", MORTGAGE], Boom())
+        self.assertEqual(code, 1)
+        self.assertEqual(leaked_names(out + err), [])
+        self.assertEqual(json.loads(out), {"error": "unexpected RuntimeError", "stage": "reading the Notion page"})
+
+    def test_notion_error_keeps_only_an_allowlisted_code(self):
+        class NotionError(RuntimeError):
+            pass
+
+        class Boom(FakeBackend):
+            def append(self, cfg, flat_id, text):
+                raise NotionError("Notion PATCH /blocks failed: validation_error Eva Smyšlená is too long")
+        code, out, err = run_both(["lookup", "--page", PAGE, "--cached-lv", SJM], Boom())
+        self.assertEqual(code, 1)
+        self.assertEqual(leaked_names(out + err), [])
+        self.assertEqual(json.loads(out)["error"], "unexpected NotionError (Notion validation_error)")
+
+    def test_parser_error_text_is_fixed(self):
+        path = os.path.join(self.dir.name, "bad.xml")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("<Vzorova_Jana><unclosed></Vzorova_Jana>")
+        code, out, err = run_both(["parse", "--cached-lv", path])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(out)["error"], "the LV is not well-formed XML")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("<Vzorova_Jana/>")
+        code, out, err = run_both(["parse", "--cached-lv", path])
+        self.assertEqual(json.loads(out)["error"], "the LV is not a WSDP LV 1.0 file")
+        self.assertNotIn("Vzorova", out + err)
+
+    def test_http_error_text_is_fixed(self):
+        def fail(*a, **k):
+            raise katastr.urllib.error.URLError("refused for Jana Vzorová")
+        with mock.patch.object(katastr.urllib.request, "urlopen", fail):
+            with self.assertRaises(katastr.KatastrError) as e:
+                katastr.http_json("https://api-kn.cuzk.gov.cz/x", label="API KN")
+        self.assertEqual(str(e.exception), "cannot read API KN")
+
+
+class BillingConcurrencyTest(unittest.TestCase):
+    """Blocker 3: the read-check-increment is one locked transaction."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.path = os.path.join(self.dir.name, "katastr_billed.json")
+        with open(self.path, "w") as f:
+            json.dump({"2026-11-13": 9}, f)
+
+    def test_two_threads_at_nine_only_one_reserves(self):
+        hook = mock.patch.object(katastr, "_BILLING_HOOK", lambda: time.sleep(0.3))   # widen the race window
+        hook.start()
+        self.addCleanup(hook.stop)
+        results, start = [], threading.Barrier(2)
+
+        def reserve():
+            start.wait()
+            try:
+                results.append(katastr.billing_guard(LIVE, self.path, "2026-11-13")["billed_today"])
+            except katastr.Refusal:
+                results.append("refused")
+        threads = [threading.Thread(target=reserve) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(sorted(results, key=str), [10, "refused"])
+        with open(self.path) as f:
+            self.assertEqual(json.load(f), {"2026-11-13": 10})
+        self.assertEqual(sorted(os.listdir(self.dir.name)), ["katastr_billed.json", "katastr_billed.json.lock"])
+
+    def test_two_processes_at_nine_only_one_reserves(self):
+        code = ("import sys, time, json; sys.path.insert(0, %r); import katastr; "
+                "katastr._BILLING_HOOK = lambda: time.sleep(0.5); "
+                "creds = json.loads(sys.argv[1])\n"
+                "try:\n    print(katastr.billing_guard(creds, %r, '2026-11-13')['billed_today'])\n"
+                "except katastr.Refusal:\n    print('refused')\n"
+                % (os.path.join(HERE, "..", "scripts"), self.path))
+        procs = [subprocess.Popen([sys.executable, "-c", code, json.dumps(LIVE)], stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, text=True) for _ in range(2)]
+        outputs = sorted(p.communicate(timeout=30)[0].strip() for p in procs)
+        self.assertEqual(outputs, ["10", "refused"])
+        with open(self.path) as f:
+            self.assertEqual(json.load(f), {"2026-11-13": 10})
+
+    def test_unreadable_counter_refuses(self):
+        with open(self.path, "w") as f:
+            f.write("{not json")
+        with self.assertRaises(katastr.Refusal):
+            katastr.billing_guard(LIVE, self.path, "2026-11-13")
+
+
+class WsdpFallbackTest(unittest.TestCase):
+    """API KN down: WSDP najdiJednotku finds the unit, and generujLV orders its LV by id."""
+
+    def test_fallback_orders_by_lv_id(self):
+        ops = []
+
+        def wsdp(creds, service, operation, body):
+            ops.append((operation, body))
+            if operation == "najdiJednotku":
+                return soap("<JednotkaList><Jednotka><idJednotky>800001</idJednotky><cislo>1010012</cislo>"
+                            "<lvId>667652306</lvId></Jednotka><Jednotka><idJednotky>800002</idJednotky>"
+                            "<cislo>1010013</cislo><lvId>667652307</lvId></Jednotka></JednotkaList>")
+            if operation == "generujLV":
+                return soap("<reportList><report><id>42</id></report></reportList>")
+            if operation == "seznamSestav":
+                return soap("<reportList><report><stav>zpracován</stav></report></reportList>")
+            if operation == "vratSestavu":
+                with open(MORTGAGE, "rb") as f:
+                    return soap("<souborSestavy>%s</souborSestavy>" % base64.b64encode(f.read()).decode())
+            return soap("")
+
+        def api_down(path, key):
+            raise katastr.KatastrError("API KN answered HTTP 503 without data")
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(katastr, "settings", lambda names: {n: LIVE.get(n, "") for n in names}), \
+                mock.patch.object(katastr, "BILLING_FILE", os.path.join(d, "billed.json")), \
+                mock.patch.object(katastr, "REPORT_POLL_SECONDS", 0), \
+                mock.patch.object(katastr, "resolve_address", lambda a: {"address_point": 1, "building_code": 2}), \
+                mock.patch.object(katastr, "ruian_building", lambda code: {"isknbudovaid": 311150306}), \
+                mock.patch.object(katastr, "api_kn", api_down), \
+                mock.patch.object(katastr, "wsdp_call", wsdp):
+            backend = FakeBackend("- Asked: What is the unit number? Answer: 12")
+            code, out, err = run_both(["lookup", "--page", PAGE], backend)
+        self.assertEqual(code, 0, out)
+        self.assertEqual([o for o, _ in ops], ["najdiJednotku", "generujLV", "seznamSestav", "vratSestavu",
+                                               "smazSestavu"])
+        self.assertIn("<v:lvId>667652306</v:lvId>", ops[1][1])
+        self.assertIn("WSDP search", backend.calls[-1][2])
+        self.assertEqual(leaked_names(out + err), [])
 
 
 if __name__ == "__main__":

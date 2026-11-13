@@ -105,7 +105,7 @@ Name-matching inputs follow from this. SJM/BSM has two partner records (`bsm1_*`
 | Address point → building, LV, units, plombs | API KN `Stavby/AdresniMisto/{kod}` | Free, `ApiKey` |
 | Unit by number | API KN `Jednotky/Vyhledani` then `Jednotky/{id}` (LV + `rizeniPlomby`) | Free |
 | Unit by floor + door only | Not resolvable from either source (no floor/door data). List the building's units as candidates and return `unknown`. | Free |
-| Fallback if API KN fails | WSDP `vyhledat/najdiStavbu`, `najdiJednotku` | Free (WSDP account needed) |
+| Fallback if API KN fails (**candidate discovery only**) | RÚIAN building layer → ISKN building id → WSDP `vyhledat/najdiJednotku`. This lists the units with their LV id; it gives no plomb data. With exactly one matching unit, `katastr.py` orders that LV by id (`generujLV`); otherwise it lists the candidates. | Free (WSDP account needed) |
 | Owners, shares, encumbrances (C), notes (D), plombs | WSDP `sestavy/generujLV` with `lvId` (or k.ú. + LV number), `format=xml`, **`verze` pinned** | **100 CZK, 1 billed output** |
 | Cached path | `--cached-lv <xml>`, the same parser as the `generujLV` response | Free |
 
