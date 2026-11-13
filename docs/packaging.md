@@ -99,6 +99,8 @@ A paired phone page polls `/api/pending` once per second. Left open with no call
 | Analytics | Sending: `capture()` in `posthog/ph.py`. The improve loop in `posthog/loop.py` uses PostHog queries, flags, notebooks and annotations directly | Sending only: one function. The loop: a store module with five functions | Small for sending, real work for the loop |
 | Phone store | `phone/lib/store.js` is the only file that knows Upstash Redis | Rewrite its five functions | One small module, 46 lines |
 
+To run it in another city or country, see [other-cities.md](other-cities.md): what is tied to Prague or Czechia today, where it lives and what to change.
+
 To use the kit for another job, for example booking a dentist, three files hold the domain: the search profile schema (`skill/domovoy/reference/profile.schema.json`), the voice agent prompt (`phone/agent/prompt.md`) and the Notion contract (`skill/domovoy/reference/notion_contract.json`).
 
 ## Not built
