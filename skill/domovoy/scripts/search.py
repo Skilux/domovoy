@@ -32,6 +32,7 @@ DEFAULT_ACTOR = "vladb~domovoy"
 DEFAULT_ENV_FILE = "~/.config/domovoy/.env"
 OUTPUT_KEY = "OUTPUT"
 TERMINAL = ("SUCCEEDED", "FAILED", "TIMED-OUT", "ABORTED")
+REQUEST_TIMEOUT = 30  # seconds per HTTP request; a poll also gets no more than the time left before the deadline
 GROUPS = {"change": ("new", "changed", "unchanged"),
           "match": ("strong", "needs_info", "rejected"),
           "notion": ("created", "updated", "errors")}
@@ -170,9 +171,12 @@ def data_source_id(cfg):
 
 def apify_settings(cfg, timeout=None):
     apify = cfg.get("apify") or {}
+    seconds = float(timeout if timeout is not None else apify.get("timeout_seconds", 900))
+    if seconds <= 0:
+        raise Refusal("the timeout must be more than 0 seconds. Nothing was started.")
     return {
         "actor": apify.get("actor_id") or os.environ.get("APIFY_ACTOR_ID") or DEFAULT_ACTOR,
-        "timeout": float(timeout if timeout is not None else apify.get("timeout_seconds", 900)),
+        "timeout": seconds,
         "poll": max(float(apify.get("poll_seconds", 5)), 0.01),
         "env_file": apify.get("env_file") or DEFAULT_ENV_FILE,
     }
@@ -194,7 +198,7 @@ class Api:
         self.token = token
         self.base = (os.environ.get("APIFY_API_BASE") or DEFAULT_API).rstrip("/")
 
-    def call(self, method, path, body=None):
+    def call(self, method, path, body=None, timeout=REQUEST_TIMEOUT):
         headers = {"Authorization": "Bearer " + self.token, "Accept": "application/json"}
         data = None
         if body is not None:
@@ -202,7 +206,7 @@ class Api:
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
                 raw = response.read()
         except urllib.error.HTTPError as e:
             raise ApiError("Apify answered HTTP %d: %s" % (e.code, error_text(e.read(), e.reason)),
@@ -233,17 +237,23 @@ def start_run(api, actor, body):
         raise
 
 
-def get_run(api, run_id):
-    return unwrap(api.call("GET", "/v2/actor-runs/%s" % urllib.parse.quote(run_id, safe="")))
+def get_run(api, run_id, timeout=REQUEST_TIMEOUT):
+    return unwrap(api.call("GET", "/v2/actor-runs/%s" % urllib.parse.quote(run_id, safe=""), timeout=timeout))
 
 
 def wait_for_run(api, run, timeout, poll, shown_log):
-    """Poll until the run is terminal. Transient errors are retried until the deadline."""
+    """Poll until the run is terminal. Each poll request gets at most the time left before the deadline, so
+    --timeout holds even when a request is slow. Transient errors are retried until the deadline."""
     deadline = time.monotonic() + timeout
     shown = None
     while True:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise RunTimeout(run, "run %s is still %s after %d s and keeps running on Apify. Check it later with: "
+                                  "python3 scripts/search.py status --run %s"
+                             % (run["id"], run.get("status") or "unknown", timeout, run["id"]))
         try:
-            run = get_run(api, run["id"])
+            run = get_run(api, run["id"], min(REQUEST_TIMEOUT, left))
             if run.get("status") != shown:
                 shown = run.get("status")
                 shown_log("run %s: %s" % (run["id"], shown))
@@ -253,11 +263,7 @@ def wait_for_run(api, run, timeout, poll, shown_log):
             if not e.transient:
                 raise
             shown_log("poll: %s" % e)
-        if time.monotonic() + poll > deadline:
-            raise RunTimeout(run, "run %s is still %s after %d s and keeps running on Apify. Check it later with: "
-                                  "python3 scripts/search.py status --run %s"
-                             % (run["id"], run.get("status") or "unknown", timeout, run["id"]))
-        time.sleep(poll)
+        time.sleep(min(poll, max(0.0, deadline - time.monotonic())))
 
 
 def console_url(run):

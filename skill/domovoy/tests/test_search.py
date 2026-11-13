@@ -207,6 +207,26 @@ class SearchTest(unittest.TestCase):
         self.assertIn("status --run " + RUN_ID, out["error"])
         self.assertEqual(self.fake.calls("POST", "/abort"), [])
 
+    def test_each_poll_request_gets_no_more_than_the_time_left(self):
+        self.fake.statuses = ["RUNNING"]  # never finishes, so the deadline ends the wait
+        seen = []
+        real_urlopen = search.urllib.request.urlopen
+
+        def recording(request, timeout=None, **kwargs):
+            seen.append(timeout)
+            return real_urlopen(request, timeout=timeout, **kwargs)
+
+        with mock.patch.object(search.urllib.request, "urlopen", recording):
+            code, out, raw, _ = self.cli("status", "--run", RUN_ID, "--timeout", "0.3")
+        self.assertEqual(code, 1, raw)
+        self.assertIn("status --run " + RUN_ID, out["error"])
+        self.assertTrue(seen)
+        self.assertTrue(all(0 < t <= 0.3 for t in seen), seen)
+        self.fake.requests.clear()
+        code, out, raw, _ = self.cli("status", "--run", RUN_ID, "--timeout", "0")
+        self.assertEqual(code, 2, raw)
+        self.assertEqual(self.fake.requests, [])  # a zero timeout is refused before any request
+
     def test_status_resumes_a_run_and_is_safe_to_repeat(self):
         for _ in range(2):
             code, out, raw, _ = self.cli("status", "--run", RUN_ID)
