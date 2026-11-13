@@ -48,25 +48,29 @@ def _same_gps(a: Listing, b: Listing) -> bool:
 def merge(listings: list[Listing], ids: PropertyIdMap) -> list[Flat]:
     """Group listings into flats, each with a stable property_id.
 
-    `ids` maps "portal:source_id" to property_id. It is updated in place with every listing in the
-    result, and the caller saves it. The input order does not matter: listings are taken in portal
-    priority order, then by source_id, and a repeated portal:source_id counts once.
+    Persisted identity wins over fuzzy matching. A listing whose "portal:source_id" is in `ids`
+    keeps its property_id, and listings that share one stay one flat, even when their attributes
+    have drifted. A new listing joins an established id only if no listing from its own portal
+    holds that id in this run, and it matches one of those listings. Otherwise it joins another
+    match or gets a new id. Established ids are never merged or reassigned. `ids` is updated in
+    place with the new listings, and the caller saves it. The input order does not matter.
     """
-    flats: list[Flat] = []
-    claimed: set[str] = set()
-    for members in _clusters(_ordered(listings)):
-        property_id = _property_id_for(members, ids, claimed)
-        claimed.add(property_id)
+    ordered = _ordered(listings)
+    established: dict[str, list[Listing]] = {}
+    for listing in ordered:
+        known = ids.get(listing_key(listing))
+        if known is not None:
+            established.setdefault(known, []).append(listing)
+    fresh = [listing for listing in ordered if listing_key(listing) not in ids]
+    in_use = set(ids.values())
+    clusters = _place_fresh(fresh, established, ids)
+    flats = [_flat(property_id, members) for property_id, members in established.items()]
+    for members in clusters:
+        property_id = _fresh_property_id(listing_key(members[0]), in_use)
+        in_use.add(property_id)
         for listing in members:
             ids[listing_key(listing)] = property_id
-        flats.append(
-            Flat(
-                property_id=property_id,
-                sources=members,
-                primary=_primary(members),
-                cross_source=cross_source(members),
-            )
-        )
+        flats.append(_flat(property_id, members))
     return flats
 
 
@@ -100,13 +104,15 @@ def cross_source(
     )
 
 
+def _rank(listing: Listing) -> tuple[int, str]:
+    """Portal priority, then source_id: the order in which listings are taken."""
+    return (PORTAL_PRIORITY[listing.portal], listing.source_id)
+
+
 def _ordered(listings: list[Listing]) -> list[Listing]:
-    ordered = sorted(
-        listings, key=lambda listing: (PORTAL_PRIORITY[listing.portal], listing.source_id)
-    )
     seen: set[str] = set()
     unique: list[Listing] = []
-    for listing in ordered:
+    for listing in sorted(listings, key=_rank):
         key = listing_key(listing)
         if key not in seen:
             seen.add(key)
@@ -114,11 +120,21 @@ def _ordered(listings: list[Listing]) -> list[Listing]:
     return unique
 
 
-def _clusters(listings: list[Listing]) -> list[list[Listing]]:
-    """Greedy grouping. A listing joins a flat only if it matches every member: a chain of
-    near-matches cannot pull two flats together. A flat holds one listing per portal."""
+def _place_fresh(
+    fresh: list[Listing], established: dict[str, list[Listing]], ids: PropertyIdMap
+) -> list[list[Listing]]:
+    """New listings join an established id when they may. The rest group among themselves.
+
+    The grouping is greedy: a listing joins a group only if it matches every member, so a chain of
+    near-matches cannot pull two flats together. A group holds one listing per portal.
+    """
     clusters: list[list[Listing]] = []
-    for listing in listings:
+    for listing in fresh:
+        joined = _joinable_id(listing, established)
+        if joined is not None:
+            established[joined].append(listing)
+            ids[listing_key(listing)] = joined
+            continue
         for members in clusters:
             if all(same_flat(listing, member) for member in members):
                 members.append(listing)
@@ -128,20 +144,43 @@ def _clusters(listings: list[Listing]) -> list[list[Listing]]:
     return clusters
 
 
-def _property_id_for(members: list[Listing], ids: PropertyIdMap, claimed: set[str]) -> str:
-    """The first existing id of a member that no earlier flat in this run has claimed. Otherwise a
-    new id from the first key seen, salted until it is not claimed in this run."""
-    for listing in members:
-        existing = ids.get(listing_key(listing))
-        if existing is not None and existing not in claimed:
-            return existing
-    first_key = listing_key(members[0])
+def _joinable_id(listing: Listing, established: dict[str, list[Listing]]) -> str | None:
+    """The first established id this new listing may join, or None.
+
+    No listing from its own portal may already hold the id in this run. One match is enough: the
+    listings of an established flat may have drifted apart, and requiring all of them would split
+    the flat.
+    """
+    for property_id, members in established.items():
+        if any(member.portal == listing.portal for member in members):
+            continue
+        if any(same_flat(listing, member) for member in members):
+            return property_id
+    return None
+
+
+def _fresh_property_id(first_key: str, in_use: set[str]) -> str:
+    """A new id from the first key seen, salted until it equals no id in use.
+
+    In use: every persisted id, including those of listings absent from this run, and the ids given
+    out in this run.
+    """
     candidate = new_property_id(first_key)
     attempt = 0
-    while candidate in claimed:
+    while candidate in in_use:
         attempt += 1
         candidate = new_property_id(f"{first_key}#{attempt}")
     return candidate
+
+
+def _flat(property_id: str, members: list[Listing]) -> Flat:
+    ranked = sorted(members, key=_rank)
+    return Flat(
+        property_id=property_id,
+        sources=ranked,
+        primary=_primary(ranked),
+        cross_source=cross_source(ranked),
+    )
 
 
 def _primary(members: list[Listing]) -> Listing:

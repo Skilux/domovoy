@@ -219,14 +219,98 @@ def test_a_duplicate_found_later_joins_the_existing_flat():
     assert ids["bezrealitky:b-9"] == only_sreality[0].property_id
 
 
-def test_an_id_stays_with_one_flat_in_a_run():
+def test_established_ids_survive_rent_drift():
     old = new_property_id("sreality:1")
-    # The old run had both listings in one flat. Now the rent gap is too wide and they split.
+    # Both listings were one flat in the old run. Bezrealitky's rent has drifted, so they no longer
+    # match, but the persisted ids stand: still one flat, same ids, nothing reassigned.
     ids: PropertyIdMap = {"sreality:1": old, "bezrealitky:b-9": old}
     flats = merge([make("sreality", "1"), make("bezrealitky", "b-9", rent=30000)], ids)
-    assert flats[0].property_id == old
-    assert flats[1].property_id != old
-    assert ids == {"sreality:1": old, "bezrealitky:b-9": flats[1].property_id}
+    assert [flat.property_id for flat in flats] == [old]
+    assert [source.source_id for source in flats[0].sources] == ["1", "b-9"]
+    assert ids == {"sreality:1": old, "bezrealitky:b-9": old}
+
+
+def test_a_listing_keeps_its_id_when_its_area_drifts():
+    old = new_property_id("sreality:1")
+    flats = merge([make("sreality", "1", area_m2=60.0)], {"sreality:1": old})
+    assert [flat.property_id for flat in flats] == [old]
+
+
+def test_a_new_same_portal_listing_does_not_take_an_established_id():
+    ids: PropertyIdMap = {}
+    (first,) = merge([make("sreality", "2"), make("bezrealitky", "b-9")], ids)
+    established = first.property_id
+    flats = merge([make("sreality", "1"), make("sreality", "2"), make("bezrealitky", "b-9")], ids)
+    assert ids["sreality:2"] == ids["bezrealitky:b-9"] == established
+    assert ids["sreality:1"] != established
+    assert len(flats) == 2
+    kept = next(flat for flat in flats if flat.property_id == established)
+    assert [(s.portal, s.source_id) for s in kept.sources] == [
+        ("sreality", "2"),
+        ("bezrealitky", "b-9"),
+    ]
+
+
+def test_a_rent_change_on_one_portal_keeps_the_flat_and_its_ids():
+    ids: PropertyIdMap = {}
+    (first,) = merge([make("sreality", "1"), make("bezrealitky", "b-9")], ids)
+    before = dict(ids)
+    flats = merge([make("sreality", "1"), make("bezrealitky", "b-9", rent=30000)], ids)
+    assert [flat.property_id for flat in flats] == [first.property_id]
+    assert ids == before
+
+
+def test_two_established_ids_are_never_merged():
+    sreality_id = new_property_id("sreality:1")
+    bezrealitky_id = new_property_id("bezrealitky:b-9")
+    ids: PropertyIdMap = {"sreality:1": sreality_id, "bezrealitky:b-9": bezrealitky_id}
+    flats = merge([make("sreality", "1"), make("bezrealitky", "b-9")], ids)  # they match
+    assert sorted(flat.property_id for flat in flats) == sorted([sreality_id, bezrealitky_id])
+    assert ids == {"sreality:1": sreality_id, "bezrealitky:b-9": bezrealitky_id}
+
+
+def test_a_new_listing_joins_one_established_id_only():
+    ids: PropertyIdMap = {
+        "sreality:1": new_property_id("sreality:1"),
+        "bezrealitky:b-9": new_property_id("bezrealitky:b-9"),
+    }
+    flats = merge([make("sreality", "1"), make("bezrealitky", "b-9"), make("idnes", "7")], ids)
+    assert len(flats) == 2
+    assert ids["idnes:7"] == new_property_id("sreality:1")  # the first established id in order
+
+
+def test_a_new_listing_blocked_by_its_portal_joins_another_match():
+    ids: PropertyIdMap = {}
+    merge(
+        [
+            make("sreality", "2"),
+            make("bezrealitky", "b-9"),
+            make("idnes", "5", street="Dlouhá", area_m2=70.0, rent=40000),
+        ],
+        ids,
+    )
+    # sreality:1 matches idnes:5, but a sreality listing already holds sreality:2's id.
+    flats = merge(
+        [
+            make("sreality", "1", street="Dlouhá", area_m2=70.0, rent=40000),
+            make("sreality", "2"),
+            make("bezrealitky", "b-9"),
+            make("idnes", "5", street="Dlouhá", area_m2=70.0, rent=40000),
+        ],
+        ids,
+    )
+    assert len(flats) == 2
+    assert ids["sreality:2"] == ids["bezrealitky:b-9"] != ids["idnes:5"]
+    assert ids["sreality:1"] == ids["idnes:5"]
+
+
+def test_a_new_id_never_equals_an_absent_persisted_id():
+    # idnes:9 is not in this run, but its persisted id is the one bezrealitky:b-9 would hash to.
+    stale = new_property_id("bezrealitky:b-9")
+    ids: PropertyIdMap = {"idnes:9": stale}
+    flats = merge([make("bezrealitky", "b-9")], ids)
+    assert flats[0].property_id != stale
+    assert ids == {"idnes:9": stale, "bezrealitky:b-9": flats[0].property_id}
 
 
 def test_a_new_id_never_reuses_a_claimed_id():
