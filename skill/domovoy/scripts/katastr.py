@@ -681,50 +681,72 @@ def public_result(result):
 
 # ------------------------------------------------------------------ Notion section and redaction
 
+UNIT_TYPES = {"flat": "flat", "garage": "garage", "studio": "studio", "non_residential": "non-residential space"}
+UNIT_REGIMES = {"civil_code": "unit under the Civil Code",
+                "apartment_act_72_1994": "unit under the Apartment Ownership Act 72/1994"}
+OWNER_KINDS = {"person": "person", "sjm": "married couple, joint property", "company": "company",
+               "cooperative": "housing co-op", "unknown": "unknown"}
+ENTRY_NAMES = {"insolvency": "insolvency", "enforcement_lien": "lien from an enforcement or court decision",
+               "execution": "enforcement (exekuce)", "dispute": "dispute note", "mortgage": "mortgage",
+               "ban_on_sale": "ban on sale and encumbrance", "pre_emption": "pre-emption right",
+               "easement": "easement", "lease": "registered lease", "other": "other entry"}
+LANDLORD_MATCH = {"yes": "yes, the landlord named in the call is an owner",
+                  "no": "no, the landlord named in the call is not an owner: this would be a sublease",
+                  "unknown": "not known, the call did not give a landlord name that could be matched"}
+DETAILS_TITLE = "Land register details: owners, encumbrances, easements"
+
+
 def notion_section(result, parsed, owners, source_line):
+    """The Notion text: verdict and questions first, the LV detail (with owner names) inside a closed toggle.
+    notion.append renders it: the title as a heading, "- " as bullets, "+ " and indented lines as a toggle."""
     rel = [r for r in parsed["rights"] if {"section": r["section"], "type": r["category"], "label": r["label"]}
            in result["restrictions"]]
-    lines = ["Katastr check", source_line,
-             "LV %s, cadastral area %s (%s). Data as of %s."
-             % (parsed["lv"]["number"] or "unknown", parsed["lv"]["area_name"] or "unknown",
-                parsed["lv"]["area_code"] or "?", result["as_of"] or "unknown")]
-    if result["unit_number"]:
-        lines.append("Unit: %s, %s, %s." % (result["unit_number"], result["unit_type"] or "unknown use",
-                                           result["unit_regime"] or "unknown regime"))
-    else:
-        lines.append("Unit: not identified (%s). Candidates: %s."
-                     % (result["unit_note"] or "unknown", ", ".join(result["unit_candidates"]) or "none"))
-    lines.append("Owners (%d):" % len(owners))
-    for o in owners:
-        lines.append("- %s, %s, share %s" % (display_name(o), o["kind"], o["share"]))
-    for section, title in (("C", "Section C, encumbrances"), ("D", "Section D, notes")):
-        items = [r for r in rel if r["section"] == section]
-        lines.append("%s: %s" % (title, "none" if not items else len(items)))
-        for r in items:
-            who = ", ".join(dict.fromkeys(display_name(b) for b in r["beneficiaries"]))
-            lines.append("- %s (%s)%s%s" % (r["label"], r["category"], " for " + who if who else "",
-                                            ": " + one_line(r["description"]) if r["description"] else ""))
-    lines.append("Pending change: %s" % (", ".join(result["pending_proceedings"]) or "yes")
-                 if result["pending_change"] else "Pending change: none")
-    easements = result.get("easements") or []
-    lines.append("Easements (věcná břemena) on this LV: %s" % ("none" if not easements else len(easements)))
-    for e in easements:
-        who = ", ".join(dict.fromkeys(display_name(b) for b in e["beneficiaries"]))
-        lines.append("- %s: %s, %s, in favour of %s. Impact for a tenant: %s.%s"
-                     % (e["label"] or "easement", EASEMENT_NAMES[e["kind"]],
-                        "on the flat itself" if e["on_unit"] else "on other property on this LV",
-                        who or ("a property" if e["for"] == "property" else "unknown"),
-                        e["impact"], " " + one_line(e["description"]) if e["description"] else ""))
-    for n in result.get("building_lvs") or []:
-        lines.append("Not checked: LV %s (the land and the building as a whole). An easement or other entry on "
-                     "the whole house would be listed there." % n)
-    lines.append("Landlord from the call matches an owner: %s" % result["landlord_matches_owner"])
-    reasons = " ".join(r[0].upper() + r[1:] + "." for r in result["risk_reasons"])
-    lines.append("Lease risk: %s. %s" % (result["lease_risk"], reasons or "Nothing unusual."))
+    lines = ["Katastr check", "Lease risk: %s" % result["lease_risk"]]
+    lines += ["- " + r[0].upper() + r[1:] + "." for r in result["risk_reasons"]] or ["- Nothing unusual."]
     questions = result.get("questions") or []
     if questions:
-        lines.append("Questions for the landlord or the realtor:")
+        lines.append("Questions to ask at the viewing:")
         lines += ["- " + q for q in questions]
+    lines.append(source_line)
+    details = ["LV %s, cadastral area %s (%s). Data as of %s."
+               % (parsed["lv"]["number"] or "unknown", parsed["lv"]["area_name"] or "unknown",
+                  parsed["lv"]["area_code"] or "?", result["as_of"] or "unknown")]
+    if result["unit_number"]:
+        details.append("Unit: %s, %s, %s." % (
+            result["unit_number"], UNIT_TYPES.get(result["unit_type"], result["unit_type"] or "unknown use"),
+            UNIT_REGIMES.get(result["unit_regime"], result["unit_regime"] or "unknown regime")))
+    else:
+        details.append("Unit: not identified (%s). Candidates: %s."
+                       % (result["unit_note"] or "unknown", ", ".join(result["unit_candidates"]) or "none"))
+    details.append("Landlord from the call is an owner: %s." % LANDLORD_MATCH.get(
+        result["landlord_matches_owner"], result["landlord_matches_owner"]))
+    details.append("Owners (%d):" % len(owners))
+    for o in owners:
+        details.append("- %s, %s, share %s" % (display_name(o), OWNER_KINDS.get(o["kind"], o["kind"]), o["share"]))
+    for section, title in (("C", "Section C, encumbrances"), ("D", "Section D, notes")):
+        items = [r for r in rel if r["section"] == section]
+        details.append("%s: %s" % (title, "none" if not items else len(items)))
+        for r in items:
+            who = ", ".join(dict.fromkeys(display_name(b) for b in r["beneficiaries"]))
+            details.append("- %s (%s)%s%s" % (r["label"], ENTRY_NAMES.get(r["category"], r["category"]),
+                                              " for " + who if who else "",
+                                              ": " + one_line(r["description"]) if r["description"] else ""))
+    details.append("Pending change: %s" % (", ".join(result["pending_proceedings"]) or "yes")
+                   if result["pending_change"] else "Pending change: none")
+    easements = result.get("easements") or []
+    details.append("Easements (věcná břemena) on this LV: %s" % ("none" if not easements else len(easements)))
+    for e in easements:
+        who = ", ".join(dict.fromkeys(display_name(b) for b in e["beneficiaries"]))
+        details.append("- %s: %s, %s, in favour of %s. Impact for a tenant: %s.%s"
+                       % (e["label"] or "easement", EASEMENT_NAMES[e["kind"]],
+                          "on the flat itself" if e["on_unit"] else "on other property on this LV",
+                          who or ("a property" if e["for"] == "property" else "unknown"),
+                          e["impact"], " " + one_line(e["description"]) if e["description"] else ""))
+    for n in result.get("building_lvs") or []:
+        details.append("Not checked: LV %s (the land and the building as a whole). An easement or other entry "
+                       "on the whole house would be listed there." % n)
+    lines.append("+ " + DETAILS_TITLE)
+    lines += ["  " + line for line in details]
     lines.append("Land register data are informative. This is not legal advice.")
     return lines
 

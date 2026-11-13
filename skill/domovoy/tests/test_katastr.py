@@ -315,7 +315,10 @@ class CachedLookupTest(unittest.TestCase):
         appended = [c for c in backend.calls if c[0] == "append"]
         self.assertEqual(len(appended), 1)
         section = appended[0][2]
-        self.assertTrue(section.startswith("Katastr check\nSource: cached LV XML"))
+        self.assertTrue(section.startswith("Katastr check\nLease risk: "))
+        self.assertIn("\nSource: cached LV XML", section)
+        before, details = section.split("\n+ Land register details", 1)
+        self.assertNotIn("Jana Vzorová", before)           # names only inside the closed toggle
         self.assertIn("Jana Vzorová", section)             # owner names live in Notion
         self.assertIn("Fiktivní banka, a.s.", section)     # and the mortgage holder
         self.assertIn("domovoy-katastr: cached_lv 90001", section)
@@ -813,7 +816,7 @@ class EasementTest(unittest.TestCase):
         section = [c for c in backend.calls if c[0] == "append"][0][2]
         self.assertIn("Easements (věcná břemena) on this LV: 3", section)
         self.assertIn("right to live in or use, on the flat itself, in favour of Marie Bydlící", section)
-        self.assertIn("Questions for the landlord or the realtor:", section)
+        self.assertIn("Questions to ask at the viewing:", section)
         self.assertEqual(leaked_names(out), [])
 
 
@@ -868,7 +871,12 @@ class RealShapeTest(unittest.TestCase):
         parsed = katastr.parse_lv(xml.encode("utf-8"))
         result, owners, _ = katastr.assess(parsed, number="61")
         lines = katastr.notion_section(result, parsed, owners, "Source: test")
-        mortgage = [line for line in lines if line.startswith("- Zástavní právo smluvní")][0]
+        mortgage = [line for line in lines if line.startswith("  - Zástavní právo smluvní")][0]
+        self.assertIn("(mortgage)", mortgage)
+        ban = [line for line in lines if line.startswith("  - Zákaz zcizení")][0]
+        self.assertIn("(ban on sale and encumbrance)", ban)
+        self.assertNotIn("ban_on_sale", "\n".join(lines))
+        self.assertNotIn("civil_code", "\n".join(lines))
         self.assertEqual(mortgage.count("Fiktivní stavební banka"), 1)
         self.assertIn("pohledávka 1 Kč budoucí pohledávky", mortgage)
         self.assertTrue(all("\n" not in line for line in lines))
