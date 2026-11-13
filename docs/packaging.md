@@ -13,6 +13,8 @@ How another person sets DOMOVOY up, what it costs, and how to swap each service.
 7. Open `<PHONE_URL>/?k=<DOMOVOY_RECEIVER_KEY>` once and click Ready. Connect a calendar tool to the agent.
 8. Run the check again. With no FAIL, ask the agent to find a flat.
 
+With no accounts at all: `python3 scripts/demo.py call` runs the real call command against a fake shortlist and a fake phone server, with a made-up call result. Everything it prints is labelled synthetic, and nothing is contacted.
+
 State on 13 Nov 2026: steps 1 to 4 and the check were run on Danila's machine. Steps 5 and 6 have no script yet and were done by hand for the demo. Nobody outside the team has run the whole flow.
 
 ### What `doctor.py check` verifies
@@ -100,5 +102,5 @@ To use the kit for another job, for example booking a dentist, three files hold 
 ## Not built
 
 - A script that creates the Vercel project, the store and the voice agent in one step. `doctor.py` only checks.
-- A demo mode with no accounts. The fake backend and the fake phone server exist in `skill/domovoy/tests/`, but nothing starts them for a user.
+- A demo of research with no accounts. `demo.py` covers the call command only; there is no fake Actor run for a user.
 - Packaging as a Claude Code plugin.
