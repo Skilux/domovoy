@@ -69,7 +69,7 @@ Made by Vladimir while specifying the Actor lane ([prd/actor.md](prd/actor.md)).
 | Costs | The model extracts, Python computes; energy and missing furniture come from fixed tables and are marked as estimates; `upfront` stays stated costs only, furniture is shown next to it | — |
 | Dedup | Heuristic across portals with a stable `property_id` map | — |
 | Realtor contacts | Stored only in the private Notion database and the Apify dataset; never in the repo or the cached fallback; hidden in the demo view | Kept out of public GitHub issues |
-| Katastr owner check | Phase 2 (`katastr_lookup` mode, WSDP); storing owner names needs compliance sign-off | — |
+| Katastr owner check | Phase 2 (`katastr_lookup` mode, WSDP); storing owner names needs compliance sign-off. Superseded by [Katastr check decisions](#katastr-check-decisions-13-nov-2026) | — |
 | PostHog from the Actor | Phase 2; the PostHog lane stays P1 | — |
 | GitHub Projects board | Team task tracking during the hackathon only; never a DOMOVOY or demo surface | Shortlist UI for DOMOVOY |
 | Portal access, all three portals (Sreality, Bezrealitky, iDNES) | 13 Nov 2026, 13:00. Team decision (Vladimir): agent scraping of all three portals is permitted for this hackathon. The organizers allow it, and robots.txt and terms-of-service or content-reuse clauses do not apply for the hackathon. Sreality was first permitted at 12:53 on a verbal OK from a Sreality representative at the hackathon. Still required: at most 3 concurrent requests per portal, a 0.5–1 s delay between requests, and no realtor names, phones or emails in the repo. | The robots.txt Disallow and terms-of-service concerns |
@@ -110,3 +110,13 @@ Team decision by Vladimir at 13:00, for the iDNES source (WP3). The organizers o
 | Polite rate | At most 3 requests in flight, 0.5 to 1 s between request starts, one retry on 5xx and network errors, stop on 403 or 429. No proxies, no header or fingerprint spoofing, no stealth, no CAPTCHA solving | — |
 | Contacts in the repo | No realtor names, phones or emails in code, fixtures or docs. The repo goes public at 17:30 | — (already a rule in CLAUDE.md) |
 | Call trigger | A flat is callable when `Status` = Interested, or when the user's `Interested?` column is Yes and `Status` is still Shortlisted. `call.py` then sets Calling and the final status, so a finished flat is not called again. `Status` stays the only workflow state. Danila, 13 Nov 2026, issue #80 | `Status` = Interested only |
+
+## Katastr check decisions, 13 Nov 2026
+
+Made by Vladimir for the katastr check (issue #57, PRs #111 and #113).
+
+| Topic | Decision | Replaces |
+| --- | --- | --- |
+| Owner names in Notion | Compliance signed off. The Katastr check writes owner and lender names to the flat's Notion page and attaches the LV PDF there. LV files stay in `KATASTR_LV_DIR`, outside any git checkout. Names never go into the repo, commits, cached fallbacks, issues or chat; `katastr.py` prints none | "Storing owner names needs compliance sign-off" (Actor PRD decisions); open item 19 |
+| Where the check runs | A skill command, `katastr.py` `locate`, `fetch`, `lookup`, `attach`, documented in `SKILL.md`. Each billed WSDP output (100 CZK per LV extract, XML or PDF) needs its own yes from the user, and the script refuses without `--confirm-billed`. API KN (free) finds the building, units and LVs; it has no owners or encumbrances | `katastr_lookup` Actor mode |
+| Easements for a tenant | Someone else's right to live in or use the flat: high. A right of way through the flat, or an easement of unknown kind on it: medium. Utility lines: low, reported only. The building's own LV (land and the house as a whole) is named as not checked unless ordered | — |
