@@ -1,0 +1,23 @@
+{
+  "id": "e2e-vinohrady",
+  "version": 1,
+  "filters": {
+    "offer_type": "rent",
+    "property_type": "flat",
+    "locations": [{"city": "Praha", "citypart": "Vinohrady"}],
+    "dispositions": ["2+kk", "2+1"],
+    "max_rent": 30000,
+    "min_area_m2": 45,
+    "sources": ["sreality", "bezrealitky", "idnes"],
+    "max_listings": 5
+  },
+  "household": {"occupants": 1},
+  "requirements": {
+    "max_total_monthly": 30000,
+    "max_upfront": null,
+    "elevator": "required",
+    "lease_types": ["najem"],
+    "move_in_by": "2027-01-31",
+    "pets_allowed": null
+  }
+}
