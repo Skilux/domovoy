@@ -1,0 +1,113 @@
+{
+  "result": {
+    "hash_id": 1032417356,
+    "advert_name": "Pronájem bytu 2+kk 40 m²",
+    "advert_description": "Zařízený byt 2+kk, 40 m2, zvýšené přízemí dobře udržovaného secesního domu s výtahem v lukrativní lokalitě, ulice Na Kozačce, Praha 2 - Vinohrady. V bytě je vstupní hala, neprůchozí obývací pokoj spojený s vybavených kuchyňským koutem (digestoř, varná deska, pečící trouba, lednice, mrazák, myčka, mikrovlnná trouba, toustovač, kávovar, varná konvice, nádobí), jedna oddělená ložnice s výhledem do klidného vnitrobloku, koupelna se sprchovým koutem, pračkou, sušičkou a toaletou. Kvalitní dřevěná podlaha v kombinaci s dlažbou. Ústřední plynové vytápění. K dispozici LCD TV, DVD, SAT přijímač, Wi-Fi internet, pračka se sušičkou. Výborná dopravní dostupnost do centra, nedaleko metro Náměstí Míru, linie A či tram. Jana Masaryka. Možnost pronájmu garážového stání 5 min. od domuv ul. Máchova za extra příplatek 2 000 Kč + DPH/místo/měs. Poplatky 3 400 Kč/byt + energie 2 000 Kč/měs./os. Krátkodobě min. 1 měsíc 40 000 Kč all inclusive. Vratná kauce 1 měs. nájem. Volný ihned. ",
+    "price_czk": 25000.0,
+    "price_note": "Poplatky 3 400 Kč/byt/měs. + zálohy na energie 2 000 Kč/osoba/měs. Kauce 1 nájem. RK provize 1 nájem, neplatíte DPH.",
+    "price_unit_cb": {
+      "name": "za měsíc",
+      "value": 2
+    },
+    "ready_date": "2026-11-10",
+    "edited": "2026-11-13",
+    "since": "2026-11-10",
+    "usable_area": 40,
+    "floor_number": 0,
+    "floors": null,
+    "parking": 1,
+    "garage_count": 1,
+    "category_main_cb": {
+      "name": "Byty",
+      "value": 1
+    },
+    "category_sub_cb": {
+      "name": "2+kk",
+      "value": 4
+    },
+    "category_type_cb": {
+      "name": "Pronájem",
+      "value": 2
+    },
+    "elevator": {
+      "name": "Ano",
+      "value": 1
+    },
+    "furnished": {
+      "name": "Ano",
+      "value": 1
+    },
+    "ownership": {
+      "name": "Osobní",
+      "value": 1
+    },
+    "lease_type_cb": null,
+    "locality": {
+      "city": "Praha",
+      "city_seo_name": "praha",
+      "citypart": "Vinohrady",
+      "citypart_seo_name": "vinohrady",
+      "district": "Praha 2",
+      "district_id": 5002,
+      "district_seo_name": "praha-2",
+      "region": "Hlavní město Praha",
+      "region_id": 10,
+      "street": "Na Kozačce",
+      "street_seo_name": "na-kozacce",
+      "streetnumber": null,
+      "housenumber": null,
+      "gps_lat": 50.0714820609547,
+      "gps_lon": 14.4423477076226,
+      "inaccuracy_type": "street"
+    },
+    "advert_images": [
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkC4TclFX98IUSxw2/9390.jpeg",
+        "width": 1200,
+        "height": 800,
+        "order": 1
+      },
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qH_B/nQO0xPd86TBVyhhBjr1IUSxxN/3e73.jpeg",
+        "width": 1200,
+        "height": 800,
+        "order": 4
+      },
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkDyuEmNliIIUSxxp/3e9c.jpeg",
+        "width": 1200,
+        "height": 800,
+        "order": 5
+      },
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdk3RI9FCjDIUSxx9/531b.jpeg",
+        "width": 1200,
+        "height": 800,
+        "order": 6
+      }
+    ],
+    "user": {
+      "user_name": "Example Agent",
+      "user_email": null,
+      "user_phones": [],
+      "user_id": null,
+      "image": null,
+      "broker_rating": null,
+      "broker_review_count": null
+    },
+    "premise": {
+      "id": null,
+      "name": "Example Agency",
+      "seo_name": "example-agency",
+      "web_url": null,
+      "web_visible_url": null,
+      "logo": null,
+      "company": {
+        "company_ic": null,
+        "company_subject_id": null
+      }
+    }
+  },
+  "status_code": 200,
+  "status_message": "OK"
+}
