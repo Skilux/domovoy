@@ -16,6 +16,7 @@
     <section class="screen" data-name="ready">
       <p class="kicker">DOMOVOY phone</p>
       <div class="spacer"></div>
+      <div class="avatar"><svg><use href="#i-home"/></svg></div>
       <button class="pill" id="ready" type="button">Ready</button>
       <p class="note">One click so the ringtone can play</p>
       <div class="spacer"></div>
@@ -24,17 +25,18 @@
     <section class="screen" data-name="waiting">
       <p class="kicker">DOMOVOY phone</p>
       <div class="spacer"></div>
+      <div class="avatar breathe"><svg><use href="#i-home"/></svg></div>
       <h1>Waiting for a call</h1>
       <div class="dots"><i></i><i></i><i></i></div>
       <div class="spacer"></div>
     </section>
 
     <section class="screen" data-name="incoming">
+      <p class="kicker">Incoming call</p>
       <div class="lcd">
         <p class="lcd-top"><span class="lcd-signal"><i></i><i></i><i></i><i></i></span><span>DOMOVOY NET</span></p>
         <p class="lcd-text"><span id="lcd-text"></span><i class="lcd-cursor"></i></p>
       </div>
-      <p class="kicker">Incoming call</p>
       <div class="avatar pulse"><svg><use href="#i-home"/></svg></div>
       <h1>DOMOVOY AI assistant</h1>
       <p class="sub">calling about a flat</p>
@@ -73,6 +75,7 @@
 
     <section class="screen" data-name="result">
       <p class="kicker">Call ended</p>
+      <div class="spacer"></div>
       <div class="badge" id="badge"></div>
       <h1 class="outcome" id="outcome"></h1>
       <div class="cal" id="cal" hidden>
