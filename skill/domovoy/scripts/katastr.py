@@ -6,9 +6,12 @@ The human-gated flow (see SKILL.md, "Katastr check"):
       Free. Finds the building from the listing's map point (read from the listing page) or an address,
       lists its units with their LV and their floor area estimated from the share on the common parts,
       and ranks the flats by the listing's area. Bills nothing and writes nothing.
-  katastr.py fetch --area CODE --lv N [--format xml|pdf] --confirm-billed
+  katastr.py fetch --area CODE --lv N [--format xml|pdf] --confirm-billed [--force-new]
       BILLED on WSDP_ENV=prod: one LV extract, 100 CZK. Saves it in KATASTR_LV_DIR (default
       ~/.config/domovoy/lv), never inside a git checkout. Refuses without --confirm-billed: ask the user first.
+      Reuse: when KATASTR_LV_DIR already holds LV_<area>_<lv>_<today>[-n].<format> (ordered today), fetch
+      prints that file with "reused": true and "billed": false: no WSDP call, nothing counted. --force-new buys
+      a new one anyway.
   katastr.py lookup --page ID --cached-lv FILE [--unit N] [--floor F --door D] [--landlord NAME]
       Free. Analyses the LV XML for the flat (owners, encumbrances, easements, pending changes) and appends
       a "Katastr check" section with the questions to ask the landlord to the Notion page.
@@ -1257,19 +1260,65 @@ def save_dir():
     return folder
 
 
+FILE_MAGIC = {"pdf": b"%PDF", "xml": b"<"}
+
+
+def prague_now():
+    return datetime.datetime.now(PRAGUE) if PRAGUE else datetime.datetime.now().astimezone()
+
+
+def ordered_today(folder, area, lv, fmt, day):
+    """The newest LV file that fetch saved on day for this cadastral area, LV number and format, else None.
+
+    Names: LV_<area>_<lv>_<day>.<fmt>, then LV_<area>_<lv>_<day>-2.<fmt> and so on. A file that is empty or
+    does not start like the format (%PDF, or < for XML) is skipped.
+    """
+    pattern = re.compile(r"LV_%s_%s_%s(?:-(\d+))?\.%s" % (re.escape(area), re.escape(lv), re.escape(day),
+                                                          re.escape(fmt)))
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return None
+    best = None
+    for name in names:
+        m = pattern.fullmatch(name)
+        path = os.path.join(folder, name)
+        if not m or not os.path.isfile(path):
+            continue
+        with open(path, "rb") as f:
+            head = f.read(64)
+        if not head.lstrip()[:4].startswith(FILE_MAGIC[fmt]):
+            continue
+        rank = int(m.group(1) or 1)
+        if best is None or rank > best[0]:
+            best = (rank, path)
+    return best[1] if best else None
+
+
 def fetch_command(args):
-    creds = require_live_credentials(["WSDP_USERNAME", "WSDP_PASSWORD", "WSDP_ENV"])
     for value, name in ((args.area, "--area"), (args.lv, "--lv")):
         if not DIGITS_RE.fullmatch(value or ""):
             raise Refusal("%s must be digits. Nothing was billed or changed." % name)
+    day = prague_now().date().isoformat()
+    if not args.force_new:
+        found = ordered_today(lv_dir(), args.area, args.lv, args.format, day)
+        if found:
+            mtime = datetime.datetime.fromtimestamp(os.path.getmtime(found), PRAGUE) if PRAGUE else \
+                datetime.datetime.fromtimestamp(os.path.getmtime(found)).astimezone()
+            out = {"status": "saved", "file": found, "format": args.format, "bytes": os.path.getsize(found),
+                   "lv": args.lv, "area_code": args.area, "wsdp_env": settings(["WSDP_ENV"])["WSDP_ENV"] or None,
+                   "billing": None, "reused": True, "billed": False,
+                   "ordered_at": mtime.replace(microsecond=0).isoformat(), "path": found}
+            print(json.dumps(out, indent=2, ensure_ascii=False))
+            return 0
+    creds = require_live_credentials(["WSDP_USERNAME", "WSDP_PASSWORD", "WSDP_ENV"])
     billed_gate(creds, args.confirm_billed, "fetch")
     folder = save_dir()
     os.makedirs(folder, mode=0o700, exist_ok=True)
     data, billing = fetch_lv(creds, args.area, args.lv, fmt=args.format)
-    magic = b"%PDF" if args.format == "pdf" else b"<"
-    if not data.lstrip()[:4].startswith(magic):
+    if not data.lstrip()[:4].startswith(FILE_MAGIC[args.format]):
         raise KatastrError("WSDP returned a file that is not %s" % args.format.upper())
-    day = (datetime.datetime.now(PRAGUE) if PRAGUE else datetime.datetime.now()).date().isoformat()
+    day = prague_now().date().isoformat()
     base = os.path.join(folder, "LV_%s_%s_%s" % (args.area, args.lv, day))
     path, n = base + "." + args.format, 1
     while os.path.exists(path):
@@ -1279,7 +1328,9 @@ def fetch_command(args):
     with os.fdopen(fd, "wb") as f:
         f.write(data)
     out = {"status": "saved", "file": path, "format": args.format, "bytes": len(data), "lv": args.lv,
-           "area_code": args.area, "wsdp_env": creds["WSDP_ENV"], "billing": billing}
+           "area_code": args.area, "wsdp_env": creds["WSDP_ENV"], "billing": billing, "reused": False,
+           "billed": billing is not None, "ordered_at": prague_now().replace(microsecond=0).isoformat(),
+           "path": path}
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0
 
@@ -1435,6 +1486,8 @@ def main(argv=None, backend_loader=None):
     p.add_argument("--lv", required=True, help="LV number")
     p.add_argument("--format", choices=("xml", "pdf"), default="xml")
     p.add_argument("--confirm-billed", action="store_true", help="the user said yes to one billed output")
+    p.add_argument("--force-new", action="store_true",
+                   help="order a new LV even if one for this area, LV and format was already saved today")
     p = sub.add_parser("attach")
     p.add_argument("--page", required=True, help="Notion page id of the flat")
     p.add_argument("--file", required=True, help="the LV PDF from fetch --format pdf")
