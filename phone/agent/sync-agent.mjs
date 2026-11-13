@@ -29,7 +29,7 @@ if (dryRun) {
 
 const apiKey = process.env.ELEVENLABS_API_KEY;
 if (!apiKey) {
-  console.error('ELEVENLABS_API_KEY is not set. Load it first: set -a; . /Users/danila/.config/domovoy/.env; set +a');
+  console.error('ELEVENLABS_API_KEY is not set. Load it first: set -a; . ~/.config/domovoy/.env; set +a');
   process.exit(1);
 }
 
