@@ -95,7 +95,7 @@
     "includeUnchanged": {
       "title": "Include unchanged flats",
       "type": "boolean",
-      "description": "Push flats that did not change since the last run to the dataset. Unchanged flats are never written to Notion.",
+      "description": "Push flats that did not change since the last run to the dataset. With this on, unchanged flats are also written to Notion again (idempotent by Property ID; Status is never overwritten).",
       "editor": "checkbox",
       "default": false
     },
