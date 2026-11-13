@@ -1,11 +1,17 @@
 import { Conversation } from '@elevenlabs/client';
-import { toDynamicVariables } from '../lib/context.js';
+import { openQuestions, toDynamicVariables } from '../lib/context.js';
+import { confetti, renderCalendar, smsBeep } from './booked.js';
+import { renderChecklist, tickQuestion } from './checklist.js';
+import { typeText } from './lcd.js';
+import { createWave } from './wave.js';
 
 const $ = (id) => document.getElementById(id);
 const phone = $('phone');
 const ringtone = $('ringtone');
 const errorLine = $('error');
 const transcript = $('transcript');
+const checklist = $('checklist');
+const wave = createWave($('wave'));
 
 const TZ = 'Europe/Prague';
 const RESULT_SHOWN_MS = 8000;
@@ -14,6 +20,8 @@ const END_AFTER_TOOL_MS = 15000;
 let call = null;
 let pollTimer = null;
 let tickTimer = null;
+let stopTyping = () => {};
+let audioContext = null;
 
 function show(screen) {
   phone.dataset.screen = screen;
@@ -94,11 +102,16 @@ function ring(context, callToken) {
   const rent = document.querySelector('[data-rent]');
   rent.textContent = typeof context.rent === 'number' ? `${context.rent.toLocaleString('en-US').replace(/,/g, ' ')} CZK / month` : '';
   show('incoming');
+  phone.classList.add('ringing');
+  stopTyping();
+  stopTyping = typeText($('lcd-text'), 'DOMOVOY calling');
   ringtone.currentTime = 0;
   ringtone.play().catch(() => showError('Ringtone blocked by the browser.'));
 }
 
 function stopRingtone() {
+  phone.classList.remove('ringing');
+  stopTyping();
   ringtone.pause();
   ringtone.currentTime = 0;
 }
@@ -121,6 +134,7 @@ async function finish(current, summary, prefix = 'failed') {
   clearInterval(tickTimer);
   clearTimeout(current.endTimer);
   stopRingtone();
+  wave.stop();
   if (!current.result) {
     current.result = fallbackResult(current, prefix, summary);
     await postResult(current.result);
@@ -134,10 +148,15 @@ function showResult(result) {
   const booked = result.outcome === 'booked';
   $('outcome').textContent = booked ? 'Viewing booked' : 'Not booked';
   phone.dataset.outcome = booked ? 'booked' : 'not_booked';
-  $('when-card').hidden = !booked;
+  const hasCalendar = renderCalendar($('cal'), booked ? result.viewing_start : null);
+  $('when-card').hidden = !booked || hasCalendar;
   $('when').textContent = booked ? formatWhen(result.viewing_start) : '';
   $('summary').textContent = typeof result.summary === 'string' ? result.summary : '';
   show('result');
+  if (booked) {
+    confetti(phone);
+    smsBeep(audioContext);
+  }
   setTimeout(() => {
     showError('');
     startWaiting();
@@ -178,7 +197,10 @@ async function accept() {
   transcript.textContent = '';
   $('timer').textContent = '00:00';
   $('call-status').textContent = 'Connecting';
-  $('orb').className = 'orb';
+  $('mode').textContent = '';
+  $('mode').className = 'mode';
+  renderChecklist(checklist, openQuestions(current.context));
+  wave.start(() => current.conversation);
   show('call');
 
   let signedUrl;
@@ -213,6 +235,10 @@ async function accept() {
           current.endTimer = setTimeout(() => endSession(current), END_AFTER_TOOL_MS);
           return (await current.saved) ? 'saved' : 'save failed';
         },
+        mark_question_asked: (parameters) => {
+          tickQuestion(checklist, parameters?.number);
+          return 'ok';
+        },
       },
       onConnect: ({ conversationId }) => {
         current.conversationId = conversationId;
@@ -230,7 +256,9 @@ async function accept() {
         addLine(role || (source === 'user' ? 'user' : 'agent'), message);
       },
       onModeChange: ({ mode }) => {
-        $('orb').className = `orb ${mode}`;
+        wave.setMode(mode);
+        $('mode').textContent = mode === 'speaking' ? 'Assistant speaking' : 'Listening';
+        $('mode').className = `mode ${mode}`;
       },
     });
     if (!current.conversationId) current.conversationId = current.conversation.getId();
@@ -263,6 +291,10 @@ async function ready() {
   const button = $('ready');
   button.disabled = true;
   showError('');
+  try {
+    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+    audioContext.resume();
+  } catch {}
   const unlock = ringtone.play().then(() => {
     ringtone.pause();
     ringtone.currentTime = 0;

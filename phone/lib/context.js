@@ -47,3 +47,8 @@ export function toDynamicVariables(context) {
   vars.context_text = lines.join('\n');
   return vars;
 }
+
+export function openQuestions(context) {
+  const list = context && Array.isArray(context.unknowns) ? context.unknowns : [];
+  return list.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim());
+}

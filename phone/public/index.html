@@ -30,6 +30,10 @@
     </section>
 
     <section class="screen" data-name="incoming">
+      <div class="lcd">
+        <p class="lcd-top"><span class="lcd-signal"><i></i><i></i><i></i><i></i></span><span>DOMOVOY NET</span></p>
+        <p class="lcd-text"><span id="lcd-text"></span><i class="lcd-cursor"></i></p>
+      </div>
       <p class="kicker">Incoming call</p>
       <div class="avatar pulse"><svg><use href="#i-home"/></svg></div>
       <h1>DOMOVOY AI assistant</h1>
@@ -52,9 +56,12 @@
     </section>
 
     <section class="screen" data-name="call">
-      <p class="kicker"><span class="orb" id="orb"></span><span id="call-status">Connecting</span></p>
+      <p class="kicker"><span id="call-status">Connecting</span></p>
       <p class="timer" id="timer">00:00</p>
       <p class="sub" data-address></p>
+      <div class="wave" id="wave"></div>
+      <p class="mode" id="mode"></p>
+      <ul class="checklist" id="checklist" hidden></ul>
       <div class="transcript" id="transcript"></div>
       <div class="actions single">
         <div class="action">
@@ -68,6 +75,11 @@
       <p class="kicker">Call ended</p>
       <div class="badge" id="badge"></div>
       <h1 class="outcome" id="outcome"></h1>
+      <div class="cal" id="cal" hidden>
+        <p class="cal-month"></p>
+        <p class="cal-day"></p>
+        <p class="cal-sub"></p>
+      </div>
       <div class="card" id="when-card">
         <p class="label">When</p>
         <p class="when" id="when"></p>
@@ -81,6 +93,7 @@
 
     <p class="error" id="error" role="alert"></p>
   </main>
+  <p class="caption">Live AI voice. No real phone number. Unscripted.</p>
 
   <audio id="ringtone" src="/ringtone.mp3" loop preload="auto"></audio>
   <script type="module" src="/app.js"></script>
