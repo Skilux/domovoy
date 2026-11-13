@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOMOVOY</title>
+  <meta name="description" content="An open-source Agent Skill for Claude Code that finds a flat in Prague and books the viewing by voice.">
+  <link rel="stylesheet" href="/start.css">
+</head>
+<body>
+  <div class="page">
+    <div class="pitch">
+      <header>
+        <svg class="mark" viewBox="0 0 64 40" aria-hidden="true">
+          <path class="bracket" d="M14 3C5 11 5 29 14 37"/>
+          <path class="bracket" d="M50 3c9 8 9 26 0 34"/>
+          <path class="house" d="M32 7 19 18.5h3.6V33h18.8V18.5H45z"/>
+          <rect class="window" x="28.5" y="21" width="7" height="7" rx="1"/>
+        </svg>
+        <span class="brand">DOMOVOY</span>
+        <span class="team">by (Not)Homeless.ai</span>
+        <a class="repo" href="https://github.com/Skilux/domovoy">GitHub</a>
+      </header>
+
+      <h1>Your real-estate agent in your pocket.</h1>
+      <p class="lead">An open-source Agent Skill for Claude Code. It collects real Prague listings, shows the honest monthly and upfront cost, and after you approve one flat it holds a live voice call to book the viewing.</p>
+
+      <div class="start">
+        <p class="label">Paste this into Claude Code</p>
+        <p class="prompt" id="prompt">Install the DOMOVOY skill from https://github.com/Skilux/domovoy (copy skill/domovoy into ~/.claude/skills/domovoy), run its setup, then find me a flat to rent in Prague.</p>
+        <button class="copy" id="copy" type="button">Copy install + prompt</button>
+      </div>
+
+      <ol class="steps">
+        <li>
+          <h2>Real listings, honest costs</h2>
+          <p>Sreality, Bezrealitky and iDNES go into one Notion shortlist with the monthly total, the upfront cash and what is still unknown.</p>
+        </li>
+        <li>
+          <h2>You approve one flat</h2>
+          <p>Move it to Interested. Nobody is contacted before that.</p>
+        </li>
+        <li>
+          <h2>It calls and books</h2>
+          <p>The agent talks to the realtor. A viewing lands in your calendar only inside your free windows and your budget.</p>
+        </li>
+      </ol>
+
+      <p class="fine">The demo call is a browser voice call with a consenting demo participant. No real phone number is dialled. Built at AI Agents for the Rest of Us, Prague, 13 Nov 2026.</p>
+    </div>
+
+    <div class="live">
+      <iframe src="/" title="DOMOVOY phone" allow="microphone; autoplay"></iframe>
+    </div>
+  </div>
+
+  <script>
+    const button = document.getElementById("copy");
+    button.addEventListener("click", async () => {
+      const text = document.getElementById("prompt").textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = "Copied";
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById("prompt"));
+        const selection = getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        button.textContent = "Selected, press Ctrl+C";
+      }
+      setTimeout(() => { button.textContent = "Copy install + prompt"; }, 2000);
+    });
+  </script>
+</body>
+</html>
