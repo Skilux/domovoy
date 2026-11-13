@@ -22,9 +22,17 @@
       <p class="lead">An open-source Agent Skill for Claude Code. It collects real Prague listings, shows the honest monthly and upfront cost, and after you approve one flat it holds a live voice call to book the viewing.</p>
 
       <div class="start">
-        <p class="label">Paste this into Claude Code</p>
-        <p class="prompt" id="prompt">Install the DOMOVOY skill from https://github.com/Skilux/domovoy (copy skill/domovoy into ~/.claude/skills/domovoy), run its setup, then find me a flat to rent in Prague.</p>
-        <button class="copy" id="copy" type="button">Copy install + prompt</button>
+        <div class="paste">
+          <p class="label">Paste this into Claude Code</p>
+          <p class="prompt" id="prompt">Set up DOMOVOY for me. 1) Run: git clone https://github.com/Skilux/domovoy ~/domovoy (git pull if it exists). 2) Symlink ~/domovoy/skill/domovoy to ~/.claude/skills/domovoy, and copy config.example.json to config.json in that folder if config.json is missing. 3) Run: python3 ~/domovoy/skill/domovoy/scripts/doctor.py check --json. 4) For each FAIL, show me its fix line and wait while I put the key into ~/.config/domovoy/.env myself. Never ask me to paste a key in chat, and never read or print that file. 5) Run the check again until nothing fails, then find me a flat to rent in Prague.</p>
+          <button class="copy" id="copy" type="button">Copy install + prompt</button>
+          <p class="label or">Or run it from a terminal</p>
+          <p class="prompt cli" id="cli">claude "$(curl -fsSL https://domovoy-phone.vercel.app/prompt.txt)"</p>
+        </div>
+        <div class="scan">
+          <img src="/qr.svg" alt="QR code for domovoy-phone.vercel.app/start" width="148" height="148">
+          <p>Scan to open this page<br><strong>domovoy-phone.vercel.app/start</strong></p>
+        </div>
       </div>
 
       <ol class="steps">
@@ -62,6 +70,10 @@
       if (!event.data || event.data.type !== "domovoy-phone") return;
       document.querySelector(".page").classList.toggle("open", event.data.open === true);
     });
+    fetch("/prompt.txt")
+      .then((res) => (res.ok ? res.text() : ""))
+      .then((text) => { if (text.trim()) document.getElementById("prompt").textContent = text.trim(); })
+      .catch(() => {});
     const button = document.getElementById("copy");
     button.addEventListener("click", async () => {
       const text = document.getElementById("prompt").textContent;
