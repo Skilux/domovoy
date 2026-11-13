@@ -67,11 +67,47 @@ function formatWhen(iso) {
   return `${get('weekday')} ${get('day')} ${get('month')}, ${get('hour')}:${get('minute')}`;
 }
 
-async function getJson(url) {
-  const res = await fetch(url, { cache: 'no-store' });
+async function getJson(url, headers = {}) {
+  const res = await fetch(url, { cache: 'no-store', headers });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.detail || body.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(body.detail || body.error || `HTTP ${res.status}`);
+    error.status = res.status;
+    throw error;
+  }
   return body;
+}
+
+const KEY_NAME = 'domovoy_receiver_key';
+
+function readReceiverKey() {
+  const params = new URLSearchParams(location.search);
+  const fromUrl = params.get('k');
+  try {
+    if (fromUrl) {
+      localStorage.setItem(KEY_NAME, fromUrl);
+      params.delete('k');
+      const query = params.toString();
+      history.replaceState(null, '', location.pathname + (query ? `?${query}` : ''));
+    }
+    return localStorage.getItem(KEY_NAME) || fromUrl || '';
+  } catch {
+    return fromUrl || '';
+  }
+}
+
+let receiverKey = readReceiverKey();
+
+function showUnpaired() {
+  receiverKey = '';
+  try {
+    localStorage.removeItem(KEY_NAME);
+  } catch {}
+  clearTimeout(pollTimer);
+  $('waiting-title').textContent = 'Demo phone';
+  $('pair-note').textContent = 'Calls ring only on the paired device.';
+  phone.dataset.paired = 'no';
+  show('waiting');
 }
 
 async function postResult(result) {
@@ -100,12 +136,17 @@ function startWaiting() {
 async function poll() {
   if (phone.dataset.screen !== 'waiting') return;
   try {
-    const { context, call_token: callToken } = await getJson('/api/pending');
+    const { context, call_token: callToken } = await getJson('/api/pending', { 'x-domovoy-receiver': receiverKey });
     if (context && typeof context === 'object' && phone.dataset.screen === 'waiting') {
       ring(context, callToken);
       return;
     }
-  } catch {}
+  } catch (err) {
+    if (err.status === 401) {
+      showUnpaired();
+      return;
+    }
+  }
   pollTimer = setTimeout(poll, 1000);
 }
 
@@ -330,6 +371,8 @@ if (window.ResizeObserver) {
     transcript.scrollTop = transcript.scrollHeight;
   }).observe(transcript);
 }
+
+if (!receiverKey) showUnpaired();
 
 $('ready').addEventListener('click', ready);
 $('accept').addEventListener('click', accept);

@@ -55,6 +55,11 @@
   </div>
 
   <script>
+    const key = new URLSearchParams(location.search).get("k");
+    if (key) {
+      document.querySelector(".live iframe").src = "/?k=" + encodeURIComponent(key);
+      history.replaceState(null, "", location.pathname);
+    }
     const button = document.getElementById("copy");
     button.addEventListener("click", async () => {
       const text = document.getElementById("prompt").textContent;
