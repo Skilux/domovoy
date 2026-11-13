@@ -70,12 +70,23 @@ PostHog's own scouts and Inbox are paid: on 13 Nov 2026 the free plan gave them 
 | --- | --- |
 | Signals: `loop.py sync` | Events |
 | Scout instructions, read by Claude at `loop.py report` | Skills store (`domovoy-rejections`, versioned) |
-| Report: `loop.py propose` | Notebook with the finding, a live evidence query, the flag and the chart |
+| Report: `loop.py propose` | Notebook "DOMOVOY suggests: ...": status line, the renter's words next to what the agent understood, the suggestion, the flag switch, and what happened next |
 | Yes or no: `loop.py decide` | Feature flag `domovoy-criteria-<key>`: off = proposed or declined, on = approved |
 | Memory | `criteria_change_decided` events, plus each decision appended to the stored instructions as a new version |
-| Measure | Saved chart split by `criteria_version`, with an annotation at each decision |
+| Apply after a search: `loop.py apply` | Flats that break an approved rule are moved to Not interested and sent as `listing_filtered` events |
+| Measure: `loop.py measure` | Per approved change, flats that break its rule and still reach the renter, before and after. The result goes into the notebook and the stored instructions |
+| On a timer: `posthog/schedule.py` | Runs sync and measure every 10 minutes, and wakes Claude only when 3 or more rejections are new |
 
 Commands and test evidence: [posthog/README.md](../../posthog/README.md). Claude's steps: the improve command in `skill/domovoy/SKILL.md`.
+
+### Who starts the loop
+
+Two ways, both end at the same question to the renter:
+
+- **Asked:** the renter says "improve my search" and Claude runs the improve command.
+- **On a timer:** `python3 posthog/schedule.py install` adds a macOS launchd job. Every 10 minutes a tick runs `sync` and `measure`. Only when 3 or more renter rejections are new, it starts a headless Claude that may run `loop.py report` and `loop.py propose` and nothing else. So the timer can file a suggestion (flag off, notebook) and a macOS notification, and can never answer the suggestion or write to Notion. `status` shows the last runs, `remove` stops it.
+
+The timer is local to one Mac and is not installed by default. It is not the always-on monitoring that [plan.md](../plan.md) rules out.
 
 ### Stage timing
 
@@ -87,7 +98,8 @@ PostHog shows a new event to queries 30 to 100 s after it is sent. That wait mus
 
 ### Honesty
 
-- One rerank shows the change was applied, not that results got better. Say "measurement pending".
+- `measure` shows that an approved rule holds: flats that break it stop reaching the renter. It does not show that the renter is happier. Say that, and say "small sample".
+- The timer was run by hand on synthetic data on 13 Nov 2026 (one tick, one proposal). A tick fired by launchd itself and a run on the real shortlist were not done.
 - No local event log backs the report today. If the venue network fails, there is no PostHog step; say so.
 - Do not claim PostHog's native self-driving Inbox, scouts, session replay or agency customers. Say: "PostHog's own scouts are a paid feature, so our agent runs the same loop on PostHog's free parts." Agencies get one spoken sentence.
 - PostHog holds telemetry only. Listing facts stay in Notion pages, state in the Notion `Status`.
