@@ -225,6 +225,33 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
 .ccol li { font-size: 34px; line-height: 1.38; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .next { display: flex; align-items: center; gap: 20px; margin-top: 44px; font-size: 40px; line-height: 1.2; font-weight: 700; }
 
+/* Actor screen (key 8): what the Apify Actor does, a worked example, and a QR code to its Store page */
+.ax { padding: 44px 90px 40px; }
+.ax .brand svg { width: 72px; height: 72px; }
+.ax-k { margin-top: 26px; color: #ff8a70; }
+.ax h1 { font-size: 80px; line-height: 1.05; font-weight: 800; letter-spacing: -.02em; margin-top: 8px; }
+.ax-flow { display: grid; grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr) 48px minmax(0, 1fr) 48px minmax(0, 1fr); align-items: stretch; margin-top: 30px; flex: none; }
+.ax-step { padding: 22px 24px 24px; display: flex; flex-direction: column; }
+.ax-step .kick { color: #ff8a70; }
+.ax-b { font-size: 40px; line-height: 1.12; font-weight: 800; margin-top: 12px; }
+.ax-s { font-size: 28px; line-height: 1.3; font-weight: 500; color: rgba(255, 255, 255, .85); margin-top: 10px; }
+.ax-portals { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.ax-portals span { font-size: 36px; line-height: 1.15; font-weight: 800; }
+.ax-arw { align-self: center; text-align: center; font-size: 60px; line-height: 1; font-weight: 800; color: #ff8a70; }
+.ax-low { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 28px; margin-top: 28px; flex: 1; min-height: 0; }
+.ax-ex { padding: 24px 32px 26px; display: flex; flex-direction: column; justify-content: center; gap: 18px; min-height: 0; }
+.ax-ex > .kick { color: #ff8a70; }
+.ax-eq { font-size: 33px; line-height: 1.3; font-weight: 600; }
+.ax-eq b { display: block; font-size: 28px; line-height: 1.2; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: rgba(255, 255, 255, .8); }
+.ax-eq i { font-style: normal; font-size: 28px; font-weight: 700; color: #ffb9a6; }
+.ax-eq em { font-style: normal; font-weight: 800; color: #7be398; white-space: nowrap; }
+.ax-unk { font-size: 30px; line-height: 1.3; font-weight: 700; color: #ffb9a6; }
+.ax-qr { padding: 22px 22px 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.ax-code { width: 280px; height: 280px; flex: none; border-radius: 16px; overflow: hidden; background: #fff; }
+.ax-code svg { width: 100%; height: 100%; display: block; }
+.ax-cap { font-size: 30px; line-height: 1.2; font-weight: 800; margin-top: 16px; }
+.ax-url { font-size: 28px; line-height: 1.25; font-weight: 700; color: #6fb0ff; margin-top: 8px; }
+
 @media (prefers-reduced-motion: reduce) {
   .cur, .av, .wave i { animation: none; }
 }
@@ -281,9 +308,15 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
     { name: "CALL: in call",   step: 2,  lcd: "CALL IS LIVE" },
     { name: "BOOK",            step: 3,  lcd: "VIEWING BOOKED" },
     { name: "LEARN",           step: 4,  lcd: "1 RULE, AFTER A YES" },
-    { name: "Close",           step: 5,  lcd: "" }
+    { name: "Close",           step: 5,  lcd: "" },
+    // Key 8, after Close so keys 0-7 keep their meaning. Shown while the Actor runs live on stage.
+    { name: "ACTOR",           step: 0,  lcd: "1 ACTOR, 3 PORTALS" }
   ];
+  var CLOSE = 7, ACTOR = 8;
   var LAST = STATES.length - 1;
+  var STORE = "apify.com/vladb/prague-flat-rentals";
+  // QR for https://apify.com/vladb/prague-flat-rentals, made offline with segno (error level M). No runtime dependency.
+  var ACTOR_QR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 37 37" shape-rendering="crispEdges" role="img" aria-label="QR code for apify.com/vladb/prague-flat-rentals"><path fill="#fff" d="M0 0h37v37h-37z"/><path stroke="#05060b" d="M2 2.5h7m4 0h1m3 0h1m1 0h2m4 0h2m1 0h7m-33 1h1m5 0h1m2 0h1m1 0h1m2 0h1m2 0h1m1 0h1m1 0h1m4 0h1m5 0h1m-33 1h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h1m3 0h1m4 0h3m2 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m2 0h4m1 0h2m1 0h2m5 0h1m1 0h1m1 0h3m1 0h1m-33 1h1m1 0h3m1 0h1m1 0h1m4 0h3m2 0h4m1 0h1m2 0h1m1 0h3m1 0h1m-33 1h1m5 0h1m1 0h1m2 0h1m1 0h3m3 0h4m3 0h1m5 0h1m-33 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-22 1h2m2 0h3m3 0h4m-24 1h1m2 0h1m1 0h1m1 0h3m1 0h4m1 0h1m1 0h5m1 0h1m1 0h2m1 0h1m-31 1h3m1 0h1m2 0h3m1 0h1m4 0h1m1 0h1m4 0h1m1 0h1m3 0h2m-31 1h1m1 0h3m1 0h1m3 0h1m2 0h3m1 0h1m3 0h1m1 0h1m1 0h2m2 0h1m1 0h1m-31 1h1m1 0h1m5 0h1m4 0h1m1 0h3m1 0h2m2 0h2m-26 1h2m2 0h3m1 0h1m6 0h1m2 0h1m1 0h3m1 0h1m1 0h1m1 0h2m1 0h2m-33 1h1m1 0h2m3 0h1m3 0h4m1 0h2m1 0h2m2 0h3m4 0h1m-31 1h1m1 0h2m1 0h2m1 0h1m1 0h1m4 0h4m1 0h1m1 0h2m1 0h2m1 0h4m-32 1h1m1 0h1m1 0h1m3 0h1m3 0h1m1 0h1m2 0h3m1 0h1m1 0h4m1 0h1m-28 1h1m2 0h4m4 0h3m1 0h1m2 0h4m1 0h1m1 0h1m1 0h1m2 0h1m-32 1h2m5 0h1m2 0h1m3 0h1m1 0h3m2 0h1m1 0h1m1 0h1m3 0h2m-31 1h1m2 0h4m3 0h1m1 0h2m2 0h1m6 0h3m1 0h1m1 0h1m1 0h1m-29 1h1m1 0h1m1 0h1m2 0h1m1 0h4m2 0h6m2 0h2m3 0h2m-33 1h4m2 0h1m1 0h1m2 0h1m2 0h2m1 0h1m1 0h1m1 0h3m2 0h1m1 0h2m-30 1h1m2 0h1m3 0h1m2 0h4m4 0h1m2 0h3m1 0h1m1 0h1m2 0h2m-30 1h1m1 0h4m1 0h1m1 0h1m1 0h1m1 0h2m1 0h1m4 0h2m3 0h1m2 0h1m-30 1h3m3 0h2m1 0h1m2 0h4m2 0h2m1 0h1m1 0h1m2 0h1m2 0h2m-33 1h5m1 0h2m1 0h2m1 0h6m3 0h2m1 0h5m2 0h1m-24 1h1m8 0h1m6 0h1m3 0h1m1 0h2m-32 1h7m3 0h1m1 0h1m1 0h2m1 0h2m1 0h2m2 0h1m1 0h1m1 0h2m-30 1h1m5 0h1m2 0h1m1 0h1m4 0h1m1 0h5m1 0h1m3 0h1m3 0h1m-33 1h1m1 0h3m1 0h1m1 0h2m2 0h1m1 0h2m1 0h2m1 0h3m1 0h6m1 0h2m-33 1h1m1 0h3m1 0h1m7 0h4m3 0h1m2 0h1m1 0h6m-32 1h1m1 0h3m1 0h1m2 0h2m3 0h1m5 0h2m1 0h1m1 0h4m1 0h1m-31 1h1m5 0h1m1 0h2m1 0h3m3 0h1m3 0h1m1 0h4m-27 1h7m2 0h3m3 0h2m1 0h4m1 0h4m2 0h1m2 0h1"/></svg>';
 
   var MASCOT = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" shape-rendering="crispEdges" aria-hidden="true"><rect width="20" height="20" rx="3" fill="#a7c957"/><path fill="#1f2d12" d="M9 2h2v1h-2zM8 3h4v1h-4zM7 4h2v1h-2zM11 4h2v1h-2zM6 5h3v1h-3zM11 5h3v1h-3zM5 6h10v1h-10zM3 7h14v1h-14zM5 8h1v1h-1zM14 8h1v1h-1zM5 9h1v1h-1zM7 9h2v1h-2zM11 9h2v1h-2zM14 9h1v1h-1zM5 10h1v1h-1zM14 10h1v1h-1zM4 11h3v1h-3zM9 11h2v1h-2zM13 11h3v1h-3zM4 12h12v1h-12zM4 13h12v1h-12zM5 14h10v1h-10zM6 15h8v1h-8zM7 16h6v1h-6zM9 17h2v1h-2z"/><path fill="#ffd23f" d="M9 4h2v1h-2zM9 5h2v1h-2z"/></svg>';
   var I_PHONE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg>';
@@ -292,7 +325,7 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
 
   function chip(kind) { return '<span class="chip ' + kind + '">' + STATUS.chipText[kind] + '</span>'; }
   function featureChip(id) { return chip(STATUS.features[id].chip); }
-  function counter(n) { return '<span class="counter">' + n + '/' + LAST + '</span>'; }
+  function counter(n) { return '<span class="counter">' + n + '/' + CLOSE + '</span>'; }
   function brand(extra) {
     return '<div class="brand">' + MASCOT + '<div><b>DOMOVOY</b><small>by (Not)Homeless.ai</small></div>' + (extra || '') + '</div>';
   }
@@ -320,12 +353,12 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
       card = '<div class="rcard glass"><p class="kick">Vladimir, renter</p>' +
         '<p class="big">Three portals, hidden fees, and calls during work hours.</p></div>';
     }
-    if (n === LAST) {
+    if (n === CLOSE) {
       card = '<div class="rcard glass"><p class="kick">Install the skill</p>' +
         '<p class="lnk">' + REPO + '</p><p class="lnk">' + DEMO + '</p>' +
         '<div class="ft"><span class="nx">' + STATUS.features.business.label + '</span>' + featureChip('business') + '</div></div>';
     }
-    return '<div class="rail">' + brand(counter(n)) + (n === 0 ? card : '') + railSteps(n) + (n === LAST ? card : '') +
+    return '<div class="rail">' + brand(n === ACTOR ? '' : counter(n)) + (n === 0 ? card : '') + railSteps(n) + (n === CLOSE ? card : '') +
       '<p class="honest">' + HONESTY + '</p></div>';
   }
 
@@ -448,13 +481,42 @@ html, body { margin: 0; background: #05060b; overflow: hidden; }
       '<p class="honest">' + HONESTY + '</p>' + counter(n) + '</div>';
   }
 
+  function actorScreen() {
+    return '<div class="full ax">' + brand() +
+      '<p class="kick ax-k">Running live right now</p>' +
+      '<h1>One Actor, three portals</h1>' +
+      '<div class="ax-flow">' +
+      '<div class="ax-step glass"><p class="kick">1 Search</p><div class="ax-portals"><span>Sreality</span><span>Bezrealitky</span><span>iDNES</span></div>' +
+      '<p class="ax-s">searched in parallel</p></div>' +
+      '<p class="ax-arw">&gt;</p>' +
+      '<div class="ax-step glass"><p class="kick">2 Merge</p><p class="ax-b">Duplicates merged</p>' +
+      '<p class="ax-s">one flat, one row, every source kept</p></div>' +
+      '<p class="ax-arw">&gt;</p>' +
+      '<div class="ax-step glass"><p class="kick">3 Read</p><p class="ax-b">Featherless reads the fees</p>' +
+      '<p class="ax-s">hidden in the listing text, each with its quote</p></div>' +
+      '<p class="ax-arw">&gt;</p>' +
+      '<div class="ax-step glass"><p class="kick">4 Cost</p><p class="ax-b">The real cost</p>' +
+      '<p class="ax-s">per month and to move in, written to Notion</p></div>' +
+      '</div>' +
+      '<div class="ax-low">' +
+      '<div class="ax-ex glass"><p class="kick">Example: Italská, Vinohrady, collected today</p>' +
+      '<p class="ax-eq"><b>Monthly</b>rent 27,000 + services 1,800 + energy 2,135 <i>est.</i> = <em>30,935 CZK</em></p>' +
+      '<p class="ax-eq"><b>Move-in</b>first payment 30,935 + deposit 54,000 + furniture 59,000 <i>est.</i> = <em>143,935 CZK</em></p>' +
+      '<p class="ax-unk">Commission and one-time fees: not stated, so unknown, not zero.</p></div>' +
+      '<div class="ax-qr glass"><div class="ax-code">' + ACTOR_QR + '</div>' +
+      '<p class="ax-cap">Public on the Apify Store, built today</p>' +
+      '<p class="ax-url">apify.com/vladb/<br>prague-flat-rentals</p></div>' +
+      '</div></div>';
+  }
+
   /* ---------- state renderer: real DOM, can be called many times ---------- */
   function renderState(n, railOnly) {
     var el = document.createElement('div');
     el.className = 'stage' + (railOnly ? ' is-rail' : '');
     if (railOnly) el.innerHTML = rail(n);
     else if (n === 0) el.innerHTML = title(n);
-    else if (n === LAST) el.innerHTML = closing(n);
+    else if (n === ACTOR) el.innerHTML = actorScreen();
+    else if (n === CLOSE) el.innerHTML = closing(n);
     else el.innerHTML = zone(n) + rail(n);
     return el;
   }
