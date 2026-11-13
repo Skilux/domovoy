@@ -1,0 +1,116 @@
+{
+  "result": {
+    "hash_id": 270794828,
+    "advert_name": "Pronájem bytu 2+1 75 m²",
+    "advert_description": "Nabízíme k pronájmu velmi pěkný a prakticky řešený byt 2+1, 75 m2, který se nachází v 1. patře cihlového domu s výtahem v ulici Čiklova, v oblíbené pražské rezidenční lokalitě pod Vyšehradem. Výborně řešená dispozice bytu nabízí prostorné obytné pokoje, velkou kuchyň, koupelnu s vanou a samostatné WC. Vytápění a ohřev jsou zajišťuje vlastní plynový kotel, odběr elektřiny a plynu se převádí přímo na nájemce. Kompletní občanská vybavenost a skvělá dopravní dostupnost jsou v této části Prahy samozřejmostí. Byt je ihned volný, pro bližší informace a prohlídky kontaktujte makléře.",
+    "price_czk": 28000.0,
+    "price_note": "+ poplatky a spotřeba energií",
+    "price_unit_cb": {
+      "name": "za měsíc",
+      "value": 2
+    },
+    "ready_date": "2026-11-05",
+    "edited": "2026-11-13",
+    "since": "2026-11-05",
+    "usable_area": 75,
+    "floor_number": 2,
+    "floors": 5,
+    "parking": null,
+    "garage_count": null,
+    "category_main_cb": {
+      "name": "Byty",
+      "value": 1
+    },
+    "category_sub_cb": {
+      "name": "2+1",
+      "value": 5
+    },
+    "category_type_cb": {
+      "name": "Pronájem",
+      "value": 2
+    },
+    "elevator": {
+      "name": "- nezadáno",
+      "value": 0
+    },
+    "furnished": {
+      "name": "- vyber vybavení",
+      "value": 0
+    },
+    "ownership": {
+      "name": "Osobní",
+      "value": 1
+    },
+    "lease_type_cb": {
+      "name": "Nájem",
+      "value": 1
+    },
+    "locality": {
+      "city": "Praha",
+      "city_seo_name": "praha",
+      "citypart": "Nusle",
+      "citypart_seo_name": "nusle",
+      "district": "Praha 2",
+      "district_id": 5002,
+      "district_seo_name": "praha-2",
+      "region": "Hlavní město Praha",
+      "region_id": 10,
+      "street": "Čiklova",
+      "street_seo_name": "ciklova",
+      "streetnumber": "13",
+      "housenumber": "637",
+      "gps_lat": 50.0640933575939,
+      "gps_lon": 14.4265329476302,
+      "inaccuracy_type": "address"
+    },
+    "advert_images": [
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qH_A/kb4JgeTdkCJCefEIvBISPHdP/b539.jpeg",
+        "width": 1800,
+        "height": 1200,
+        "order": 1
+      },
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qH_A/kb4JgeTdkCfcGaD7lTISPHeK/3b23.jpeg",
+        "width": 1800,
+        "height": 1200,
+        "order": 4
+      },
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qH_A/nQO0xPd86TCMOiiP9sISPHfD/a99a.jpeg",
+        "width": 1800,
+        "height": 1200,
+        "order": 5
+      },
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qH_A/nQO0xPd86TBgJSgD6vFISPHf5/409d.jpeg",
+        "width": 1800,
+        "height": 1200,
+        "order": 6
+      }
+    ],
+    "user": {
+      "user_name": "Example Agent",
+      "user_email": null,
+      "user_phones": [],
+      "user_id": null,
+      "image": null,
+      "broker_rating": null,
+      "broker_review_count": null
+    },
+    "premise": {
+      "id": null,
+      "name": "Example Agency",
+      "seo_name": "example-agency",
+      "web_url": null,
+      "web_visible_url": null,
+      "logo": null,
+      "company": {
+        "company_ic": null,
+        "company_subject_id": null
+      }
+    }
+  },
+  "status_code": 200,
+  "status_message": "OK"
+}

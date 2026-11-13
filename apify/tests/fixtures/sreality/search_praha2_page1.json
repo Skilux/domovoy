@@ -1,0 +1,476 @@
+{
+  "pagination": {
+    "limit": 100,
+    "offset": 0,
+    "total": 132
+  },
+  "results": [
+    {
+      "hash_id": 1032417356,
+      "advert_name": "Pronájem bytu 2+kk 40 m²",
+      "category_main_cb": {
+        "name": "Byty",
+        "value": 1
+      },
+      "category_sub_cb": {
+        "name": "2+kk",
+        "value": 4
+      },
+      "category_type_cb": {
+        "name": "Pronájem",
+        "value": 2
+      },
+      "price_czk": 25000.0,
+      "price_unit_cb": {
+        "name": "za měsíc",
+        "value": 2
+      },
+      "poi_atm_distance": 122,
+      "poi_bus_public_transport_distance": 504,
+      "poi_kindergarten_distance": 147,
+      "poi_medic_distance": 198,
+      "poi_metro_distance": 545,
+      "poi_parcel_locker_distance": 355,
+      "poi_playground_distance": 148,
+      "poi_post_office_distance": 354,
+      "poi_restaurant_distance": 17,
+      "poi_school_distance": 320,
+      "poi_shop_distance": 1694,
+      "poi_small_shop_distance": 123,
+      "poi_train_distance": 824,
+      "poi_vet_distance": 79,
+      "locality": {
+        "city": "Praha",
+        "city_seo_name": "praha",
+        "citypart": "Vinohrady",
+        "citypart_seo_name": "vinohrady",
+        "district": "Praha 2",
+        "district_id": 5002,
+        "district_seo_name": "praha-2",
+        "region": "Hlavní město Praha",
+        "region_id": 10,
+        "street": "Na Kozačce",
+        "street_seo_name": "na-kozacce",
+        "streetnumber": null,
+        "housenumber": null,
+        "gps_lat": 50.0714820609547,
+        "gps_lon": 14.4423477076226,
+        "inaccuracy_type": "street"
+      },
+      "advert_images": [
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkC4TclFX98IUSxw2/9390.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/nQO0xPd86TBVyhhBjr1IUSxxN/3e73.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkDyuEmNliIIUSxxp/3e9c.jpeg"
+      ]
+    },
+    {
+      "hash_id": 3852103756,
+      "advert_name": "Pronájem bytu 2+kk 38 m²",
+      "category_main_cb": {
+        "name": "Byty",
+        "value": 1
+      },
+      "category_sub_cb": {
+        "name": "2+kk",
+        "value": 4
+      },
+      "category_type_cb": {
+        "name": "Pronájem",
+        "value": 2
+      },
+      "price_czk": 24000.0,
+      "price_unit_cb": {
+        "name": "za měsíc",
+        "value": 2
+      },
+      "poi_atm_distance": 110,
+      "poi_bus_public_transport_distance": 222,
+      "poi_kindergarten_distance": 47,
+      "poi_medic_distance": 205,
+      "poi_metro_distance": 247,
+      "poi_parcel_locker_distance": 157,
+      "poi_playground_distance": 357,
+      "poi_post_office_distance": 121,
+      "poi_restaurant_distance": 46,
+      "poi_school_distance": 47,
+      "poi_shop_distance": 1377,
+      "poi_small_shop_distance": 83,
+      "poi_train_distance": 1009,
+      "poi_vet_distance": 204,
+      "locality": {
+        "city": "Praha",
+        "city_seo_name": "praha",
+        "citypart": "Vinohrady",
+        "citypart_seo_name": "vinohrady",
+        "district": "Praha 2",
+        "district_id": 5002,
+        "district_seo_name": "praha-2",
+        "region": "Hlavní město Praha",
+        "region_id": 10,
+        "street": "Moravská",
+        "street_seo_name": "moravska",
+        "streetnumber": "4",
+        "housenumber": "904",
+        "gps_lat": 50.07425,
+        "gps_lon": 14.44109,
+        "inaccuracy_type": "gps"
+      },
+      "advert_images": [
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkDyuEmNQVYIT7kaU/1a54.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkbxLFFP0iIT7kar/a47b.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkbxLFFP0mIT7kbD/e967.jpeg"
+      ]
+    },
+    {
+      "hash_id": 2073653324,
+      "advert_name": "Pronájem bytu 2+kk 49 m²",
+      "category_main_cb": {
+        "name": "Byty",
+        "value": 1
+      },
+      "category_sub_cb": {
+        "name": "2+kk",
+        "value": 4
+      },
+      "category_type_cb": {
+        "name": "Pronájem",
+        "value": 2
+      },
+      "price_czk": 27500.0,
+      "price_unit_cb": {
+        "name": "za měsíc",
+        "value": 2
+      },
+      "poi_atm_distance": 73,
+      "poi_bus_public_transport_distance": 49,
+      "poi_kindergarten_distance": 82,
+      "poi_medic_distance": 93,
+      "poi_metro_distance": 341,
+      "poi_parcel_locker_distance": 263,
+      "poi_playground_distance": 153,
+      "poi_post_office_distance": 404,
+      "poi_restaurant_distance": 14,
+      "poi_school_distance": 82,
+      "poi_shop_distance": 381,
+      "poi_small_shop_distance": 68,
+      "poi_train_distance": 1269,
+      "poi_vet_distance": 86,
+      "locality": {
+        "city": "Praha",
+        "city_seo_name": "praha",
+        "citypart": "Nové Město",
+        "citypart_seo_name": "nove-mesto",
+        "district": "Praha 2",
+        "district_id": 5002,
+        "district_seo_name": "praha-2",
+        "region": "Hlavní město Praha",
+        "region_id": 10,
+        "street": "Lípová",
+        "street_seo_name": "lipova",
+        "streetnumber": null,
+        "housenumber": null,
+        "gps_lat": 50.0746851892942,
+        "gps_lon": 14.4237557925681,
+        "inaccuracy_type": "street"
+      },
+      "advert_images": [
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkBcInfFcqDIUdVJI/15b1.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkCfcGaFVu6IUdVJk/e8de.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkCfcGaFVumIUdVKB/1ce8.jpeg"
+      ]
+    },
+    {
+      "hash_id": 1015095372,
+      "advert_name": "Pronájem bytu 2+kk 42 m²",
+      "category_main_cb": {
+        "name": "Byty",
+        "value": 1
+      },
+      "category_sub_cb": {
+        "name": "2+kk",
+        "value": 4
+      },
+      "category_type_cb": {
+        "name": "Pronájem",
+        "value": 2
+      },
+      "price_czk": 23000.0,
+      "price_unit_cb": {
+        "name": "za měsíc",
+        "value": 2
+      },
+      "poi_atm_distance": 119,
+      "poi_bus_public_transport_distance": 391,
+      "poi_kindergarten_distance": 99,
+      "poi_medic_distance": 82,
+      "poi_metro_distance": 432,
+      "poi_parcel_locker_distance": 294,
+      "poi_playground_distance": 263,
+      "poi_post_office_distance": 298,
+      "poi_restaurant_distance": 73,
+      "poi_school_distance": 230,
+      "poi_shop_distance": 1580,
+      "poi_small_shop_distance": 75,
+      "poi_train_distance": 928,
+      "poi_vet_distance": 182,
+      "locality": {
+        "city": "Praha",
+        "city_seo_name": "praha",
+        "citypart": "Vinohrady",
+        "citypart_seo_name": "vinohrady",
+        "district": "Praha 2",
+        "district_id": 5002,
+        "district_seo_name": "praha-2",
+        "region": "Hlavní město Praha",
+        "region_id": 10,
+        "street": "Máchova",
+        "street_seo_name": "machova",
+        "streetnumber": null,
+        "housenumber": null,
+        "gps_lat": 50.0717739611438,
+        "gps_lon": 14.4412958907114,
+        "inaccuracy_type": "street"
+      },
+      "advert_images": [
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkC4TclE3dQITgaxK/f42f.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/nQO0xPd86TCMOiiBLLzITgaxj/071c.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/nQO0xPd86TDi9WNFDvHITgax8/bf1e.jpeg"
+      ]
+    },
+    {
+      "hash_id": 270794828,
+      "advert_name": "Pronájem bytu 2+1 75 m²",
+      "category_main_cb": {
+        "name": "Byty",
+        "value": 1
+      },
+      "category_sub_cb": {
+        "name": "2+1",
+        "value": 5
+      },
+      "category_type_cb": {
+        "name": "Pronájem",
+        "value": 2
+      },
+      "price_czk": 28000.0,
+      "price_unit_cb": {
+        "name": "za měsíc",
+        "value": 2
+      },
+      "poi_atm_distance": 179,
+      "poi_bus_public_transport_distance": 606,
+      "poi_kindergarten_distance": 99,
+      "poi_medic_distance": 216,
+      "poi_metro_distance": 297,
+      "poi_parcel_locker_distance": 270,
+      "poi_playground_distance": 248,
+      "poi_post_office_distance": 829,
+      "poi_restaurant_distance": 123,
+      "poi_school_distance": 250,
+      "poi_shop_distance": 1397,
+      "poi_small_shop_distance": 106,
+      "poi_train_distance": 1355,
+      "poi_vet_distance": 675,
+      "locality": {
+        "city": "Praha",
+        "city_seo_name": "praha",
+        "citypart": "Nusle",
+        "citypart_seo_name": "nusle",
+        "district": "Praha 2",
+        "district_id": 5002,
+        "district_seo_name": "praha-2",
+        "region": "Hlavní město Praha",
+        "region_id": 10,
+        "street": "Čiklova",
+        "street_seo_name": "ciklova",
+        "streetnumber": "13",
+        "housenumber": "637",
+        "gps_lat": 50.0640933575939,
+        "gps_lon": 14.4265329476302,
+        "inaccuracy_type": "address"
+      },
+      "advert_images": [
+        "//d18-a.sdn.cz/d_18/c_img_qH_A/kb4JgeTdkCJCefEIvBISPHdP/b539.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_A/kb4JgeTdkCfcGaD7lTISPHeK/3b23.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_A/nQO0xPd86TCMOiiP9sISPHfD/a99a.jpeg"
+      ]
+    },
+    {
+      "hash_id": 3618336844,
+      "advert_name": "Pronájem bytu 2+kk 55 m²",
+      "category_main_cb": {
+        "name": "Byty",
+        "value": 1
+      },
+      "category_sub_cb": {
+        "name": "2+kk",
+        "value": 4
+      },
+      "category_type_cb": {
+        "name": "Pronájem",
+        "value": 2
+      },
+      "price_czk": 28000.0,
+      "price_unit_cb": {
+        "name": "za měsíc",
+        "value": 2
+      },
+      "poi_atm_distance": 30,
+      "poi_bus_public_transport_distance": 152,
+      "poi_kindergarten_distance": 48,
+      "poi_medic_distance": 71,
+      "poi_metro_distance": 207,
+      "poi_parcel_locker_distance": 203,
+      "poi_playground_distance": 341,
+      "poi_post_office_distance": 230,
+      "poi_restaurant_distance": 0,
+      "poi_school_distance": 151,
+      "poi_shop_distance": 242,
+      "poi_small_shop_distance": 60,
+      "poi_train_distance": 1482,
+      "poi_vet_distance": 444,
+      "locality": {
+        "city": "Praha",
+        "city_seo_name": "praha",
+        "citypart": "Nové Město",
+        "citypart_seo_name": "nove-mesto",
+        "district": "Praha 2",
+        "district_id": 5002,
+        "district_seo_name": "praha-2",
+        "region": "Hlavní město Praha",
+        "region_id": 10,
+        "street": "Odborů",
+        "street_seo_name": "odboru",
+        "streetnumber": null,
+        "housenumber": null,
+        "gps_lat": 50.0775996487556,
+        "gps_lon": 14.418645679859,
+        "inaccuracy_type": "street"
+      },
+      "advert_images": [
+        "//d18-a.sdn.cz/d_18/c_img_qH_A/nQO0xPd86TBSHZcD9JeISbCet/7ae9.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_A/nQO0xPd86TBSHZcD9JiISbCfQ/413d.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_A/nQO0xPd86TnJSED4haISbCfv/5800.jpeg"
+      ]
+    },
+    {
+      "hash_id": 2178154572,
+      "advert_name": "Pronájem bytu 2+kk 49 m²",
+      "category_main_cb": {
+        "name": "Byty",
+        "value": 1
+      },
+      "category_sub_cb": {
+        "name": "2+kk",
+        "value": 4
+      },
+      "category_type_cb": {
+        "name": "Pronájem",
+        "value": 2
+      },
+      "price_czk": 25000.0,
+      "price_unit_cb": {
+        "name": "za měsíc",
+        "value": 2
+      },
+      "poi_atm_distance": 132,
+      "poi_bus_public_transport_distance": 211,
+      "poi_kindergarten_distance": 78,
+      "poi_medic_distance": 118,
+      "poi_metro_distance": 269,
+      "poi_parcel_locker_distance": 282,
+      "poi_playground_distance": 273,
+      "poi_post_office_distance": 566,
+      "poi_restaurant_distance": 70,
+      "poi_school_distance": 230,
+      "poi_shop_distance": 1435,
+      "poi_small_shop_distance": 30,
+      "poi_train_distance": 774,
+      "poi_vet_distance": 62,
+      "locality": {
+        "city": "Praha",
+        "city_seo_name": "praha",
+        "citypart": "Vinohrady",
+        "citypart_seo_name": "vinohrady",
+        "district": "Praha 2",
+        "district_id": 5002,
+        "district_seo_name": "praha-2",
+        "region": "Hlavní město Praha",
+        "region_id": 10,
+        "street": "Čerchovská",
+        "street_seo_name": "cerchovska",
+        "streetnumber": "5",
+        "housenumber": "1744",
+        "gps_lat": 50.07914859436761,
+        "gps_lon": 14.446031345620192,
+        "inaccuracy_type": "address"
+      },
+      "advert_images": [
+        "//d18-a.sdn.cz/d_18/c_img_qH_A/kb4JgeTdkC4TclD7CMIRxMz8/dbd6.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_A/nQO0xPd86TCEwoKCGsIRxNKB/2ba0.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_A/nQO0xPd86TBVyhhGxjIRxK6E/a7e8.jpeg"
+      ]
+    },
+    {
+      "hash_id": 688549964,
+      "advert_name": "Pronájem bytu 2+1 55 m²",
+      "category_main_cb": {
+        "name": "Byty",
+        "value": 1
+      },
+      "category_sub_cb": {
+        "name": "2+1",
+        "value": 5
+      },
+      "category_type_cb": {
+        "name": "Pronájem",
+        "value": 2
+      },
+      "price_czk": 28000.0,
+      "price_unit_cb": {
+        "name": "za měsíc",
+        "value": 2
+      },
+      "poi_atm_distance": 43,
+      "poi_bus_public_transport_distance": 133,
+      "poi_kindergarten_distance": 100,
+      "poi_medic_distance": 0,
+      "poi_metro_distance": 170,
+      "poi_parcel_locker_distance": 167,
+      "poi_playground_distance": 381,
+      "poi_post_office_distance": 205,
+      "poi_restaurant_distance": 20,
+      "poi_school_distance": 202,
+      "poi_shop_distance": 211,
+      "poi_small_shop_distance": 17,
+      "poi_train_distance": 1429,
+      "poi_vet_distance": 376,
+      "locality": {
+        "city": "Praha",
+        "city_seo_name": "praha",
+        "citypart": "Nové Město",
+        "citypart_seo_name": "nove-mesto",
+        "district": "Praha 2",
+        "district_id": 5002,
+        "district_seo_name": "praha-2",
+        "region": "Hlavní město Praha",
+        "region_id": 10,
+        "street": "Odborů",
+        "street_seo_name": "odboru",
+        "streetnumber": "12",
+        "housenumber": "286",
+        "gps_lat": 50.077531914397326,
+        "gps_lon": 14.418846385896147,
+        "inaccuracy_type": "address"
+      },
+      "advert_images": [
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkC4TclFHVAITkODP/957c.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/kb4JgeTdkB87eWFIh9ITkODL/ff0f.jpeg",
+        "//d18-a.sdn.cz/d_18/c_img_qH_B/nQO0xPd86TCEwoKBYbUITkOCy/10c1.jpeg"
+      ]
+    }
+  ],
+  "search_title": "Byty 2+kk, 2+1 k pronájmu Praha 2",
+  "status_code": 200,
+  "status_message": "OK"
+}

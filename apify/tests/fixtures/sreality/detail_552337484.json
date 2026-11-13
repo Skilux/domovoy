@@ -1,0 +1,113 @@
+{
+  "result": {
+    "hash_id": 552337484,
+    "advert_name": "Pronájem bytu 2+kk 74 m²",
+    "advert_description": "První 3 měsíce nájmu zdarma při uzavření dlouhodobé nájemní smlouvy. Hledáte stabilní zázemí pro své podnikání přímo v centru Prahy? Nabízíme k pronájmu nebytové prostory ve Štěpánské ulici, v domě č. 544/1 na Praze 2. Součástí pronájmu je také zděný sklep v domě o výměře téměř 9 m², vhodný například pro archivaci dokumentů, uskladnění vybavení nebo dalších firemních potřeb.\r\n\r\nUpřednostňujeme dlouhodobé nájemce, ideálně s nájemní smlouvou až na 5 let. Právě proto nabízíme první tři měsíce bez nájemného. Ušetřené peníze můžete investovat do úprav prostor podle potřeb svého podnikání, abyste zde měli příjemné a funkční zázemí na dlouhé roky.\r\n\r\nProstory jsou vhodné především pro zavedené firmy, které hledají stálé sídlo v centru Prahy, poradenské a administrativní služby, lékařské ordinace nebo fyzioterapeutická pracoviště.\r\n\r\nDispozice a vybavení\r\n\r\nKanceláře (65 m²) se nacházejí v 1. patře domu. V domě je k dispozici výtah.\r\n\r\nZděný sklep v suterénu o výměře téměř 9 m².\r\n\r\nDispozici tvoří:\r\n\r\nDvě kanceláře\r\n\r\nChodba s kuchyňským koutem a vlastní klimatizací \r\n\r\nKoupelna se sprchovým koutem a WC\r\n\r\nVytápění zajišťuje vlastní plynový kotel umístěný v prostoru chodby\r\n\r\nA zkolaudováno jako nebytový prostor - vhodné pro firmy.\r\n\r\nVelkou výhodou je samotná poloha ve Štěpánské ulici (v centru Prahy). Přímo u domu se nachází tramvajová zastávka Štěpánská a v docházkové vzdálenosti jsou stanice metra Karlovo náměstí (linka B) a I. P. Pavlova (linka C). Lokalita tak nabízí velmi dobrou dostupnost jak pro zaměstnance, tak pro klienty vaší firmy.\r\n\r\nZavolejte mi (klidně i o víkendu), rád s Vámi domluvím termín osobní prohlídky.",
+    "price_czk": 60000.0,
+    "price_note": "Odměna RK ve výši jednoho měsíčního nájmu (+ DPH pro plátce)",
+    "price_unit_cb": {
+      "name": "za měsíc",
+      "value": 2
+    },
+    "ready_date": "2026-12-01",
+    "edited": "2026-10-27",
+    "since": "2026-10-27",
+    "usable_area": 74,
+    "floor_number": 2,
+    "floors": null,
+    "parking": null,
+    "garage_count": null,
+    "category_main_cb": {
+      "name": "Byty",
+      "value": 1
+    },
+    "category_sub_cb": {
+      "name": "2+kk",
+      "value": 4
+    },
+    "category_type_cb": {
+      "name": "Pronájem",
+      "value": 2
+    },
+    "elevator": {
+      "name": "Ano",
+      "value": 1
+    },
+    "furnished": {
+      "name": "Ne",
+      "value": 2
+    },
+    "ownership": {
+      "name": "Osobní",
+      "value": 1
+    },
+    "lease_type_cb": null,
+    "locality": {
+      "city": "Praha",
+      "city_seo_name": "praha",
+      "citypart": "Nové Město",
+      "citypart_seo_name": "nove-mesto",
+      "district": "Praha 2",
+      "district_id": 5002,
+      "district_seo_name": "praha-2",
+      "region": "Hlavní město Praha",
+      "region_id": 10,
+      "street": "Štěpánská",
+      "street_seo_name": "stepanska",
+      "streetnumber": null,
+      "housenumber": null,
+      "gps_lat": 50.0787329973142,
+      "gps_lon": 14.4253690800295,
+      "inaccuracy_type": "street"
+    },
+    "advert_images": [
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qG_D/kb4JgeTdkBQkMFpmTIMdiSb/d750.jpeg",
+        "width": 1536,
+        "height": 1024,
+        "order": 1
+      },
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qG_D/kb4JgeTdkCJCefRMYIMdiTE/5320.jpeg",
+        "width": 1920,
+        "height": 1288,
+        "order": 4
+      },
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qG_D/nQO0xPd86TDzG4UIOmIMdiTr/91b3.jpeg",
+        "width": 1920,
+        "height": 1288,
+        "order": 5
+      },
+      {
+        "url": "//d18-a.sdn.cz/d_18/c_img_qG_D/kb4JgeTdkbxLFTLvIMdiUX/cba3.jpeg",
+        "width": 1920,
+        "height": 1288,
+        "order": 6
+      }
+    ],
+    "user": {
+      "user_name": "Example Agent",
+      "user_email": null,
+      "user_phones": [],
+      "user_id": null,
+      "image": null,
+      "broker_rating": null,
+      "broker_review_count": null
+    },
+    "premise": {
+      "id": null,
+      "name": "Example Agency",
+      "seo_name": "example-agency",
+      "web_url": null,
+      "web_visible_url": null,
+      "logo": null,
+      "company": {
+        "company_ic": null,
+        "company_subject_id": null
+      }
+    }
+  },
+  "status_code": 200,
+  "status_message": "OK"
+}

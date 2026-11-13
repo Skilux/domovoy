@@ -72,6 +72,7 @@ Made by Vladimir while specifying the Actor lane ([prd/actor.md](prd/actor.md)).
 | Katastr owner check | Phase 2 (`katastr_lookup` mode, WSDP); storing owner names needs compliance sign-off | — |
 | PostHog from the Actor | Phase 2; the PostHog lane stays P1 | — |
 | GitHub Projects board | Team task tracking during the hackathon only; never a DOMOVOY or demo surface | Shortlist UI for DOMOVOY |
+| Portal access, all three portals (Sreality, Bezrealitky, iDNES) | 13 Nov 2026, 13:00. Team decision (Vladimir): agent scraping of all three portals is permitted for this hackathon. The organizers allow it, and robots.txt and terms-of-service or content-reuse clauses do not apply for the hackathon. Sreality was first permitted at 12:53 on a verbal OK from a Sreality representative at the hackathon. Still required: at most 3 concurrent requests per portal, a 0.5–1 s delay between requests, and no realtor names, phones or emails in the repo. | The robots.txt Disallow and terms-of-service concerns |
 
 ## Call flow decisions, 13 Nov 2026
 
