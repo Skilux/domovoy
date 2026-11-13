@@ -68,9 +68,10 @@ python3 posthog/loop.py decide --key no_elevator --yes
 ```
 
 - Supported changes: `{"elevator": "required"}`, `{"max_total_monthly": N}`, `{"max_upfront": N}`. An unknown value never fails a flat.
-- The shortlist is the Notion data source titled "DOMOVOY shortlist", or the one named by `NOTION_DATA_SOURCE_ID`. It reads `Property ID`, `Status`, `Reason`, `Elevator`, `Floor`, `Total monthly`, `Upfront`, `Sources` and writes only `Status` and `Reason`.
+- `loop.py` reads the skill's `config.json` the way `call.py` does: the file named by `DOMOVOY_CONFIG`, else `skill/domovoy/config.json` in this checkout. It takes the renter's name from it.
+- The shortlist is the Notion data source named by `NOTION_DATA_SOURCE_ID`, else a `data_source_id` in that config, else the one titled "DOMOVOY shortlist". It reads `Property ID`, `Status`, `Reason`, `Elevator`, `Floor`, `Total monthly`, `Upfront`, `Sources` and writes only `Status` and `Reason`.
 - `--dataset NAME` before the command runs a test: events carry `synthetic: true` and flags are named `domovoy-test-NAME-...`, so a test never changes live criteria. `DOMOVOY_FAKE_SHORTLIST=posthog/tests/fake_shortlist_seed.json` (use a copy) replaces Notion with a file.
-- Send events 30 to 100 s before `report`: PostHog needs that long to show them to queries. `propose` and `decide` do not wait on it.
+- PostHog needs 30 to 100 s to show new events to queries. `report` waits for every event `sync` sent (at most 150 s) and prints `"complete": false` if they are not all there. `propose` and `decide` do not wait.
 - `scout/rejection-scout.md` is the source of the instructions stored in PostHog. A paused paid scout with the same instructions exists in the project; it is not used.
 
 ### Run and seen on 13 Nov 2026 (synthetic data only)

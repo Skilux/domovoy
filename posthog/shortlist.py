@@ -2,8 +2,9 @@
 """Read and update the DOMOVOY shortlist for the PostHog loop. Standard library only.
 
 Two backends with the same functions:
-  Notion   the database named by NOTION_DATA_SOURCE_ID, else the data source titled "DOMOVOY shortlist"
-           that NOTION_TOKEN can see. Property names follow docs/prd/actor.md.
+  Notion   the data source named by NOTION_DATA_SOURCE_ID, else a `data_source_id` in the skill's config.json,
+           else the data source titled "DOMOVOY shortlist" that NOTION_TOKEN can see.
+           Property names follow docs/prd/actor.md.
   Fake     a JSON file named by DOMOVOY_FAKE_SHORTLIST, for tests. Never talks to Notion.
 
 A flat is a dict: page_id, property_id, title, status, reason, elevator, portal, total_monthly, upfront, floor.
@@ -13,7 +14,7 @@ import os
 import urllib.error
 import urllib.request
 
-from ph import load_env
+from ph import find_key, load_env, skill_config
 
 NOTION_VERSION = "2025-09-03"
 TITLE = "DOMOVOY shortlist"
@@ -54,7 +55,8 @@ def _select(prop):
 
 def data_source_id():
     env = load_env()
-    known = os.environ.get("NOTION_DATA_SOURCE_ID") or env.get("NOTION_DATA_SOURCE_ID")
+    known = (os.environ.get("NOTION_DATA_SOURCE_ID") or env.get("NOTION_DATA_SOURCE_ID")
+             or find_key(skill_config(), "data_source_id"))
     if known:
         return known
     title = os.environ.get("DOMOVOY_SHORTLIST_TITLE") or TITLE

@@ -2,7 +2,8 @@
 """DOMOVOY self-improvement loop on PostHog's free plan. Standard library only.
 
   loop.py sync                      shortlist -> PostHog events (shortlisted, rejected, interested), each sent once
-  loop.py report                    read today's rejections, earlier decisions and the scout instructions from PostHog
+  loop.py report                    wait until PostHog shows what sync sent, then read today's rejections,
+                                    earlier decisions and the scout instructions from PostHog
   loop.py propose --key K --title T --change JSON --ids a,b,c
                                     file the report: an inactive feature flag that holds the change, and a notebook
   loop.py decide --key K --yes|--no record the human answer; on yes switch the flag on and re-filter the shortlist
@@ -12,7 +13,10 @@
 Claude does the judgement between report and propose: it normalizes the free-text reasons to a short key,
 groups them, and proposes only when one undecided key covers 3 or more rejected flats.
 
---dataset (default "live") tags every event. Use --dataset synthetic for tests; those events also carry synthetic=true.
+The renter's name and the Notion data source come from the skill's config.json: the file named by DOMOVOY_CONFIG,
+else skill/domovoy/config.json in this checkout. That is the same rule call.py uses.
+
+--dataset (default "live", or the DOMOVOY_DATASET variable) tags every event. Use --dataset synthetic for tests; those events also carry synthetic=true.
 Output is one JSON object on stdout. Exit codes: 0 ok, 2 refused, 1 error.
 """
 import argparse
@@ -25,7 +29,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import shortlist  # noqa: E402
-from ph import api, capture, load_env, mcp, query  # noqa: E402
+from ph import api, capture, load_env, mcp, query, skill_config  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.environ.get("DOMOVOY_LOOP_STATE") or os.path.join(HERE, ".state", "sent.json")
@@ -42,13 +46,7 @@ def out(obj, code=0):
 
 
 def renter():
-    path = os.path.join(HERE, "..", "skill", "domovoy", "config.json")
-    if os.path.exists(path):
-        with open(path, encoding="utf-8") as f:
-            name = (json.load(f).get("call_context") or {}).get("user_name")
-        if name:
-            return name
-    return "renter"
+    return (skill_config().get("call_context") or {}).get("user_name") or "renter"
 
 
 def load_state():
@@ -138,11 +136,26 @@ def cmd_sync(args):
             state[mark] = datetime.datetime.now().astimezone().isoformat()
             sent.append({"event": event, "property_id": pid})
     save_state(state)
-    return out({"sent": sent, "note": "PostHog shows new events to queries after 30 to 100 s"})
+    return out({"sent": sent, "note": "report waits until PostHog shows these events, usually 30 to 100 s"})
+
+
+def wait_for_events(args):
+    """Poll until PostHog shows every event sync sent today for this dataset. Returns (complete, seconds waited)."""
+    today = datetime.date.today().isoformat()
+    expected = sum(1 for mark, when in load_state().items()
+                   if mark.startswith(args.dataset + ":listing_") and str(when).startswith(today))
+    ds, started = args.dataset.replace("'", ""), time.time()
+    while True:
+        seen = query("select count() as n from events where event like 'listing_%%' and properties.dataset = '%s' "
+                     "and timestamp >= today()" % ds)[0]["n"]
+        if seen >= expected or time.time() - started >= args.wait:
+            return seen >= expected, round(time.time() - started), expected, seen
+        time.sleep(5)
 
 
 def cmd_report(args):
     ds = args.dataset.replace("'", "")
+    complete, waited, expected, seen = wait_for_events(args)
     rejections = query(
         "select properties.property_id as property_id, argMax(properties.reason, timestamp) as reason, "
         "argMax(properties.portal, timestamp) as portal, argMax(properties.elevator, timestamp) as elevator, "
@@ -157,6 +170,8 @@ def cmd_report(args):
         "where event = 'listing_shortlisted' and properties.dataset = '%s' and timestamp >= today()" % ds)
     skill = api("GET", "llm_skills/name/%s/" % SCOUT_SKILL)
     return out({
+        "complete": complete,
+        "events": "%d of %d events sent by sync today are visible in PostHog after waiting %d s" % (seen, expected, waited),
         "shown_today": shown[0]["n"] if shown else 0,
         "rejections": rejections,
         "already_decided": decided,
@@ -293,10 +308,12 @@ def cmd_overrides(args):
 
 def main():
     parser = argparse.ArgumentParser(description="DOMOVOY PostHog loop")
-    parser.add_argument("--dataset", default="live")
+    parser.add_argument("--dataset", default=os.environ.get("DOMOVOY_DATASET") or "live")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name in ("sync", "report", "apply", "overrides"):
+    for name in ("sync", "apply", "overrides"):
         sub.add_parser(name)
+    r = sub.add_parser("report")
+    r.add_argument("--wait", type=int, default=150, help="seconds to wait for PostHog to show the events sync sent")
     p = sub.add_parser("propose")
     p.add_argument("--key", required=True)
     p.add_argument("--title", required=True)

@@ -51,6 +51,32 @@ def load_env(path=None):
     return env
 
 
+def skill_config():
+    """The skill's config.json, found the way skill/domovoy/scripts/call.py finds it: DOMOVOY_CONFIG first,
+    then skill/domovoy/config.json in this checkout. Returns {} when there is none."""
+    path = os.environ.get("DOMOVOY_CONFIG") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skill", "domovoy", "config.json")
+    path = os.path.expanduser(path)
+    if not os.path.exists(path):
+        if os.environ.get("DOMOVOY_CONFIG"):
+            raise SystemExit("config not found: %s (DOMOVOY_CONFIG)" % path)
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def find_key(obj, name):
+    """First value stored under `name` anywhere in a nested dict, or None."""
+    if isinstance(obj, dict):
+        if obj.get(name):
+            return obj[name]
+        for value in obj.values():
+            found = find_key(value, name)
+            if found:
+                return found
+    return None
+
+
 def need(env, key):
     if not env.get(key):
         raise SystemExit("missing %s: set it in %s" % (key, ENV_FILE))
