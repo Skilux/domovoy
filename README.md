@@ -11,7 +11,7 @@ shows what each flat really costs, and holds a live voice call to book the viewi
 
 [![Agent Skill for Claude Code](https://img.shields.io/badge/Agent%20Skill-Claude%20Code-D97757?style=for-the-badge)](skill/domovoy/SKILL.md)
 [![Status: hackathon build](https://img.shields.io/badge/status-hackathon%20build-orange?style=for-the-badge)](docs/demo.md)
-[![Skill tests: 157 passing](https://img.shields.io/badge/skill%20tests-157%20passing-2fd15a?style=for-the-badge)](skill/domovoy/SKILL.md)
+[![Skill tests: passing](https://img.shields.io/badge/skill%20tests-passing-2fd15a?style=for-the-badge)](skill/domovoy/SKILL.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
 [![Apify](https://img.shields.io/badge/Apify-Actor-97D700?style=flat-square)](apify/README.md)
@@ -257,7 +257,7 @@ skill/domovoy/
   SKILL.md        the workflow Claude Code loads
   scripts/        search.py, notion.py, call.py, doctor.py, demo.py
   reference/      JSON Schemas for the contracts, the profile and the Notion database
-  tests/          157 offline tests, fake phone server, fake Notion backend
+  tests/          offline tests, fake phone server, fake Notion backend
 apify/            the Actor: sources, fee extraction, dedup, costs, Notion writes
 phone/            the Vercel app: start page, phone page, stage page, 5 API routes, voice agent config
 posthog/          event capture and the rejection loop
