@@ -55,7 +55,7 @@ sequenceDiagram
 | Route | Caller | Does |
 | --- | --- | --- |
 | `POST /api/call` | Claude | Stores the `call_context` as the pending call and clears any stored result for its `property_id`. Rejects only a context without `property_id` or `address`; every other field passes through. Requires header `x-domovoy-secret`. |
-| `GET /api/pending` | Page | Returns `{context, call_token}` once, then clears it; both are `null` when nothing is pending. |
+| `GET /api/pending` | Paired page | Returns `{context, call_token}` once, then clears it; both are `null` when nothing is pending. Requires header `x-domovoy-receiver` (env `DOMOVOY_RECEIVER_KEY`), else 401. |
 | `GET /api/signed-url?call_token=` | Page | Returns a short-lived ElevenLabs signed URL. Needs the one-time `call_token` from `/api/pending`, else 403. |
 | `POST /api/result` | Page | Stores the result by `property_id`. A repeated `conversation_id` is ignored. |
 | `GET /api/result/{property_id}` | Claude | Returns the result, or 404 while the call is running. Requires the secret header. |
@@ -67,6 +67,7 @@ Vercel functions share no memory, so pending calls and results need a small stor
 ### Page
 
 - Screens: waiting → incoming call (address, Accept / Decline, ringtone) → in call (timer, live transcript) → result (outcome and time).
+- Pairing: only a paired page receives calls. Open `/?k=<DOMOVOY_RECEIVER_KEY>` once on the demo laptop (or `/start?k=`); the page keeps the key in localStorage and removes it from the address bar. A page without the key is public and viewable, shows "Demo phone. Calls ring only on the paired device.", never polls and never rings.
 - Browsers block audio until the user interacts with a page. The waiting screen needs one "Ready" click before the demo so the ringtone can play later.
 - Ringtone: an mp3 cut from the referenced Nokia 3310 video.
 
