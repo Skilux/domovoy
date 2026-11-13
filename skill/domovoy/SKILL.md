@@ -94,11 +94,13 @@ It needs the PostHog keys and `NOTION_TOKEN` in `~/.config/domovoy/.env` (names 
 3. If the output has `"complete": false`, PostHog does not show all events yet: run the report once more. Do not propose anything from an incomplete report.
 4. Follow `scout_instructions.body`: normalize each free-text reason to a short key and group the flats by key.
 5. Only if one key that is not in `already_decided` covers 3 or more flats, propose one change:
-   `DOMOVOY_CONFIG=<config> python3 posthog/loop.py propose --key KEY --title '<N> of <M> rejected flats: <reason>' --finding '<one sentence>' --change '<JSON>' --ids id1,id2,id3`
+   `DOMOVOY_CONFIG=<config> python3 posthog/loop.py propose --key KEY --title '<the change in plain words, for example: only flats with an elevator>' --finding '<one sentence: N of M rejected flats, and the shared reason>' --change '<JSON>' --ids id1,id2,id3`
    `--change` is one of `{"elevator": "required"}`, `{"furnished": "required"}`, `{"min_floor": N}`, `{"max_total_monthly": N}`, `{"max_upfront": N}`, `{"max_commission": N}` (0 = no agency fee), `{"max_metro_m": N}`. Do not propose a requirement that `profile_requirements` in the report already holds: those flats never reach the shortlist. `--ids` are the `property_id` values behind the finding.
+   The notebook is titled "DOMOVOY suggests: <title>" and shows `KEY` with underscores as spaces as what the agent understood, so pick a readable key such as `no_elevator`.
    With fewer than 3 flats on any undecided key, say so and propose nothing.
 6. Show the user the finding, the proposed change and the `notebook` link from the output, and ask yes or no. Keep it to three short lines: on stage this step has 60 seconds in total.
 7. After the answer, and never before it: `DOMOVOY_CONFIG=<config> python3 posthog/loop.py decide --key KEY --yes --real` or `--no`. `--real` permits the write to the real shortlist; without it the script writes only to a database whose title contains "test" or "synthetic". The script prints the Notion database it writes to on its first line: if that is not the user's shortlist, stop and say so. On yes, tell the user which flats moved to Not interested (`moved_to_not_interested` in the output). Flats the user already answered in `Interested?` are never moved; one that would fail is listed in `kept_despite_failing`. On no, say nothing was changed.
+8. Later, after a new search has added flats and `sync` has run again: `DOMOVOY_CONFIG=<config> python3 posthog/loop.py measure`. It compares flats shown and rejected before and after each approved change, writes the result into the same notebook and into the agent's memory in PostHog, and prints a `verdict`. Tell the user the verdict in one line, including "small sample" when the output says so. With no flat shown after the change it says so and writes nothing.
 
 Rules for this command:
 
