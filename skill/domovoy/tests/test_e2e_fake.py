@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import subprocess
 import shutil
 import sys
 import tempfile
@@ -133,6 +134,31 @@ class EndToEndFake(unittest.TestCase):
         code, out = self.run_call("resume", "--page", PAGE)
         self.assertEqual((code, out["already_handled"], out["create_event"]), (0, True, False))
         self.assertEqual(self.page()["body"].count("domovoy-call: conv-S"), 1)
+
+    def test_sandboxed_runner_other_home_and_cwd_no_terminal(self):
+        notion.set_status(self.cfg, PAGE, "Interested")
+        cfg = json.loads(json.dumps(self.cfg))
+        cfg["phone"].update(url="", secret="", env_file="", url_env="PHONE_URL", secret_env="DOMOVOY_SECRET")
+        cfg["call_context"]["user_name"] = "Vladim\u00edr"
+        config_path = os.path.join(self.tmp, "sandbox-config.json")
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False)
+        env_file = os.path.join(self.tmp, "sandbox.env")
+        with open(env_file, "w") as f:
+            f.write("export PHONE_URL=%s\nDOMOVOY_SECRET='test-secret'\n" % self.url)
+        state = os.path.join(self.tmp, "sandbox-state")
+        env = {"PATH": os.environ.get("PATH", ""), "HOME": os.path.join(self.tmp, "no-home"), "LC_ALL": "C",
+               "DOMOVOY_CONFIG": config_path, "DOMOVOY_ENV_FILE": env_file, "DOMOVOY_STATE_DIR": state,
+               "FAKE_NOTION_DB": os.environ["FAKE_NOTION_DB"]}
+        done = subprocess.run([sys.executable, os.path.join(HERE, "..", "scripts", "call.py"), "start",
+                               "--windows", WINDOWS], cwd=tempfile.gettempdir(), env=env,
+                              stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
+        self.assertEqual(done.returncode, 0, done.stderr.decode("utf-8", "replace"))
+        out = json.loads(done.stdout.decode("utf-8"))
+        self.assertEqual((out["posted"], out["notion_page_id"]), (True, PAGE))
+        self.assertEqual(fake_phone_server.STATE["pending"]["user_name"], "Vladim\u00edr")
+        self.assertTrue(os.path.isdir(state))
+        self.assertEqual(self.page()["status"], "Calling")
 
     def test_outside_windows_is_not_booked(self):
         code, out, _ = self.run_with_result(result("conv-B", viewing_start="2026-11-18T10:00:00+01:00"))
