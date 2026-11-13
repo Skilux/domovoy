@@ -1,4 +1,5 @@
 import { allow } from '../lib/http.js';
+import { takeCallToken } from '../lib/store.js';
 
 const ENDPOINT = 'https://api.elevenlabs.io/v1/convai/conversation/get-signed-url';
 
@@ -25,6 +26,10 @@ async function signedUrl() {
 export default async function handler(req, res) {
   if (!allow(req, res, 'GET')) return;
   res.setHeader('Cache-Control', 'no-store');
+  const callToken = req.query.call_token;
+  if (typeof callToken !== 'string' || !callToken || !(await takeCallToken(callToken))) {
+    return res.status(403).json({ error: 'no_pending_call' });
+  }
   try {
     res.status(200).json({ signed_url: await signedUrl() });
   } catch (error) {
