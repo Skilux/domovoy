@@ -9,24 +9,15 @@
   <link rel="stylesheet" href="/start.css">
 </head>
 <body>
+  <script src="/nav.js"></script>
   <div class="page">
     <div class="pitch">
-      <header>
-        <img class="mark" src="/domovoy.svg" alt="" width="40" height="40">
-        <span class="brand">DOMOVOY</span>
-        <span class="team">by (Not)Homeless.ai</span>
-        <nav class="nav">
-          <a href="/phone">Phone</a>
-          <a href="/stage">Stage rail</a>
-          <a href="/prompt.txt">Install prompt</a>
-          <a class="repo" href="https://github.com/Skilux/domovoy">GitHub</a>
-        </nav>
-      </header>
+      <p class="team">by (Not)Homeless.ai</p>
 
       <h1>Your real-estate agent in your pocket.</h1>
       <p class="lead">An open-source Agent Skill for Claude Code. It collects real Prague listings, shows the monthly cost and the move-in cost of each flat, and after you approve one flat it holds a live voice call in the browser to book the viewing.</p>
 
-      <div class="start">
+      <div class="start" id="install">
         <div class="paste">
           <p class="label">Paste this into Claude Code</p>
           <p class="prompt" id="prompt">Set up DOMOVOY for me. 1) Run: git clone https://github.com/Skilux/domovoy ~/domovoy (git pull if it exists). 2) Symlink ~/domovoy/skill/domovoy to ~/.claude/skills/domovoy, and copy config.example.json to config.json in that folder if config.json is missing. 3) Run: python3 ~/domovoy/skill/domovoy/scripts/doctor.py check --json. 4) For each FAIL, show me its fix line and wait while I put the key into ~/.config/domovoy/.env myself. Never ask me to paste a key in chat, and never read or print that file. 5) Run the check again until nothing fails, then find me a flat to rent in Prague. To see it first with no accounts, run: python3 ~/domovoy/skill/domovoy/scripts/demo.py call and tell me the run is synthetic.</p>

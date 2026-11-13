@@ -18,6 +18,8 @@ Pairing is per browser. Open `/?k=<DOMOVOY_RECEIVER_KEY>` once (`/start?k=` and 
 - Keep exactly one phone page open in a paired browser. Two open pages are two phones, and only one of them gets the call.
 - Submission form: `https://domovoy-phone.vercel.app`.
 
+Every page has the same top bar (Home, Phone, Stage rail, Install, GitHub), drawn by `public/nav.js`; edit the links there. The phone inside the home page has no bar. Add `?bare=1` to any page to hide the bar, for example `/stage?bare=1` on the projector.
+
 ## Layout
 
 - `api/`: the 5 routes from the spec. `lib/store.js` is the only file that knows the store (Upstash Redis REST, pending calls expire after 1 hour, results after 24 hours).
