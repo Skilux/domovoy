@@ -7,58 +7,76 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <main class="phone" id="phone" data-screen="ready">
-    <div class="notch"></div>
+  <svg hidden>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M12 3 2.5 11h2.7v9h5.3v-6h3v6h5.3v-9h2.7z"/></symbol>
+  </svg>
 
+  <main class="phone" id="phone" data-screen="ready">
     <section class="screen" data-name="ready">
-      <div class="brand">DOMOVOY</div>
-      <p class="hint">Tap once to enable sound and the microphone.</p>
-      <button class="ready" id="ready" type="button">Ready</button>
+      <p class="kicker">DOMOVOY phone</p>
+      <div class="spacer"></div>
+      <button class="pill" id="ready" type="button">Ready</button>
+      <p class="note">One click so the ringtone can play</p>
+      <div class="spacer"></div>
     </section>
 
     <section class="screen" data-name="waiting">
-      <div class="brand">DOMOVOY</div>
-      <div class="dots"><span></span><span></span><span></span></div>
-      <p class="title">Waiting for a call</p>
+      <p class="kicker">DOMOVOY phone</p>
+      <div class="spacer"></div>
+      <h1>Waiting for a call</h1>
+      <div class="dots"><i></i><i></i><i></i></div>
+      <div class="spacer"></div>
     </section>
 
     <section class="screen" data-name="incoming">
-      <p class="caption">DOMOVOY assistant calling</p>
-      <h1 class="address" data-address></h1>
-      <p class="rent" data-rent></p>
-      <div class="avatar ring">D</div>
+      <p class="kicker">Incoming call</p>
+      <div class="avatar pulse"><svg><use href="#i-home"/></svg></div>
+      <h1>DOMOVOY AI assistant</h1>
+      <p class="sub">calling about a flat</p>
+      <div class="card">
+        <p class="address" data-address></p>
+        <p class="sub" data-rent></p>
+      </div>
+      <div class="spacer"></div>
       <div class="actions">
         <div class="action">
-          <button class="round red" id="decline" type="button" aria-label="Decline">&#10005;</button>
+          <button class="round red down" id="decline" type="button" aria-label="Decline"><svg><use href="#i-phone"/></svg></button>
           <span>Decline</span>
         </div>
         <div class="action">
-          <button class="round green" id="accept" type="button" aria-label="Accept">&#9990;</button>
+          <button class="round green" id="accept" type="button" aria-label="Accept"><svg><use href="#i-phone"/></svg></button>
           <span>Accept</span>
         </div>
       </div>
     </section>
 
     <section class="screen" data-name="call">
-      <p class="caption" id="call-status">Connecting</p>
-      <h2 class="address small" data-address></h2>
+      <p class="kicker"><span class="orb" id="orb"></span><span id="call-status">Connecting</span></p>
       <p class="timer" id="timer">00:00</p>
-      <div class="orb" id="orb"></div>
+      <p class="sub" data-address></p>
       <div class="transcript" id="transcript"></div>
       <div class="actions single">
         <div class="action">
-          <button class="round red" id="hangup" type="button" aria-label="Hang up">&#10005;</button>
-          <span>End</span>
+          <button class="round red down" id="hangup" type="button" aria-label="Hang up"><svg><use href="#i-phone"/></svg></button>
+          <span>Hang up</span>
         </div>
       </div>
     </section>
 
     <section class="screen" data-name="result">
-      <p class="caption">Call ended</p>
+      <p class="kicker">Call ended</p>
+      <div class="badge" id="badge"></div>
       <h1 class="outcome" id="outcome"></h1>
-      <p class="when" id="when"></p>
-      <h2 class="address small" data-address></h2>
-      <p class="summary" id="summary"></p>
+      <div class="card" id="when-card">
+        <p class="label">When</p>
+        <p class="when" id="when"></p>
+      </div>
+      <div class="card left">
+        <p class="label" data-address></p>
+        <p class="summary" id="summary"></p>
+      </div>
+      <div class="spacer"></div>
     </section>
 
     <p class="error" id="error" role="alert"></p>

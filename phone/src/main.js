@@ -133,7 +133,8 @@ async function finish(current, summary, prefix = 'failed') {
 function showResult(result) {
   const booked = result.outcome === 'booked';
   $('outcome').textContent = booked ? 'Viewing booked' : 'Not booked';
-  $('outcome').classList.toggle('booked', booked);
+  phone.dataset.outcome = booked ? 'booked' : 'not_booked';
+  $('when-card').hidden = !booked;
   $('when').textContent = booked ? formatWhen(result.viewing_start) : '';
   $('summary').textContent = typeof result.summary === 'string' ? result.summary : '';
   show('result');
@@ -147,9 +148,11 @@ function addLine(role, text) {
   if (!text) return;
   const line = document.createElement('div');
   line.className = `line ${role === 'user' ? 'user' : 'agent'}`;
-  const who = document.createElement('b');
-  who.textContent = role === 'user' ? 'Realtor' : 'DOMOVOY';
-  line.append(who, document.createTextNode(text));
+  const who = document.createElement('small');
+  who.textContent = role === 'user' ? 'Realtor' : 'Assistant';
+  const bubble = document.createElement('div');
+  bubble.textContent = text;
+  line.append(who, bubble);
   transcript.append(line);
   transcript.scrollTop = transcript.scrollHeight;
 }
