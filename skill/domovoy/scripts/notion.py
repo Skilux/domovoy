@@ -20,7 +20,8 @@ Shortlisted flat only when it is True. "listing" holds the call_context fields r
 call_context's "upfront" is read from the "Move-in cost" property (the Actor renamed Upfront) until the
 call_context field is renamed.
 
-Secrets: NOTION_TOKEN and NOTION_PARENT_PAGE_ID come from the environment, else from ~/.config/domovoy/.env.
+Secrets: NOTION_TOKEN and NOTION_PARENT_PAGE_ID come from the environment, else from the env file:
+DOMOVOY_ENV_FILE, else ~/.config/domovoy/.env.
 Nothing secret is printed. Standard library only: call.py loads this module, so call needs no packages.
 """
 import argparse
@@ -34,7 +35,7 @@ import urllib.parse
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ENV_FILE = os.path.expanduser("~/.config/domovoy/.env")
+ENV_FILE = os.path.expanduser(os.environ.get("DOMOVOY_ENV_FILE") or "~/.config/domovoy/.env")
 API = "https://api.notion.com/v1"
 TIMEOUT_SECONDS = 30
 MAX_TRIES = 5                  # 429 and 529 are retried after Retry-After

@@ -711,5 +711,44 @@ class WsdpFallbackTest(unittest.TestCase):
         self.assertEqual(leaked_names(out + err), [])
 
 
+def fresh_module(name, env):
+    """A new copy of scripts/<name>.py imported with only env set, so its import-time paths follow env."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("fresh_" + name, os.path.join(HERE, "..", "scripts", name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    with mock.patch.dict(os.environ, env, clear=True):
+        spec.loader.exec_module(module)
+    return module
+
+
+class CoworkPathsTest(unittest.TestCase):
+    def test_env_file_state_dir_and_lv_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_dir, state = os.path.join(tmp, "secrets"), os.path.join(tmp, "state")
+            os.makedirs(os.path.join(env_dir, "lv"))
+            env_file = os.path.join(env_dir, ".env")
+            with open(env_file, "w", encoding="utf-8") as f:
+                f.write("WSDP_ENV=prod\n")
+            with open(os.path.join(env_dir, "lv", "sample.xml"), "w") as f:
+                f.write("<x/>")
+            fresh = fresh_module("katastr", {"DOMOVOY_ENV_FILE": env_file, "DOMOVOY_STATE_DIR": state,
+                                             "HOME": os.path.join(tmp, "nohome")})
+            self.assertEqual(fresh.ENV_FILE, env_file)
+            self.assertEqual(fresh.BILLING_FILE, os.path.join(state, "katastr_billed.json"))
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(fresh.settings(["WSDP_ENV"])["WSDP_ENV"], "prod")
+                # billing counter and its lock land in DOMOVOY_STATE_DIR
+                self.assertEqual(fresh.billing_guard({"WSDP_ENV": "prod"}, today="2026-11-13"),
+                                 {"billed_today": 1, "cap": 10})
+                self.assertTrue(os.path.isfile(fresh.BILLING_FILE))
+                self.assertTrue(os.path.isfile(fresh.BILLING_FILE + ".lock"))
+                # no ~/.config/domovoy/lv: the LV folder is lv/ next to the env file
+                self.assertEqual(fresh.lv_dir(), os.path.join(env_dir, "lv"))
+                self.assertEqual(fresh.resolve_lv("sample.xml"), os.path.join(env_dir, "lv", "sample.xml"))
+                self.assertEqual(fresh.resolve_lv("missing.xml"), "missing.xml")
+            with mock.patch.dict(os.environ, {"KATASTR_LV_DIR": tmp}, clear=True):
+                self.assertEqual(fresh.lv_dir(), tmp)
+
+
 if __name__ == "__main__":
     unittest.main()

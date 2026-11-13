@@ -657,5 +657,31 @@ class LiveNotion(unittest.TestCase):
         self.assertIsInstance(notion.list_flats(config, "Interested"), list)
 
 
+def fresh_module(name, env):
+    """A new copy of scripts/<name>.py imported with only env set, so its import-time paths follow env."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("fresh_" + name, os.path.join(HERE, "..", "scripts", name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    with mock.patch.dict(os.environ, env, clear=True):
+        spec.loader.exec_module(module)
+    return module
+
+
+class CoworkEnvFileTest(unittest.TestCase):
+    def test_domovoy_env_file_is_read_and_the_environment_still_wins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "cowork.env")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("NOTION_TOKEN=file-token\n")
+            fresh = fresh_module("notion", {"DOMOVOY_ENV_FILE": path})
+            self.assertEqual(fresh.ENV_FILE, path)
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(fresh.setting("NOTION_TOKEN"), "file-token")
+            with mock.patch.dict(os.environ, {"NOTION_TOKEN": "env-token"}, clear=True):
+                self.assertEqual(fresh.setting("NOTION_TOKEN"), "env-token")
+            self.assertEqual(fresh_module("notion", {"HOME": tmp}).ENV_FILE,
+                             os.path.join(tmp, ".config", "domovoy", ".env"))
+
+
 if __name__ == "__main__":
     unittest.main()

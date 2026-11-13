@@ -8,8 +8,8 @@ Output is one JSON object on stdout; progress lines go to stderr.
 Exit codes: 0 succeeded, 1 error (run failed, timed out, HTTP error, no summary), 2 refused (nothing started).
 
 Settings come from config.json (or DOMOVOY_CONFIG): active_profile, profiles[], apify.actor_id (then env
-APIFY_ACTOR_ID, then vladb~domovoy), apify.timeout_seconds (900), apify.poll_seconds (5), apify.env_file
-(~/.config/domovoy/.env), notion.data_source_id (then env NOTION_DATA_SOURCE_ID). The Apify token is APIFY_TOKEN,
+APIFY_ACTOR_ID, then vladb~domovoy), apify.timeout_seconds (900), apify.poll_seconds (5), the env file
+(DOMOVOY_ENV_FILE, then apify.env_file, then ~/.config/domovoy/.env), notion.data_source_id (then env NOTION_DATA_SOURCE_ID). The Apify token is APIFY_TOKEN,
 from the environment or the env file. APIFY_API_BASE replaces https://api.apify.com (the tests use it).
 The Notion token is never sent: the Actor reads its own secret on the platform.
 
@@ -176,7 +176,7 @@ def apify_settings(cfg, timeout=None):
         "actor": apify.get("actor_id") or os.environ.get("APIFY_ACTOR_ID") or DEFAULT_ACTOR,
         "timeout": seconds,
         "poll": max(float(apify.get("poll_seconds", 5)), 0.01),
-        "env_file": apify.get("env_file") or DEFAULT_ENV_FILE,
+        "env_file": os.environ.get("DOMOVOY_ENV_FILE") or apify.get("env_file") or DEFAULT_ENV_FILE,
     }
 
 
