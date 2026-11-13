@@ -5,12 +5,12 @@
   ph.py query "HogQL"                                      run a query, print JSON rows
   ph.py smoke                                              send one test event, then read it back
 
-Reads the repo-root .env (or the environment):
+Reads ~/.config/domovoy/.env (or the file named by DOMOVOY_ENV_FILE); the environment wins:
   POSTHOG_PROJECT_TOKEN      phc_...  public by design, used for capture
-  POSTHOG_PERSONAL_API_KEY   phx_...  private, scope query:read, used for query
-  POSTHOG_PROJECT_ID         numeric project id, used for query
-  POSTHOG_HOST               app host, default https://eu.posthog.com
   POSTHOG_INGEST_HOST        capture host, default https://eu.i.posthog.com
+  POSTHOG_APP_HOST           app host for queries, default https://eu.posthog.com
+  POSTHOG_PROJECT_ID         numeric project id, used for query
+  POSTHOG_PERSONAL_API_KEY   phx_...  private, used for query
 
 Exit codes: 0 ok, 1 error.
 """
@@ -24,16 +24,16 @@ import urllib.error
 import urllib.request
 import uuid
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ENV_FILE = os.environ.get("DOMOVOY_ENV_FILE") or os.path.expanduser("~/.config/domovoy/.env")
 DEFAULTS = {
-    "POSTHOG_HOST": "https://eu.posthog.com",
+    "POSTHOG_APP_HOST": "https://eu.posthog.com",
     "POSTHOG_INGEST_HOST": "https://eu.i.posthog.com",
 }
 
 
 def load_env(path=None):
     env = dict(DEFAULTS)
-    path = path or os.path.join(ROOT, ".env")
+    path = path or ENV_FILE
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
             for line in f:
@@ -50,7 +50,7 @@ def load_env(path=None):
 
 def need(env, key):
     if not env.get(key):
-        raise SystemExit("missing %s: set it in %s" % (key, os.path.join(ROOT, ".env")))
+        raise SystemExit("missing %s: set it in %s" % (key, ENV_FILE))
     return env[key]
 
 
@@ -83,7 +83,7 @@ def capture(event, distinct_id, properties=None, env=None):
 
 def query(hogql, env=None, name="domovoy"):
     env = env or load_env()
-    url = "%s/api/projects/%s/query/" % (env["POSTHOG_HOST"].rstrip("/"), need(env, "POSTHOG_PROJECT_ID"))
+    url = "%s/api/projects/%s/query/" % (env["POSTHOG_APP_HOST"].rstrip("/"), need(env, "POSTHOG_PROJECT_ID"))
     body = {"query": {"kind": "HogQLQuery", "query": hogql}, "name": name, "refresh": "force_blocking"}
     _, out = post(url, body, {"Authorization": "Bearer " + need(env, "POSTHOG_PERSONAL_API_KEY")}, timeout=60)
     columns = out.get("columns") or []
