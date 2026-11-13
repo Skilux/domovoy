@@ -1,18 +1,28 @@
 #!/usr/bin/env python3
-"""DOMOVOY call command: one Interested flat -> call_context -> phone server -> rechecked result -> shortlist.
+"""DOMOVOY call command: one Interested flat -> call_context -> phone server -> rechecked result -> Notion.
 
-  call.py check  --windows W [--flat ID] [--listing F]   build and validate only, contacts nobody
-  call.py run    --windows W [--flat ID] [--listing F]   post the call, poll, recheck, update the shortlist
-  call.py resume --flat ID                               fetch the result again for a call already posted
+  call.py check  --windows W [--page ID] [--listing F]   build and validate only, contacts nobody
+  call.py run    --windows W [--page ID] [--listing F]   post the call, poll, recheck, update the shortlist
+  call.py resume --page ID                               fetch the result again for a call already posted
 
 W and F are a JSON file path, "-" for stdin, or inline JSON. Output is one JSON object on stdout.
 Exit codes: 0 handled, 2 refused (nothing was contacted), 1 error.
 
-The shortlist is reached only through the module named in config "backend.module". It must offer:
-  list_flats(cfg, status) -> [{"id", "title", "url", "status"}]
-  get_flat(cfg, id)       -> {"id", "title", "url", "listing": {call_context fields} or None, "text": page text or ""}
-  set_status(cfg, id, status)
-  append(cfg, id, text)
+SHORTLIST INTERFACE. call.py reaches the shortlist only through the module named in config.json
+"backend.module" (scripts/notion.py; tests/fake_notion_backend.py is a local fake). cfg is the parsed
+config.json. The module must offer exactly these three functions:
+
+  list_pages(cfg, status) -> list of {"notion_page_id": str, "title": str, "url": str, "listing": dict}
+      Pages whose Status equals status. "listing" holds the flat's fields under the call_context names
+      (property_id, address, url, collected_at, rent, total_monthly, upfront, kauce, commission,
+      move_in_date, lease_type, missing_furniture_cost, unknowns). Unknown values are None. Extra keys
+      are passed through to the call_context. No realtor contacts in "listing".
+  set_status(cfg, notion_page_id, status) -> None
+      Sets the Status select to the given option name.
+  append(cfg, notion_page_id, text) -> None
+      Appends plain text (lines separated by "\n") to the end of the page body.
+
+Errors are raised as RuntimeError with a message for the user.
 """
 import argparse
 import datetime
@@ -29,7 +39,7 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_DIR = os.path.join(ROOT, ".state")
 MARKER = "domovoy-call: %s"
-MARKER_RE = re.compile(r"domovoy-call: ([\w.:-]+)")
+PAGE_ID = "notion_page_id"
 TYPES = {
     "string": lambda v: isinstance(v, str),
     "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
@@ -165,24 +175,20 @@ def read_json_arg(arg):
         return json.load(f)
 
 
-def find_listing(flat, listing_arg):
+def find_listing(page, listing_arg):
     if not listing_arg:
-        if isinstance(flat.get("listing"), dict):
-            return flat["listing"]
-        raise Refusal("the shortlist gave no listing fields for this flat: pass --listing with them as JSON")
+        if isinstance(page.get("listing"), dict):
+            return page["listing"]
+        raise Refusal("the shortlist gave no listing fields for this page: pass --listing with them as JSON")
     data = read_json_arg(listing_arg)
-    if isinstance(data, list):
-        wanted = (flat.get("listing") or {}).get("property_id")
-        rows = [r for r in data if isinstance(r, dict) and (wanted is None or r.get("property_id") == wanted)]
-        if len(rows) != 1:
-            raise Refusal("the listing file has %d matching records, need exactly 1" % len(rows))
-        data = rows[0]
+    if not isinstance(data, dict):
+        raise Refusal("--listing must be one JSON object with the listing fields")
     return data
 
 
-def build_context(cfg, flat, windows, listing_arg=None):
+def build_context(cfg, page, windows, listing_arg=None):
     schema = load_schema("call_context")
-    context = dict(find_listing(flat, listing_arg))
+    context = dict(find_listing(page, listing_arg))
     for key, sub in schema["properties"].items():
         if key not in context and sub.get("type") == "array":
             context[key] = []
@@ -190,7 +196,7 @@ def build_context(cfg, flat, windows, listing_arg=None):
             context[key] = None
     context.update(cfg["call_context"])
     context["budget_cap"] = budget_cap(cfg)
-    context[cfg["backend"]["id_field"]] = flat["id"]
+    context[PAGE_ID] = page[PAGE_ID]
     context["available_windows"] = windows
     errors = validate(context, schema) + check_windows(windows)
     if errors:
@@ -236,22 +242,18 @@ def handled_path():
     return os.path.join(STATE_DIR, "handled.json")
 
 
-def seen_conversations(flat):
-    seen = set(MARKER_RE.findall(flat.get("text") or ""))
-    if os.path.exists(handled_path()):
-        with open(handled_path()) as f:
-            seen |= set(json.load(f))
-    return seen
+def seen_conversations():
+    if not os.path.exists(handled_path()):
+        return set()
+    with open(handled_path()) as f:
+        return set(json.load(f))
 
 
 def remember(conversation_id):
+    seen = sorted(seen_conversations() | {conversation_id})
     os.makedirs(STATE_DIR, exist_ok=True)
-    seen = set()
-    if os.path.exists(handled_path()):
-        with open(handled_path()) as f:
-            seen = set(json.load(f))
     with open(handled_path(), "w") as f:
-        json.dump(sorted(seen | {conversation_id}), f)
+        json.dump(seen, f)
 
 
 def marker_id(conversation_id):
@@ -315,11 +317,10 @@ def comment_body(cfg, context, result, booked, reason):
     return "\n".join(lines)
 
 
-def apply_result(cfg, backend, flat_id, context, result):
-    flat = backend.get_flat(cfg, flat_id)
-    out = {"flat_id": flat["id"], "flat_url": flat.get("url"), "property_id": context["property_id"],
+def apply_result(cfg, backend, page, context, result):
+    out = {PAGE_ID: page[PAGE_ID], "page_url": page.get("url"), "property_id": context["property_id"],
            "already_handled": False, "create_event": False}
-    if result is not None and marker_id(result.get("conversation_id")) in seen_conversations(flat):
+    if result is not None and marker_id(result.get("conversation_id")) in seen_conversations():
         out.update(already_handled=True, note="this conversation_id was handled before; nothing was changed")
         return out
     if result is None:
@@ -327,10 +328,11 @@ def apply_result(cfg, backend, flat_id, context, result):
     else:
         booked, reason = recheck(context, result)
         out["conversation_id"] = result.get("conversation_id")
-        remember(marker_id(result.get("conversation_id")))
     status = cfg["statuses"]["booked" if booked else "not_booked"]
-    backend.append(cfg, flat["id"], comment_body(cfg, context, result, booked, reason))
-    backend.set_status(cfg, flat["id"], status)
+    backend.append(cfg, page[PAGE_ID], comment_body(cfg, context, result, booked, reason))
+    if result is not None:
+        remember(marker_id(result.get("conversation_id")))
+    backend.set_status(cfg, page[PAGE_ID], status)
     out.update(status=status, booked=booked, reason=reason)
     if booked:
         start = parse_time(result["viewing_start"])
@@ -339,38 +341,36 @@ def apply_result(cfg, backend, flat_id, context, result):
             "title": cal.get("event_title", "Viewing (demo): {address}").format(address=context["address"]),
             "start": start.isoformat(),
             "end": (start + datetime.timedelta(minutes=cal.get("window_minutes", 60))).isoformat(),
-            "description": "%s\n%s" % (flat.get("url") or "", clean(result["summary"])),
+            "description": "%s\n%s" % (page.get("url") or "", clean(result["summary"])),
         })
-        if hasattr(backend, "set_viewing_date"):
-            backend.set_viewing_date(cfg, flat["id"], start.isoformat())
     return out
 
 
-def state_path(flat_id):
-    return os.path.join(STATE_DIR, "flat-%s.context.json" % re.sub(r"[^\w.-]", "_", str(flat_id)))
+def state_path(page_id):
+    return os.path.join(STATE_DIR, "page-%s.json" % re.sub(r"[^\w.-]", "_", str(page_id)))
 
 
-def pick_flat(cfg, backend, flat_id):
+def pick_page(cfg, backend, page_id):
     interested = cfg["statuses"]["interested"]
-    flats = backend.list_flats(cfg, interested)
-    if not flats:
+    pages = backend.list_pages(cfg, interested)
+    if not pages:
         raise Refusal("no flat has Status = %s; nobody was contacted. Move one flat to %s first."
                       % (interested, interested))
-    if flat_id is not None:
-        flat = next((f for f in flats if str(f["id"]) == str(flat_id)), None)
-        if flat is None:
-            raise Refusal("flat %s is not in %s; nobody was contacted" % (flat_id, interested))
-        return flat
-    if len(flats) > 1:
-        raise Refusal("%d flats are in %s; ask which one and pass --flat ID: %s" % (
-            len(flats), interested, "; ".join("%s %s" % (f["id"], f["title"]) for f in flats)))
-    return flats[0]
+    if page_id is not None:
+        page = next((p for p in pages if p[PAGE_ID] == page_id), None)
+        if page is None:
+            raise Refusal("page %s is not in %s; nobody was contacted" % (page_id, interested))
+        return page
+    if len(pages) > 1:
+        raise Refusal("%d flats are in %s; ask which one and pass --page ID: %s" % (
+            len(pages), interested, "; ".join("%s %s" % (p[PAGE_ID], p.get("title")) for p in pages)))
+    return pages[0]
 
 
 def cmd_start(cfg, backend, args, post):
     windows = read_json_arg(args.windows)
-    flat = backend.get_flat(cfg, pick_flat(cfg, backend, args.flat)["id"])
-    context = build_context(cfg, flat, windows, args.listing)
+    page = pick_page(cfg, backend, args.page)
+    context = build_context(cfg, page, windows, args.listing)
     warnings = []
     if context["total_monthly"] is None:
         warnings.append("total_monthly is unknown: the recheck will end in Not booked")
@@ -378,42 +378,42 @@ def cmd_start(cfg, backend, args, post):
         warnings.append("total_monthly is over budget_cap: the recheck will end in Not booked")
     if not post:
         return {"valid": True, "posted": False, "warnings": warnings, "call_context": context}
-    seen = seen_conversations(flat)
     status, body = phone_request(cfg, "POST", "/api/call", context)
     if not 200 <= status < 300:
         raise RuntimeError("phone server refused the call_context with %s: %s; the flat stays in %s"
                            % (status, json.dumps(body)[:200], cfg["statuses"]["interested"]))
     os.makedirs(STATE_DIR, exist_ok=True)
-    with open(state_path(flat["id"]), "w") as f:
-        json.dump(context, f, indent=2)
-    backend.set_status(cfg, flat["id"], cfg["statuses"]["calling"])
-    print("call posted for flat %s, waiting for the result" % flat["id"], file=sys.stderr)
-    out = apply_result(cfg, backend, flat["id"], context, poll(cfg, context["property_id"], seen))
+    saved = {"context": context, "page": {PAGE_ID: page[PAGE_ID], "url": page.get("url")}}
+    with open(state_path(page[PAGE_ID]), "w") as f:
+        json.dump(saved, f, indent=2)
+    backend.set_status(cfg, page[PAGE_ID], cfg["statuses"]["calling"])
+    print("call posted for page %s, waiting for the result" % page[PAGE_ID], file=sys.stderr)
+    out = apply_result(cfg, backend, page, context, poll(cfg, context["property_id"], seen_conversations()))
     out["warnings"] = warnings
     return out
 
 
 def cmd_resume(cfg, backend, args):
-    if args.flat is None or not os.path.exists(state_path(args.flat)):
-        raise Refusal("resume needs --flat ID for a call posted from this machine")
-    with open(state_path(args.flat)) as f:
-        context = json.load(f)
-    result = fetch_result(cfg, context["property_id"])
+    if args.page is None or not os.path.exists(state_path(args.page)):
+        raise Refusal("resume needs --page ID for a call posted from this machine")
+    with open(state_path(args.page)) as f:
+        saved = json.load(f)
+    result = fetch_result(cfg, saved["context"]["property_id"])
     if result is None:
-        raise Refusal("the phone server has no result for %s yet" % context["property_id"])
+        raise Refusal("the phone server has no result for %s yet" % saved["context"]["property_id"])
     calling = cfg["statuses"]["calling"]
-    if marker_id(result.get("conversation_id")) not in seen_conversations(backend.get_flat(cfg, args.flat)):
-        if not any(str(f["id"]) == str(args.flat) for f in backend.list_flats(cfg, calling)):
-            raise Refusal("flat %s is not in %s; nothing was changed" % (args.flat, calling))
-    return apply_result(cfg, backend, args.flat, context, result)
+    if marker_id(result.get("conversation_id")) not in seen_conversations():
+        if not any(p[PAGE_ID] == args.page for p in backend.list_pages(cfg, calling)):
+            raise Refusal("page %s is not in %s; nothing was changed" % (args.page, calling))
+    return apply_result(cfg, backend, saved["page"], saved["context"], result)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=["check", "run", "resume"])
     parser.add_argument("--windows", help="free windows: [{start, end}] as a file, '-' or inline JSON")
-    parser.add_argument("--flat", help="shortlist id of the flat, when several are Interested")
-    parser.add_argument("--listing", help="listing record(s) as a file, '-' or inline JSON")
+    parser.add_argument("--page", help="notion_page_id of the flat, when several are Interested")
+    parser.add_argument("--listing", help="listing fields as a file, '-' or inline JSON")
     args = parser.parse_args(argv)
     try:
         cfg = load_config()

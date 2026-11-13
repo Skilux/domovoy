@@ -1,7 +1,6 @@
 {
   "backend": {
-    "module": "scripts/notion.py",
-    "id_field": "notion_page_id"
+    "module": "scripts/notion.py"
   },
   "statuses": {
     "interested": "Interested",
@@ -47,11 +46,5 @@
     "window_minutes": 60,
     "max_windows": 5,
     "event_title": "Viewing (demo): {address}"
-  },
-  "gh_test": {
-    "owner": "Skilux",
-    "repo": "Skilux/domovoy",
-    "project_number": 1,
-    "status_field": "Status"
   }
 }

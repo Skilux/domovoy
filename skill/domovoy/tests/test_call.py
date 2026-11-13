@@ -11,9 +11,8 @@ import call  # noqa: E402
 
 with open(os.path.join(HERE, "..", "config.example.json")) as f:
     CFG = json.load(f)
-with open(os.path.join(HERE, "synthetic_flat.md")) as f:
-    LISTING = json.loads(f.read().split("```json")[1].split("```")[0])
-ISSUE = {"id": "page-7", "title": "t", "url": "https://example.com/flat/7", "listing": LISTING, "text": ""}
+with open(os.path.join(HERE, "fake_notion_seed.json")) as f:
+    PAGE = dict(json.load(f)["pages"][0], notion_page_id="page-7")
 WINDOWS = [{"start": "2026-11-16T17:00:00+01:00", "end": "2026-11-16T18:00:00+01:00"},
            {"start": "2026-11-17T18:00:00+01:00", "end": "2026-11-17T19:00:00+01:00"}]
 RESULT = {"property_id": "synthetic-test-001", "conversation_id": "conv_1", "outcome": "booked",
@@ -28,7 +27,7 @@ def result(**changes):
 
 class CallTest(unittest.TestCase):
     def setUp(self):
-        self.context = call.build_context(CFG, ISSUE, WINDOWS)
+        self.context = call.build_context(CFG, PAGE, WINDOWS)
 
     def test_context_is_valid_and_complete(self):
         self.assertEqual(call.validate(self.context, call.load_schema("call_context")), [])
@@ -39,27 +38,22 @@ class CallTest(unittest.TestCase):
     def test_unknown_listing_fields_pass_through(self):
         listing = json.dumps({"property_id": "synthetic-test-001", "address": "A", "url": "u",
                               "collected_at": "t", "new_field": {"x": 1}})
-        context = call.build_context(CFG, ISSUE, WINDOWS, listing)
+        context = call.build_context(CFG, PAGE, WINDOWS, listing)
         self.assertEqual(context["new_field"], {"x": 1})
         self.assertIsNone(context["rent"])
         self.assertEqual(context["unknowns"], [])
 
-    def test_listing_picked_from_shortlist_array(self):
-        rows = json.dumps([{"property_id": "other"}, {"property_id": "synthetic-test-001", "address": "B",
-                                                       "url": "u", "collected_at": "t"}])
-        self.assertEqual(call.build_context(CFG, ISSUE, WINDOWS, rows)["address"], "B")
-
     def test_bad_context_is_refused(self):
         with self.assertRaises(call.Refusal):
-            call.build_context(CFG, ISSUE, [])
+            call.build_context(CFG, PAGE, [])
         with self.assertRaises(call.Refusal):
-            call.build_context(CFG, ISSUE, [{"start": "2026-11-16T17:00:00", "end": "2026-11-16T18:00:00"}])
+            call.build_context(CFG, PAGE, [{"start": "2026-11-16T17:00:00", "end": "2026-11-16T18:00:00"}])
         with self.assertRaises(call.Refusal):
-            call.build_context(CFG, ISSUE, WINDOWS, json.dumps([{"property_id": "wrong"}]))
+            call.build_context(CFG, PAGE, WINDOWS, json.dumps([{"property_id": "wrong"}]))
         with self.assertRaises(call.Refusal):
-            call.build_context(CFG, {"id": "p", "listing": None, "text": ""}, WINDOWS)
+            call.build_context(CFG, {"notion_page_id": "p", "listing": None}, WINDOWS)
         with self.assertRaises(call.Refusal):
-            call.build_context(dict(CFG, active_profile="none", profiles=CFG["profiles"] * 2), ISSUE, WINDOWS)
+            call.build_context(dict(CFG, active_profile="none", profiles=CFG["profiles"] * 2), PAGE, WINDOWS)
 
     def test_booked_inside_window_and_budget(self):
         self.assertEqual(call.recheck(self.context, result()), (True, None))
@@ -92,8 +86,7 @@ class CallTest(unittest.TestCase):
         self.assertIn(call.MARKER % "conv_1", body)
         for leaked in ("777", "example.com", "<!-- x", "@someone"):
             self.assertNotIn(leaked, body)
-        call.STATE_DIR = os.path.join(HERE, "no-such-dir")
-        self.assertEqual(call.seen_conversations({"text": body}), {"conv_1"})
+
 
 
 if __name__ == "__main__":
