@@ -1,6 +1,7 @@
 """Pipeline tests, offline. Sources, stage modules and the Actor platform are fakes with the contract signatures;
 the real stages are tested in their own packages. An autouse fixture refuses every socket connect."""
 
+import asyncio
 import json
 import logging
 import socket
@@ -532,7 +533,7 @@ def test_llm_defaults_follow_the_wp4_decisions():
     cfg = llm_config({}, {})
     assert cfg.model == "Qwen/Qwen3-30B-A3B-Instruct-2507"
     assert cfg.fallback_model == "deepseek-ai/DeepSeek-V4-Flash"
-    assert cfg.concurrency == 1
+    assert cfg.concurrency == 8
     assert cfg.timeout_sec == 60
     assert cfg.featherless_api_key is None and cfg.openai_api_key is None
     custom = llm_config({"llm": {"model": "m2", "concurrency": 3, "fallbackModel": "f2", "timeoutSec": 30}}, {})
@@ -649,3 +650,53 @@ async def test_every_failed_requirement_is_counted_in_rejected_by_requirement():
     summary, _ = await run_pipeline(sources, Modules(costs=costs))
     assert summary.match["rejected"] == 2
     assert summary.rejected_by_requirement == {"max_total_monthly": 2, "elevator": 2}
+
+
+async def test_each_flat_reaches_the_dataset_and_notion_while_others_are_still_extracting():
+    """Streaming: flat 1 is pushed and upserted before flat 2's extraction is allowed to finish."""
+    delivered = asyncio.Event()
+    calls: list[str] = []
+
+    async def extract(listing: Listing) -> Extraction:
+        calls.append(listing.source_id)
+        if listing.source_id == "2":
+            await delivered.wait()  # without streaming this never returns: the test times out
+        return extraction_with(rent=listing.rent)
+
+    sink_module, upserts = fake_notion()
+
+    class Sink(sink_module.NotionSink):
+        async def upsert(self, item: Any) -> UpsertResult:
+            result = await super().upsert(item)
+            delivered.set()
+            return result
+
+    sources = {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2")])}
+    modules = Modules(
+        dedup=fake_dedup(), extraction=SimpleNamespace(extract=extract), costs=fake_costs(),
+        notion=SimpleNamespace(NotionSink=Sink),
+    )
+    async with asyncio.timeout(2):
+        summary, platform = await run_pipeline(
+            sources, modules,
+            actor_input={"skipExtraction": False, "notion": {"dataSourceId": "ds"}}, environ={"NOTION_TOKEN": "t"},
+        )
+    assert sorted(calls) == ["1", "2"]
+    assert [item["property_id"] for item in platform.items] == ["p-sreality-1", "p-sreality-2"]
+    assert upserts == ["p-sreality-1", "p-sreality-2"]
+    assert summary.change == {"new": 2, "changed": 0, "unchanged": 0}
+    assert summary.match["strong"] == 2
+    assert summary.notion.created == 2
+    assert summary.extraction_providers["featherless"] == 2
+
+
+async def test_an_unexpected_error_in_one_flat_still_fails_the_run():
+    def boom(*_args: Any) -> Costs:
+        raise RuntimeError("costs bug")
+
+    extraction, _ = fake_extraction()
+    costs = fake_costs()
+    costs.compute_costs = boom
+    sources = {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2")])}
+    with pytest.raises(RuntimeError, match="costs bug"):
+        await run_pipeline(sources, Modules(extraction=extraction, costs=costs), actor_input={"skipExtraction": False})

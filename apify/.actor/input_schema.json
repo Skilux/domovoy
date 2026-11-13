@@ -65,8 +65,8 @@
         "concurrency": {
           "title": "Concurrency",
           "type": "integer",
-          "description": "Parallel extraction calls. Keep at 1: the DeepSeek fallback takes 4 slots of the Featherless plan.",
-          "default": 1,
+          "description": "Featherless concurrent units the run may hold at once. A Qwen3-30B call takes 1 unit, a DeepSeek-V4-Flash fallback call 4 (capped at this value). The plan allows 100 (GET /v1/plan).",
+          "default": 8,
           "minimum": 1
         },
         "timeoutSec": {

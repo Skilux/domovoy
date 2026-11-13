@@ -2,6 +2,7 @@
 fixture refuses socket connects. The live test runs only with DOMOVOY_LIVE=1 and -m live: it creates one page from
 the fixture, edits it the way Vladimir and Claude do, upserts again, and archives the page it created."""
 
+import asyncio
 import json
 import logging
 import os
@@ -445,3 +446,29 @@ async def test_live_create_edit_upsert_and_archive_the_fixture_page():
         async with NotionSink(token, data_source) as sink:
             archived = await _call(sink, "GET", "/pages/%s" % pid)
             assert archived["in_trash"] is True
+
+
+async def test_concurrent_upserts_share_one_throttle():
+    """The pipeline runs one task per flat on one sink: the run stays at `rate` requests per second in total."""
+    stamps: list[float] = []
+    fake = FakeNotion()
+    fake.reply("POST", "/data_sources/%s/query" % DS, no_match_query())
+    fake.reply("POST", "/pages", {"id": PAGE})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        stamps.append(time.monotonic())
+        return fake(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        sink = NotionSink(TOKEN, DS, client=client, rate=20, retry_base=0.0)
+        await asyncio.gather(*(sink.upsert(fixture_item(property_id="p-%d" % i)) for i in range(3)))
+    assert len(stamps) == 6
+    assert min(b - a for a, b in zip(stamps, stamps[1:])) >= 0.04
+
+
+async def test_a_429_pauses_every_caller_of_the_throttle():
+    throttle = Throttle(rate=1000)
+    throttle.pause(0.05)
+    start = time.monotonic()
+    await throttle.wait()
+    assert time.monotonic() - start >= 0.04

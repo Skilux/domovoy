@@ -1,10 +1,11 @@
 """Search pipeline (docs/prd/actor.md Diagram), wired in the order WP6 set.
 
-Run order: open the two dedup stores, load the property-id map, merge, extract and cost every flat, set
-cross_source from the commissions, diff against the profile state; then, for each emitted flat, evaluate,
-build the FlatItem, push it to the dataset and upsert new and changed flats (not rejected) to Notion. The
-property-id map and the profile state are saved only when every Notion write of the run succeeded, so a
-failed write is never recorded as seen.
+Run order: open the two dedup stores, load the property-id map and merge. Then every flat runs as its own task,
+as soon as its extraction is done: cost, cross_source from its own commissions, diff against the profile state,
+evaluate, build the FlatItem, push it to the dataset and upsert it to Notion when new or changed (not rejected).
+The tasks share the extractor's slot limit (llm.concurrency) and the Notion sink's throttle. The property-id map
+and the profile state are saved at the end, only when every Notion write of the run succeeded, so a failed write
+is never recorded as seen.
 
 The stages are the merged modules: dedup (WP6), costs (WP5), the Notion sink (WP7) and the extractor (WP4).
 The extractor is opened inside the Actor run by open_extractor(), because its cache is an Apify store.
@@ -17,6 +18,7 @@ import asyncio
 import hashlib
 import json
 import os
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,6 +36,7 @@ from domovoy.assemble import build_flat_item
 from domovoy.extraction import Extractor, open_apify_cache
 from domovoy.models import (
     PRAGUE,
+    Change,
     Costs,
     CrossSource,
     Evaluation,
@@ -51,7 +54,7 @@ from domovoy.sources.base import Source, SourceContext, SourceError
 
 DEFAULT_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"  # decided in #35
 DEFAULT_FALLBACK_MODEL = "deepseek-ai/DeepSeek-V4-Flash"  # Featherless; takes 4 concurrency slots
-DEFAULT_CONCURRENCY = 1
+DEFAULT_CONCURRENCY = 8  # Featherless units; the plan allows 100 (GET /v1/plan), see research/featherless.md
 DEFAULT_TIMEOUT_SEC = 60
 CONFIDENCE_THRESHOLD = 0.5  # Extractor(min_confidence=...): answers below it become unknown (open item 7)
 NO_EXTRACTION_PROMPT_VERSION = "none"
@@ -183,6 +186,7 @@ async def _collect_one(
 ) -> tuple[SourceStatus, list[Listing]]:
     ctx = SourceContext(http=http, log=log, max_listings=profile.filters.max_listings)
     collected: list[Listing] = []
+    began = time.monotonic()
     try:
         async for listing in source.collect(profile, ctx):
             collected.append(listing)
@@ -198,8 +202,9 @@ async def _collect_one(
     stats = getattr(source, "last_stats", None)
     status = status_from_stats(portal, stats, len(collected))
     log.info(
-        "source %s: %s, found %d, fetched %d, failed %d, skipped %d",
+        "source %s: %s, found %d, fetched %d, failed %d, skipped %d, in %.1f s",
         portal, status.status, status.found, status.fetched, status.failed, _stat(stats, "skipped", 0),
+        time.monotonic() - began,
     )
     return status, collected
 
@@ -288,33 +293,31 @@ def commissions_for(flat: Flat, costs: Costs) -> dict[str, int | None]:
     }
 
 
-async def analyse(
-    flats: list[Flat], extractor: Any | None, profile: SearchProfile, modules: Modules, log: Logger
-) -> list[Analysis]:
-    """Extraction for every flat, then costs. The Extractor's own gate sets the concurrency (llm.concurrency).
+async def analyse_one(
+    flat: Flat, extractor: Any | None, profile: SearchProfile, modules: Modules, log: Logger
+) -> Analysis:
+    """Extraction, then costs, for one flat. The Extractor's own slot limit sets the concurrency (llm.concurrency).
 
-    Unchanged flats are included too: cross_source needs their commissions before diff, and the extraction
-    cache makes them cheap.
+    Unchanged flats are analysed too: cross_source needs their commissions before diff, and the extraction cache
+    makes them cheap.
     """
-
-    async def extract_one(flat: Flat) -> tuple[Extraction, bool]:
-        if extractor is None:
-            return empty_extraction(), False
+    extraction, ran = empty_extraction(), False
+    if extractor is not None:
+        started = time.monotonic()
         try:
-            return await extractor.extract(flat.primary), True
+            extraction, ran = await extractor.extract(flat.primary), True
         except Exception as exc:  # the flat goes on with every field unknown
             log.warning("extraction failed for %s: %s: %s", flat.property_id, type(exc).__name__, exc)
-            return empty_extraction(), False
-
-    extracted = await asyncio.gather(*(extract_one(flat) for flat in flats))
-    analyses: list[Analysis] = []
-    for flat, (extraction, ran) in zip(flats, extracted):
-        if modules.costs is not None:
-            costs = modules.costs.compute_costs(flat.primary, extraction, profile)
         else:
-            costs = fallback_costs(flat.primary)
-        analyses.append(Analysis(extraction=extraction, ran=ran, costs=costs))
-    return analyses
+            log.info(
+                "extraction %s: %s in %.1f s (%s)",
+                flat.property_id, extraction.status, time.monotonic() - started, extraction.provider,
+            )
+    if modules.costs is not None:
+        costs = modules.costs.compute_costs(flat.primary, extraction, profile)
+    else:
+        costs = fallback_costs(flat.primary)
+    return Analysis(extraction=extraction, ran=ran, costs=costs)
 
 
 async def write_notion(sink: Any, item: FlatItem, counts: NotionCounts, log: Logger) -> None:
@@ -386,34 +389,32 @@ async def _search(
         flats = [passthrough_flat(listing) for listing in listings]  # no state I/O in the fallback
 
     extractor = None if skip_extraction else modules.extraction
-    analyses = await analyse(flats, extractor, profile, modules, log)
-
     providers = {"featherless": 0, "openai": 0, "cache": 0}
-    for analysis in analyses:
-        if analysis.ran and analysis.extraction.provider is not None:
-            providers[analysis.extraction.provider] += 1
-
-    if dedup_on:
-        flats = [
-            flat.model_copy(update={"cross_source": dd.cross_source(flat.sources, commissions_for(flat, analysis.costs))})
-            for flat, analysis in zip(flats, analyses)
-        ]
-        changes = dd.diff(flats, state)
-        if state.profile_hash != current_hash:  # the profile changed: every flat is re-evaluated
-            changes = [(flat, "changed" if change == "unchanged" else change) for flat, change in changes]
-    else:
-        changes = [(flat, "new") for flat in flats]
-
-    by_id = {flat.property_id: analysis for flat, analysis in zip(flats, analyses)}
     change_counts = {"new": 0, "changed": 0, "unchanged": 0}
     match_counts = {"strong": 0, "needs_info": 0, "rejected": 0}
     rejected_by: dict[str, int] = {}
     notion = NotionCounts()
-    for flat, change in changes:
+    final: list[Flat] = list(flats)  # each task puts its flat back with cross_source set, for record_run
+
+    async def process(index: int, flat: Flat) -> None:
+        """One flat, start to finish. The counters are plain ints: tasks share one event loop thread."""
+        analysis = await analyse_one(flat, extractor, profile, modules, log)
+        if analysis.ran and analysis.extraction.provider is not None:
+            providers[analysis.extraction.provider] += 1
+        change: Change
+        if dedup_on:
+            flat = flat.model_copy(
+                update={"cross_source": dd.cross_source(flat.sources, commissions_for(flat, analysis.costs))}
+            )
+            [(flat, change)] = dd.diff([flat], state)
+            if change == "unchanged" and state.profile_hash != current_hash:  # profile changed: re-evaluate all
+                change = "changed"
+        else:
+            change = "new"
+        final[index] = flat
         change_counts[change] += 1
         if change == "unchanged" and not include_unchanged:
-            continue
-        analysis = by_id[flat.property_id]
+            return
         if modules.costs is not None:
             evaluation = modules.costs.evaluate(flat.primary, analysis.extraction, analysis.costs, profile)
         else:
@@ -437,9 +438,18 @@ async def _search(
                 if verdict.verdict == "fail":
                     rejected_by[verdict.name] = rejected_by.get(verdict.name, 0) + 1
         await platform.push_data([item.model_dump(mode="json")])
-        delivers = change in ("new", "changed") or include_unchanged
-        if sink is not None and delivers and item.match != "rejected":
+        if sink is not None and item.match != "rejected":  # new, changed, or unchanged with includeUnchanged
             await write_notion(sink, item, notion, log)
+
+    # A TaskGroup: an unexpected error in one flat cancels the others and fails the run, as the sequential loop did.
+    # The first error is raised as itself, not wrapped in an ExceptionGroup.
+    try:
+        async with asyncio.TaskGroup() as group:
+            for index, flat in enumerate(flats):
+                group.create_task(process(index, flat))
+    except ExceptionGroup as errors:
+        raise errors.exceptions[0] from None
+    flats = final
 
     if dedup_on and flats:
         if notion.errors:
