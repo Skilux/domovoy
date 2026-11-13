@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 
 import domovoy.costs as costs_stage
@@ -533,8 +534,8 @@ def test_flatitem_assembly_matches_the_hand_built_example():
 def test_llm_defaults_follow_the_wp4_decisions():
     cfg = llm_config({}, {})
     assert cfg.model == "Qwen/Qwen3-30B-A3B-Instruct-2507"
-    assert cfg.fallback_model == "deepseek-ai/DeepSeek-V4-Flash"
-    assert cfg.concurrency == 16
+    assert cfg.fallback_model == "gpt-6-luna"
+    assert cfg.concurrency == 40
     assert cfg.timeout_sec == 20
     assert cfg.featherless_api_key is None and cfg.openai_api_key is None
     custom = llm_config({"llm": {"model": "m2", "concurrency": 3, "fallbackModel": "f2", "timeoutSec": 30}}, {})
@@ -829,3 +830,85 @@ async def test_sources_run_concurrently_and_keep_profile_order():
     assert [s.portal for s in statuses] == list(search.filters.sources)
     assert [listing.portal for listing in listings] == ["sreality", "bezrealitky", "idnes"]
     assert all(s.status == "ok" for s in statuses)
+
+
+async def test_final_provider_expiry_is_delivered_as_timeout_and_the_next_run_upserts_the_fees():
+    """Review perf2 #2, end to end with the real Extractor, dedup and costs: run 1, Qwen spends the flat's budget and
+    the final provider (luna) times out, so the flat is delivered with status timeout and the note, and its state is
+    pending. Run 2: Qwen answers; the flat counts as changed and is upserted with the extracted services."""
+    from openai import APITimeoutError
+
+    from domovoy.extraction import Extractor, MemoryCache
+
+    request = httpx.Request("POST", "https://example.invalid/v1/chat/completions")
+    quote = "services 2 000 CZK per month"
+    charge = {"czk": 2000, "rent_multiple": None, "per_person": False, "included": False, "vat_extra": None}
+    answer = json.dumps({"services": {"value": charge, "quote": quote, "confidence": 0.9}})
+
+    def reply(content: str) -> Any:
+        message = SimpleNamespace(content=content, refusal=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")], usage=None)
+
+    class Qwen:
+        def __init__(self, delay: float) -> None:
+            self.delay = delay
+
+        async def create(self, **kwargs: Any) -> Any:
+            await asyncio.sleep(self.delay)
+            return reply(answer)
+
+    class Luna:
+        async def create(self, **kwargs: Any) -> Any:
+            raise APITimeoutError(request=request)
+
+    def client(completions: Any) -> Any:
+        return SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+    items: list[Any] = []
+
+    class Sink:
+        def __init__(self, *, token: str, data_source_id: str) -> None:
+            pass
+
+        async def validate(self) -> None:
+            return None
+
+        async def aclose(self) -> None:
+            return None
+
+        async def upsert(self, item: Any) -> UpsertResult:
+            items.append(item)
+            return UpsertResult(page_id="page-" + item.property_id, action="created" if len(items) == 1 else "updated")
+
+    def evaluate(listing: Listing, ex: Extraction, costs: Costs, p: SearchProfile) -> Evaluation:
+        evaluation = costs_stage.evaluate(listing, ex, costs, p)
+        return evaluation.model_copy(update={"match": "needs_info"})  # never rejected, so Notion sees it
+
+    costs = SimpleNamespace(compute_costs=costs_stage.compute_costs, evaluate=evaluate)
+    cache = MemoryCache()
+    platform = FakePlatform()
+    run = {"skipExtraction": False, "notion": {"dataSourceId": "ds"}}
+    sources = {"sreality": FakeSource("sreality", [make_listing("1")])}
+
+    async def run_with(qwen: Any, luna: Any) -> Any:
+        extractor = Extractor(llm_config({}, {}), cache, featherless=client(qwen), openai=client(luna),
+                              flat_budget_sec=0.05)
+        modules = Modules(dedup=dedup_stage, extraction=extractor, costs=costs, notion=SimpleNamespace(NotionSink=Sink))
+        summary, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform,
+                                        environ={"NOTION_TOKEN": "t"})
+        return summary
+
+    first = await run_with(Qwen(0.5), Luna())
+    [item] = items
+    assert item.extraction.status == "timeout" and "fees not extracted yet" in item.unknowns
+    assert item.services is None
+    assert first.change["new"] == 1 and first.notion.created == 1
+    assert cache._items == {}
+
+    second = await run_with(Qwen(0.0), Luna())
+    assert second.change == {"new": 0, "changed": 1, "unchanged": 0}
+    assert second.notion.updated == 1
+    updated = items[1]
+    assert updated.extraction.status in ("ok", "partial") and updated.extraction.provider == "featherless"
+    assert updated.services == 2000
+    assert "fees not extracted yet" not in updated.unknowns

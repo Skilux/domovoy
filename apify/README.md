@@ -19,11 +19,10 @@ The stages are imported directly from their merged packages; there is no fallbac
 For each listing, in order:
 
 1. The cache (`domovoy-extraction-cache`, keyed by listing text, model and prompt version).
-2. Featherless, the primary model `llm.model` (Qwen), two attempts.
-3. Featherless, the fallback model `llm.fallbackModel` (DeepSeek-V4-Flash), one attempt.
-4. OpenAI `gpt-4o-mini`, a last resort set in code, one attempt. It runs only when an OpenAI key is set.
+2. Featherless, the primary model `llm.model` (Qwen), two attempts, within the per-flat budget.
+3. OpenAI, the fallback model `llm.fallbackModel` (`gpt-6-luna` at reasoning effort medium), one attempt. It is the only fallback and runs only when an OpenAI key is set.
 
-An answer whose confidence is below 0.5 becomes unknown. `llm.concurrency` is the number of Featherless concurrent units the run may hold, 16 by default (the plan allows 100): a Qwen call takes 1, a DeepSeek fallback call 4 (below 4 the fallback is left out of the chain). A 429 is waited out with backoff. Each attempt times out after `llm.timeoutSec` (20 s). Each flat has `llm.flatBudgetSec` (45 s) from its first call; when that runs out, the flat goes on with extraction `status` `timeout`, every field unknown and "fees not extracted yet" in its unknowns. Nothing is cached for it, and its profile state is recorded as pending, so the next Notion run extracts it again and delivers it as `changed`. Every failed attempt is logged with its reason class (for example `truncated` or `schema:kauce.value.rent_multiple`), never the content. See `research/featherless.md`. The extractor is opened in `__main__` inside the Actor run and closed after it.
+An answer whose confidence is below 0.5 becomes unknown. `llm.concurrency` is the number of Featherless concurrent units the run may hold, 40 by default (the plan allows 100): a Qwen call takes 1; OpenAI calls take none and have their own limit of 8. A 429 is waited out with backoff. Each Qwen attempt times out after `llm.timeoutSec` (20 s); the fallback gets at least 30 s. Each flat has `llm.flatBudgetSec` (45 s) of Qwen request time; waiting for a slot does not count. When a flat has no answer and the chain ran out of time, it goes on with extraction `status` `timeout`, every field unknown and "fees not extracted yet" in its unknowns. Nothing is cached for it, and its profile state is recorded as pending, so the next Notion run extracts it again and delivers it as `changed`. Every failed attempt is logged with its reason class (for example `truncated` or `schema:kauce.value.rent_multiple`), never the content. See `research/featherless.md`. The extractor is opened in `__main__` inside the Actor run and closed after it.
 
 ## Run order
 

@@ -1,6 +1,7 @@
 """Extraction tests. Offline by default with fake clients; `-m live` calls Featherless and OpenAI."""
 
 import asyncio
+import importlib
 import hashlib
 import json
 import logging
@@ -17,7 +18,6 @@ from domovoy.extraction import (
     DEFAULT_MIN_CONFIDENCE,
     DEFAULT_FALLBACK_MODEL,
     DEFAULT_MODEL,
-    DEFAULT_OPENAI_MODEL,
     PROMPT_VERSION,
     Extractor,
     MemoryCache,
@@ -25,6 +25,7 @@ from domovoy.extraction import (
     extract,
 )
 from domovoy.extraction.extract import EVIDENCE_FIELDS, is_verbatim
+extract_module = importlib.import_module("domovoy.extraction.extract")
 import domovoy.extraction.llm as llm_module
 from domovoy.extraction.llm import LlmFields, SlotLimiter, failure_reason, slot_cost
 from domovoy.extraction.prompt import listing_input
@@ -143,8 +144,7 @@ async def run_one(
 
 async def test_default_models_are_the_chosen_chain() -> None:
     assert DEFAULT_MODEL == "Qwen/Qwen3-30B-A3B-Instruct-2507"  # issue #35
-    assert DEFAULT_FALLBACK_MODEL == "deepseek-ai/DeepSeek-V4-Flash"
-    assert DEFAULT_OPENAI_MODEL == "gpt-4o-mini"
+    assert DEFAULT_FALLBACK_MODEL == "gpt-6-luna"  # perf2 amendment: OpenAI, the only fallback
 
 
 def test_llm_fields_match_the_extraction_evidence_fields() -> None:
@@ -208,26 +208,29 @@ async def test_schema_violation_also_gets_the_repair_call() -> None:
     assert result.provider == "featherless" and len(calls.calls) == 2
 
 
-async def test_invalid_answers_from_both_featherless_models_fall_back_to_openai() -> None:
-    featherless, f_calls = fake_client("{", "{", "{")
+async def test_invalid_qwen_answers_fall_back_to_luna_at_medium_reasoning_effort() -> None:
+    featherless, f_calls = fake_client("{", "{")
     openai, o_calls = fake_client(answer(rent=field(28000, RENT_QUOTE)))
     result = await run_one(make_listing(DESCRIPTION, rent=28000), featherless, openai)
-    assert (result.provider, result.model) == ("openai", DEFAULT_OPENAI_MODEL)
-    assert [call["model"] for call in f_calls.calls] == [DEFAULT_MODEL, DEFAULT_MODEL, DEFAULT_FALLBACK_MODEL]
-    assert len(o_calls.calls) == 1
+    assert (result.provider, result.model) == ("openai", DEFAULT_FALLBACK_MODEL)
+    assert [call["model"] for call in f_calls.calls] == [DEFAULT_MODEL, DEFAULT_MODEL]
+    [sent] = o_calls.calls
+    assert sent["model"] == "gpt-6-luna" and sent["reasoning_effort"] == "medium"
+    assert "temperature" not in sent and "max_tokens" not in sent and sent["max_completion_tokens"] >= 4096
+    assert sent["response_format"] == {"type": "json_object"}
 
 
 async def test_timeouts_retry_the_primary_once_then_fall_through_the_chain() -> None:
-    featherless, f_calls = fake_client(*[APITimeoutError(request=REQUEST) for _ in range(3)])
+    featherless, f_calls = fake_client(*[APITimeoutError(request=REQUEST) for _ in range(2)])
     openai, o_calls = fake_client(answer())
     result = await run_one(make_listing(DESCRIPTION), featherless, openai)
     assert result.provider == "openai" and result.status == "ok"
-    assert len(f_calls.calls) == 3 and len(o_calls.calls) == 1
+    assert len(f_calls.calls) == 2 and len(o_calls.calls) == 1
 
 
 async def test_answer_missing_its_opening_brace_is_still_read() -> None:
     full = answer(rent=field(28000, RENT_QUOTE))
-    client, calls = fake_client(full[1:])  # DeepSeek-V4-Flash sometimes drops the opening brace
+    client, calls = fake_client(full[1:])  # DeepSeek-V4-Flash dropped the opening brace; kept as a safety net
     result = await run_one(make_listing(DESCRIPTION, rent=28000), client)
     assert result.provider == "featherless" and result.rent.verified is True
     assert len(calls.calls) == 1
@@ -240,28 +243,24 @@ async def test_connection_error_is_retried_and_can_succeed_on_featherless() -> N
 
 
 async def test_both_providers_failing_gives_failed_status_without_raising() -> None:
-    featherless, _ = fake_client(*[APITimeoutError(request=REQUEST) for _ in range(3)])
+    featherless, _ = fake_client(*[APIConnectionError(request=REQUEST) for _ in range(2)])
     openai, _ = fake_client(APIConnectionError(request=REQUEST))
     result = await run_one(make_listing(DESCRIPTION), featherless, openai)
     assert result.status == "failed" and result.provider is None and result.model is None
     assert all(getattr(result, name).value is None for name in EVIDENCE_FIELDS)
 
 
-async def test_without_a_featherless_fallback_model_the_chain_goes_to_openai() -> None:
-    featherless, f_calls = fake_client(APITimeoutError(request=REQUEST), APITimeoutError(request=REQUEST))
-    openai, o_calls = fake_client(answer())
-    result = await run_one(make_listing(DESCRIPTION), featherless, openai, cfg=make_cfg(fallback_model=None))
-    assert result.provider == "openai" and len(f_calls.calls) == 2 and len(o_calls.calls) == 1
+async def test_a_chain_that_runs_out_of_time_gives_timeout_not_failed() -> None:
+    featherless, _ = fake_client(*[APITimeoutError(request=REQUEST) for _ in range(2)])
+    openai, _ = fake_client(APIConnectionError(request=REQUEST))
+    result = await run_one(make_listing(DESCRIPTION), featherless, openai)
+    assert result.status == "timeout" and result.provider is None
 
 
-async def test_fallback_model_answers_when_the_primary_model_fails() -> None:
-    featherless, f_calls = fake_client(
-        APITimeoutError(request=REQUEST), APITimeoutError(request=REQUEST), answer(rent=field(28000, RENT_QUOTE))
-    )
-    result = await run_one(make_listing(DESCRIPTION, rent=28000), featherless)
-    assert (result.provider, result.model) == ("featherless", DEFAULT_FALLBACK_MODEL)
-    assert [call["model"] for call in f_calls.calls] == [DEFAULT_MODEL, DEFAULT_MODEL, DEFAULT_FALLBACK_MODEL]
-    assert result.rent.verified is True
+async def test_without_a_fallback_model_openai_is_not_called() -> None:
+    featherless, f_calls = fake_client(APIConnectionError(request=REQUEST), APIConnectionError(request=REQUEST))
+    result = await run_one(make_listing(DESCRIPTION), featherless, silent_client(), cfg=make_cfg(fallback_model=None))
+    assert result.status == "failed" and len(f_calls.calls) == 2
 
 
 async def test_quote_missing_from_the_text_is_unverified_and_dropped() -> None:
@@ -448,22 +447,6 @@ async def test_live_fixture_text_gives_verified_quotes_from_featherless(path: Pa
 
 
 @pytest.mark.live
-async def test_live_primary_failure_falls_back_to_deepseek_on_featherless() -> None:
-    # An unknown model id gives a 404 from Featherless without tokens being used; the chain then goes to DeepSeek.
-    misspelled = "Qwen/Qwen3-30B-A3B-Instruct-2507-no-such-model"
-    extractor = Extractor(
-        LlmConfig(model=misspelled, fallback_model=DEFAULT_FALLBACK_MODEL),
-        openai=silent_client(),
-    )
-    try:
-        result = await extractor.extract(load_fixture(sorted(FIXTURE_DIR.glob("*.json"))[0]))
-    finally:
-        await extractor.aclose()
-    assert result.provider == "featherless", f"DeepSeek did not answer (status {result.status})"
-    assert result.model == DEFAULT_FALLBACK_MODEL
-
-
-@pytest.mark.live
 async def test_live_forced_featherless_failure_falls_back_to_openai() -> None:
     broken = AsyncOpenAI(
         api_key="placeholder",
@@ -478,10 +461,14 @@ async def test_live_forced_featherless_failure_falls_back_to_openai() -> None:
         await extractor.aclose()
         await broken.close()
     assert result.provider == "openai"
-    assert result.model == DEFAULT_OPENAI_MODEL
+    assert result.model == DEFAULT_FALLBACK_MODEL
 
 
 # Slot limiter, 429 backoff and failure reasons (perf)
+
+
+def client_of(completions: Any) -> AsyncOpenAI:
+    return cast(AsyncOpenAI, SimpleNamespace(chat=SimpleNamespace(completions=completions)))
 
 
 def rate_limited() -> RateLimitError:
@@ -556,71 +543,44 @@ async def test_slot_limiter_refuses_a_cost_above_capacity_and_frees_slots_on_can
         assert limiter.used == 1
 
 
-async def test_at_capacity_2_the_4_unit_fallback_is_left_out_and_real_units_stay_within_2(
+async def test_a_primary_model_heavier_than_llm_concurrency_is_left_out_and_never_undercounted(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.WARNING)
-    held = {DEFAULT_MODEL: 1, DEFAULT_FALLBACK_MODEL: 4}
-
-    class Units:
-        def __init__(self) -> None:
-            self.used = 0
-            self.peak = 0
-            self.models: list[str] = []
-
-        async def create(self, **kwargs: Any) -> Any:
-            self.models.append(kwargs["model"])
-            self.used += held[kwargs["model"]]
-            self.peak = max(self.peak, self.used)
-            await asyncio.sleep(0.01)
-            self.used -= held[kwargs["model"]]
-            if "fails" in kwargs["messages"][1]["content"]:
-                return completion("not json")
-            return completion(answer())
-
-    units = Units()
-    featherless = cast(AsyncOpenAI, SimpleNamespace(chat=SimpleNamespace(completions=units)))
-    openai, openai_calls = scripted(completion(answer()), completion(answer()))
-    extractor = Extractor(make_cfg(concurrency=2), featherless=featherless, openai=openai)
-    listings = [make_listing("Listing %d%s." % (i, " fails" if i < 2 else ""), source_id=str(i)) for i in range(6)]
-    results = await asyncio.gather(*(extractor.extract(item) for item in listings))
-    assert units.peak <= 2
-    assert DEFAULT_FALLBACK_MODEL not in units.models
-    assert [r.provider for r in results].count("openai") == 2 and len(openai_calls.calls) == 2
+    openai, o_calls = scripted(completion(answer()))
+    cfg = make_cfg(model="some/large-model", concurrency=2)  # unknown model: 4 units, more than 2
+    result = await run_one(make_listing(DESCRIPTION), silent_client(), openai, cfg=cfg)
+    assert result.provider == "openai" and len(o_calls.calls) == 1
     assert "left out of the chain" in caplog.text
 
 
 def test_slot_costs_follow_the_featherless_models_api() -> None:
     assert slot_cost(DEFAULT_MODEL) == 1
-    assert slot_cost(DEFAULT_FALLBACK_MODEL) == 4
     assert slot_cost("some/unknown-model") == 4
 
 
-async def test_the_deepseek_fallback_holds_four_slots_and_never_overlaps_past_the_limit() -> None:
-    held = {DEFAULT_MODEL: 1, DEFAULT_FALLBACK_MODEL: 4}
+async def test_openai_fallback_calls_hold_no_featherless_units() -> None:
+    """At 1 Featherless unit, a slow luna fallback for flat A does not block Qwen for flat B."""
+    luna_started = asyncio.Event()
 
-    class Units:
-        def __init__(self) -> None:
-            self.used = 0
-            self.peak = 0
-
+    class Qwen:
         async def create(self, **kwargs: Any) -> Any:
-            self.used += held[kwargs["model"]]
-            self.peak = max(self.peak, self.used)
-            await asyncio.sleep(0.01)
-            self.used -= held[kwargs["model"]]
-            if kwargs["model"] == DEFAULT_MODEL and "fails" in kwargs["messages"][1]["content"]:
+            if "Flat A" in kwargs["messages"][1]["content"]:
                 return completion("not json")
+            await asyncio.wait_for(luna_started.wait(), 1)  # needs A's luna call to be in flight already
             return completion(answer())
 
-    units = Units()
-    client = cast(AsyncOpenAI, SimpleNamespace(chat=SimpleNamespace(completions=units)))
-    extractor = Extractor(make_cfg(concurrency=4), featherless=client, openai=silent_client())
-    listings = [make_listing("Listing %d%s." % (i, " fails" if i % 3 == 0 else ""), source_id=str(i))
-                for i in range(9)]
-    results = await asyncio.gather(*(extractor.extract(item) for item in listings))
-    assert units.peak == 4
-    assert {r.model for r in results} == {DEFAULT_MODEL, DEFAULT_FALLBACK_MODEL}
+    class Luna:
+        async def create(self, **kwargs: Any) -> Any:
+            luna_started.set()
+            await asyncio.sleep(0.05)
+            return completion(answer())
+
+    extractor = Extractor(make_cfg(concurrency=1), featherless=client_of(Qwen()), openai=client_of(Luna()))
+    a, b = await asyncio.gather(
+        extractor.extract(make_listing("Flat A.", source_id="a")), extractor.extract(make_listing("Flat B.", source_id="b"))
+    )
+    assert (a.provider, b.provider) == ("openai", "featherless")
 
 
 async def test_a_429_is_waited_out_without_using_an_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -705,23 +665,90 @@ class SlowCompletions:
 
 async def test_a_flat_over_its_budget_gets_status_timeout_and_nothing_is_cached() -> None:
     slow = SlowCompletions(0.5)
-    client = cast(AsyncOpenAI, SimpleNamespace(chat=SimpleNamespace(completions=slow)))
     cache = MemoryCache()
-    openai, openai_calls = scripted()
-    extractor = Extractor(make_cfg(), cache, featherless=client, openai=openai, flat_budget_sec=0.1)
+    extractor = Extractor(make_cfg(fallback_model=None), cache, featherless=client_of(slow), openai=silent_client(),
+                          flat_budget_sec=0.1)
     started = asyncio.get_running_loop().time()
     result = await extractor.extract(make_listing(DESCRIPTION, rent=28000))
     assert asyncio.get_running_loop().time() - started < 0.4  # cut at the budget, not after the slow answer
     assert result.status == "timeout" and result.provider is None
     assert all(getattr(result, name).value is None for name in EVIDENCE_FIELDS)
-    assert slow.calls == 1 and openai_calls.calls == []  # the rest of the chain is not tried
+    assert slow.calls == 1  # the budget is spent: no retry
     assert await cache.get(cache_key(listing_input(make_listing(DESCRIPTION, rent=28000)), DEFAULT_MODEL)) is None
 
 
-async def test_the_budget_starts_at_the_first_call_so_queueing_does_not_count() -> None:
+async def test_qwen_over_its_budget_falls_back_to_luna() -> None:
+    openai, _ = scripted(completion(answer(rent=field(28000, RENT_QUOTE))))
+    extractor = Extractor(make_cfg(), featherless=client_of(SlowCompletions(0.5)), openai=openai, flat_budget_sec=0.05)
+    result = await extractor.extract(make_listing(DESCRIPTION, rent=28000))
+    assert (result.provider, result.model, result.status) == ("openai", DEFAULT_FALLBACK_MODEL, "ok")
+
+
+async def test_final_provider_expiry_after_qwen_ran_out_is_timeout_not_failed() -> None:
+    """Review perf2 #2: Qwen spends the budget, then the final provider (luna) times out: status timeout."""
+    openai, _ = scripted(APITimeoutError(request=REQUEST))
+    cache = MemoryCache()
+    extractor = Extractor(make_cfg(), cache, featherless=client_of(SlowCompletions(0.5)), openai=openai,
+                          flat_budget_sec=0.05)
+    result = await extractor.extract(make_listing(DESCRIPTION, rent=28000))
+    assert result.status == "timeout"
+    assert await cache.get(cache_key(listing_input(make_listing(DESCRIPTION, rent=28000)), DEFAULT_MODEL)) is None
+
+
+async def test_the_budget_counts_request_time_only_so_queueing_does_not_count() -> None:
     slow = SlowCompletions(0.05)
-    client = cast(AsyncOpenAI, SimpleNamespace(chat=SimpleNamespace(completions=slow)))
-    extractor = Extractor(make_cfg(concurrency=1), featherless=client, openai=silent_client(), flat_budget_sec=0.08)
+    extractor = Extractor(make_cfg(concurrency=1), featherless=client_of(slow), openai=silent_client(),
+                          flat_budget_sec=0.08)
     listings = [make_listing(DESCRIPTION, rent=28000, source_id=str(i)) for i in range(4)]
     results = await asyncio.gather(*(extractor.extract(item) for item in listings))
     assert [r.status for r in results] == ["ok"] * 4  # the fourth waited 0.15 s in the queue, over its budget
+
+
+async def test_waiting_for_a_slot_between_attempts_does_not_spend_the_budget() -> None:
+    """Review perf2 #1: flat A's first answer is invalid; flats B1 to B3 (0.03 s each, within their own budget) then
+    hold the only unit for about 0.09 s, longer than the 0.04 s A has left. A's retry is still sent, and answers."""
+    a_first_done = asyncio.Event()
+
+    class Contended:
+        def __init__(self) -> None:
+            self.a_calls = 0
+
+        async def create(self, **kwargs: Any) -> Any:
+            if "Flat A" in kwargs["messages"][1]["content"]:
+                self.a_calls += 1
+                if self.a_calls == 1:
+                    a_first_done.set()
+                    await asyncio.sleep(0.01)  # B queues for the unit meanwhile
+                    return completion("not json")
+                return completion(answer())
+            await asyncio.sleep(0.03)  # a B flat holds the unit while A waits to retry
+            return completion(answer())
+
+    contended = Contended()
+    extractor = Extractor(make_cfg(concurrency=1), featherless=client_of(contended), openai=silent_client(),
+                          flat_budget_sec=0.05)
+
+    async def flat_b(n: int) -> Extraction:
+        await a_first_done.wait()
+        return await extractor.extract(make_listing("Flat B%d." % n, source_id="b%d" % n))
+
+    a, *bs = await asyncio.gather(extractor.extract(make_listing("Flat A.", source_id="a")), *(flat_b(n) for n in range(3)))
+    assert contended.a_calls == 2
+    assert (a.status, a.provider) == ("ok", "featherless")
+    assert [b.status for b in bs] == ["ok"] * 3
+
+
+async def test_waiting_for_the_fallback_slot_does_not_spend_the_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Flats A and B both fail on Qwen quickly; one OpenAI slot; B's luna call waits behind A's 0.2 s one, longer
+    than the 0.05 s budget. Both still get luna's answer."""
+    monkeypatch.setattr(extract_module, "OPENAI_CONCURRENCY", 1)
+
+    class Luna:
+        async def create(self, **kwargs: Any) -> Any:
+            await asyncio.sleep(0.2)
+            return completion(answer())
+
+    featherless, _ = fake_client("{", "{", "{", "{")
+    extractor = Extractor(make_cfg(), featherless=featherless, openai=client_of(Luna()), flat_budget_sec=0.05)
+    results = await asyncio.gather(*(extractor.extract(make_listing("Flat %s." % n, source_id=n)) for n in "ab"))
+    assert [(r.provider, r.status) for r in results] == [("openai", "ok"), ("openai", "ok")]

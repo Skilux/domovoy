@@ -54,8 +54,8 @@ from domovoy.models import (
 from domovoy.sources.base import Source, SourceContext, SourceError
 
 DEFAULT_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"  # decided in #35
-DEFAULT_FALLBACK_MODEL = "deepseek-ai/DeepSeek-V4-Flash"  # Featherless; takes 4 concurrency slots
-DEFAULT_CONCURRENCY = 16  # Featherless units; the plan allows 100 (GET /v1/plan), see research/featherless.md
+DEFAULT_FALLBACK_MODEL = "gpt-6-luna"  # OpenAI, reasoning effort medium; the only fallback (perf2 amendment)
+DEFAULT_CONCURRENCY = 40  # Featherless units; the plan allows 100 (GET /v1/plan), see research/featherless.md
 DEFAULT_TIMEOUT_SEC = 20  # per attempt: answers take 7 to 12 s, a cold first call 5 to 15 s
 DEFAULT_FLAT_BUDGET_SEC = 45  # per flat, from its first call; then status "timeout" and the flat goes on
 TIMEOUT_UNKNOWN = "fees not extracted yet"

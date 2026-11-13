@@ -17,7 +17,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Literal
 
-from openai import APIError, APIStatusError, AsyncOpenAI, RateLimitError
+from openai import APIError, APIStatusError, APITimeoutError, AsyncOpenAI, RateLimitError
 from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError, model_validator
 
 from domovoy.extraction.prompt import SYSTEM_PROMPT
@@ -34,15 +34,17 @@ from domovoy.models import (
 
 # Chosen by Vladimir in GitHub issue #35. See apify/research/featherless.md.
 DEFAULT_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"
-# First fallback, on Featherless. The models API lists its concurrency_cost as 4 (Qwen: 1).
-DEFAULT_FALLBACK_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
-# Last resort, on OpenAI. Not a decision by Vladimir: the model that answered on this account in the live test.
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+# The only fallback, on OpenAI, at reasoning effort medium (Vladimir, perf2 amendment). Id from GET /v1/models.
+DEFAULT_FALLBACK_MODEL = "gpt-6-luna"
+FALLBACK_REASONING_EFFORT = "medium"
+FALLBACK_MIN_TIMEOUT_SEC = 30  # luna answered in 7.6 to 9.9 s on the fixtures; reasoning time varies more
+FALLBACK_MAX_TOKENS = 8192  # reasoning tokens count against max_completion_tokens (373 to 630 seen)
+OPENAI_CONCURRENCY = 8  # OpenAI calls in flight at once; they hold no Featherless units
 FEATHERLESS_BASE_URL = "https://api.featherless.ai/v1"
 ENV_FILE = Path("/Users/vladimir/.config/domovoy/.env")
 MAX_TOKENS = 2048
 # Featherless concurrent units per call (GET /v1/models, concurrency_cost). A model not listed here counts as 4.
-MODEL_SLOTS = {DEFAULT_MODEL: 1, DEFAULT_FALLBACK_MODEL: 4}
+MODEL_SLOTS = {DEFAULT_MODEL: 1}
 RATE_LIMIT_RETRIES = 5
 RATE_LIMIT_BASE_WAIT = 1.0
 RATE_LIMIT_MAX_WAIT = 30.0
@@ -117,7 +119,7 @@ def _whole_charge(charge: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parse_answer(content: str) -> LlmFields:
-    """Parse one answer. DeepSeek-V4-Flash on Featherless sometimes drops the opening brace, so it is put back.
+    """Parse one answer. Some models drop the opening brace (DeepSeek-V4-Flash did), so it is put back.
 
     Only that shape is repaired. The quotes are still checked against the text, so nothing unverified gets through.
     """
@@ -158,7 +160,7 @@ def make_client(api_key: str, base_url: str | None, timeout_sec: int) -> AsyncOp
 class SlotLimiter:
     """A weighted, first-come-first-served limit on Featherless concurrent units.
 
-    A call holds `cost` slots of `capacity` while it is in flight (Qwen3-30B 1, DeepSeek-V4-Flash 4). A cost is never
+    A call holds `cost` slots of `capacity` while it is in flight (Qwen3-30B 1; larger models up to 4). A cost is never
     lowered: a cost above the capacity is refused, and the Extractor leaves such a model out of its chain. Waiters
     are served in order: a 4-slot fallback is not starved by a stream of 1-slot calls behind it.
     """
@@ -237,30 +239,22 @@ def failure_reason(exc: BaseException) -> str:
     return "transport:" + type(exc).__name__
 
 
-class BudgetExceeded(Exception):
-    """The flat's extraction budget ran out. The Extractor turns it into status "timeout"; nothing is cached."""
-
-
 class FlatBudget:
-    """Wall time one flat may spend on model calls (llm.flatBudgetSec). The clock starts when the flat's first call
-    holds its slots, so time queued behind other flats does not count. None: no budget."""
+    """Model-request time one flat may spend on its budgeted calls (llm.flatBudgetSec). Only time inside requests
+    counts: waiting for slots, before the first call or between attempts, and 429 back-off are free. seconds None:
+    no budget. timed_out records that an attempt of this flat ended on time (budget or per-attempt timeout)."""
 
     def __init__(self, seconds: float | None) -> None:
         self.seconds = seconds
-        self._deadline: float | None = None
-
-    def start(self) -> None:
-        if self.seconds is not None and self._deadline is None:
-            self._deadline = time.monotonic() + self.seconds
+        self.used = 0.0
+        self.timed_out = False
 
     def remaining(self) -> float | None:
-        """Seconds left, or None while the clock has not started (or there is no budget)."""
-        return None if self._deadline is None else self._deadline - time.monotonic()
+        return None if self.seconds is None else self.seconds - self.used
 
-    def check(self) -> None:
+    def spent(self) -> bool:
         left = self.remaining()
-        if left is not None and left <= 0:
-            raise BudgetExceeded()
+        return left is not None and left <= 0
 
 
 class InvalidAnswer(ValueError):
@@ -316,55 +310,71 @@ async def ask(
     *,
     model: str,
     user_text: str,
-    timeout_sec: int,
+    timeout_sec: float,
     gate: SlotLimiter,
     attempts: int,
     cost: int = 1,
     budget: FlatBudget | None = None,
+    budgeted: bool = True,
+    reasoning_effort: str | None = None,
 ) -> LlmFields | None:
-    """One model's answer, or None once its attempts are used up.
+    """One model's answer, or None once its attempts (or, when budgeted, the flat's budget) are used up.
 
     attempts=2 is one attempt and one retry: a transport error is retried as it was sent, and an invalid answer
     is retried with a repair message. A 429 (Featherless concurrent units or model switch) is waited out with
     backoff, outside the slots and without using an attempt, up to RATE_LIMIT_RETRIES times per call.
     Every failure is logged with its reason class only (failure_reason, InvalidAnswer), never the content.
-    With a budget, each attempt (slot wait included) is cut at the time left; once it is spent, BudgetExceeded.
+    budgeted: each request is cut at the budget's time left and its duration is charged to it; slot waits are not.
+    Any attempt that ends on time sets budget.timed_out, budgeted or not.
+    reasoning_effort: for an OpenAI reasoning model (no temperature; max_completion_tokens).
     """
     budget = budget if budget is not None else FlatBudget(None)
     messages: list[dict[str, str]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_text},
     ]
+    if reasoning_effort is None:
+        options: dict[str, Any] = {"temperature": 0, "max_tokens": MAX_TOKENS}
+    else:
+        options = {"reasoning_effort": reasoning_effort, "max_completion_tokens": FALLBACK_MAX_TOKENS}
     attempt = 0
     rate_limited = 0
     while attempt < attempts:
-        budget.check()
+        if budgeted and budget.spent():
+            budget.timed_out = True
+            log.warning("%s: the flat's extraction budget is spent after %d attempt(s)", model, attempt)
+            return None
         attempt += 1
         try:
-            async with asyncio.timeout(budget.remaining()):  # the slot wait counts once the flat's clock runs
-                async with gate.slots(cost):
-                    budget.start()
-                    left = budget.remaining()
+            async with gate.slots(cost):  # waiting here is not charged to the budget
+                left = budget.remaining() if budgeted else None
+                started = time.monotonic()
+                try:
                     async with asyncio.timeout(timeout_sec if left is None else min(timeout_sec, left)):
                         response = await client.chat.completions.create(
                             model=model,
                             messages=messages,
-                            temperature=0,
-                            max_tokens=MAX_TOKENS,
                             response_format={"type": "json_object"},
+                            **options,
                         )
+                finally:
+                    if budgeted:
+                        budget.used += time.monotonic() - started
         except RateLimitError as exc:
             if rate_limited < RATE_LIMIT_RETRIES:
                 wait = _retry_after(exc, rate_limited)
                 rate_limited += 1
                 attempt -= 1  # a 429 is the plan saying "not now", not a failed attempt
                 log.warning("%s: HTTP 429, waiting %.1f s (%d of %d)", model, wait, rate_limited, RATE_LIMIT_RETRIES)
-                left = budget.remaining()
-                await asyncio.sleep(wait if left is None else max(0.0, min(wait, left)))
+                await asyncio.sleep(wait)
                 continue
             log.warning("%s attempt %d failed: http_429, retries for 429 used up", model, attempt)
             continue
-        except (APIError, TimeoutError) as exc:
+        except (APITimeoutError, TimeoutError) as exc:
+            budget.timed_out = True
+            log.warning("%s attempt %d failed: %s", model, attempt, failure_reason(exc))
+            continue
+        except APIError as exc:
             log.warning("%s attempt %d failed: %s", model, attempt, failure_reason(exc))
             continue
         try:
@@ -383,6 +393,8 @@ async def ask(
                 {"role": "assistant", "content": content},
                 {"role": "user", "content": REPAIR_HINT.format(error=_repair_detail(exc))},
             ]
+    if budgeted and budget.spent():
+        budget.timed_out = True
     return None
 
 
