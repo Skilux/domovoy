@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOMOVOY phone</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="phone" id="phone" data-screen="ready">
+    <div class="notch"></div>
+
+    <section class="screen" data-name="ready">
+      <div class="brand">DOMOVOY</div>
+      <p class="hint">Tap once to enable sound and the microphone.</p>
+      <button class="ready" id="ready" type="button">Ready</button>
+    </section>
+
+    <section class="screen" data-name="waiting">
+      <div class="brand">DOMOVOY</div>
+      <div class="dots"><span></span><span></span><span></span></div>
+      <p class="title">Waiting for a call</p>
+    </section>
+
+    <section class="screen" data-name="incoming">
+      <p class="caption">DOMOVOY assistant calling</p>
+      <h1 class="address" data-address></h1>
+      <p class="rent" data-rent></p>
+      <div class="avatar ring">D</div>
+      <div class="actions">
+        <div class="action">
+          <button class="round red" id="decline" type="button" aria-label="Decline">&#10005;</button>
+          <span>Decline</span>
+        </div>
+        <div class="action">
+          <button class="round green" id="accept" type="button" aria-label="Accept">&#9990;</button>
+          <span>Accept</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" data-name="call">
+      <p class="caption" id="call-status">Connecting</p>
+      <h2 class="address small" data-address></h2>
+      <p class="timer" id="timer">00:00</p>
+      <div class="orb" id="orb"></div>
+      <div class="transcript" id="transcript"></div>
+      <div class="actions single">
+        <div class="action">
+          <button class="round red" id="hangup" type="button" aria-label="Hang up">&#10005;</button>
+          <span>End</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" data-name="result">
+      <p class="caption">Call ended</p>
+      <h1 class="outcome" id="outcome"></h1>
+      <p class="when" id="when"></p>
+      <h2 class="address small" data-address></h2>
+      <p class="summary" id="summary"></p>
+    </section>
+
+    <p class="error" id="error" role="alert"></p>
+  </main>
+
+  <audio id="ringtone" src="/ringtone.mp3" loop preload="auto"></audio>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
