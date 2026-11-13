@@ -638,6 +638,54 @@ class BackendTest(unittest.TestCase):
         last = writes[-1][2]["children"][-1]["paragraph"]["rich_text"]
         self.assertEqual([len(part["text"]["content"]) for part in last], [2000, 2000, 500])
 
+    def test_append_renders_titles_bullets_markers_and_a_closed_toggle(self):
+        self.fake.answer("PATCH", "/blocks/%s/children" % PAGE_ID, no_more([]))
+        text = "\n".join(["Call result: Viewing booked", "", "Demo call in the browser.",
+                          "- Asked: What is the unit number? Answer: 12", "Questions to ask at the viewing:",
+                          "+ Land register details", "  Owners (1):", "  - SYNTHETIC Owner, person, share 1/1",
+                          "Not indented, after the toggle", "domovoy-call: conv_x"])
+        notion.append(CFG_NOTION, PAGE_ID, text)
+        blocks = self.fake.writes()[0][2]["children"]
+        self.assertEqual([b["type"] for b in blocks], ["heading_3", "paragraph", "bulleted_list_item", "paragraph",
+                                                        "toggle", "paragraph", "paragraph"])
+        self.assertEqual(blocks[2]["bulleted_list_item"]["rich_text"][0]["text"]["content"],
+                         "Asked: What is the unit number? Answer: 12")
+        self.assertTrue(blocks[3]["paragraph"]["rich_text"][0]["annotations"]["bold"])
+        toggle = blocks[4]["toggle"]
+        self.assertEqual(toggle["rich_text"][0]["text"]["content"], "Land register details")
+        self.assertEqual([c["type"] for c in toggle["children"]], ["paragraph", "bulleted_list_item"])
+        self.assertEqual(toggle["children"][1]["bulleted_list_item"]["rich_text"][0]["text"]["content"],
+                         "SYNTHETIC Owner, person, share 1/1")
+        self.assertEqual(blocks[6]["paragraph"]["color"], "gray")
+        self.assertEqual(blocks[6]["paragraph"]["rich_text"][0]["text"]["content"], "domovoy-call: conv_x")
+
+    def test_the_rendered_body_reads_back_with_its_markers_and_call_answers(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+        import katastr
+        text = "\n".join(["Call result: Viewing booked", "- Asked: What is the unit number? Answer: 65",
+                          "Katastr check", "+ Land register details", "  - SYNTHETIC Owner, company, share 1/1",
+                          "domovoy-katastr: cached_lv 90001 2026-11-13T14:35:02+01:00"])
+        blocks = notion.text_blocks(text)
+        children = {}
+        for i, block in enumerate(blocks):
+            block["id"] = "b%d" % i
+            nested = block[block["type"]].pop("children", [])
+            block["has_children"] = bool(nested)
+            for item in block[block["type"]]["rich_text"]:
+                item["plain_text"] = item["text"]["content"]
+            for j, child in enumerate(nested):
+                child.update(id="b%d-%d" % (i, j), has_children=False)
+                for item in child[child["type"]]["rich_text"]:
+                    item["plain_text"] = item["text"]["content"]
+            children[block["id"]] = nested
+        self.fake.answer("GET", "/pages/%s" % PAGE_ID, flat_page())
+        self.fake.answer("GET", "/blocks/%s/children" % PAGE_ID, no_more(blocks))
+        self.fake.answer("GET", "/blocks/b3/children", no_more(children["b3"]))
+        read = notion.get_flat(CFG_NOTION, PAGE_ID)["text"]
+        self.assertIn("domovoy-katastr: cached_lv 90001 2026-11-13T14:35:02+01:00", read)
+        self.assertIn("- SYNTHETIC Owner, company, share 1/1", read)
+        self.assertEqual(katastr.call_answers(read), {"unit": "65"})
+
     def test_the_viewing_date_needs_a_utc_offset(self):
         self.fake.answer("PATCH", "/pages/%s" % PAGE_ID, flat_page())
         notion.set_viewing_date(CFG_NOTION, PAGE_ID, "2026-11-16T17:00:00+01:00")

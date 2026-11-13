@@ -13,7 +13,7 @@ SHORTLIST BACKEND, shape B of the call.py docstring (config.json "backend.module
   list_flats(cfg, status=None)          -> [{"id", "title", "url", "status", "interested", "listing"}]
   get_flat(cfg, flat_id)                -> {"id", "title", "url", "interested", "listing", "text"}
   set_status(cfg, flat_id, status)
-  append(cfg, flat_id, text)            text lines, one paragraph each, added to the page body
+  append(cfg, flat_id, text)            text lines added to the page body, one block per line (see append)
   set_viewing_date(cfg, flat_id, start) ISO 8601 with a UTC offset
   attach_file(cfg, flat_id, path, caption=None, marker=None)
                                         upload a PDF (katastr.py attach) and add it to the page body
@@ -46,6 +46,9 @@ CHILDREN_LIMIT = 100           # block children per append request
 TEXT_LIMIT = 2000              # characters per rich text object
 BODY_DEPTH = 3                 # nested blocks followed when reading a page body
 UNKNOWNS_SEPARATOR = "\n"      # the Unknowns property holds one line per unknown
+TITLE_LINE = re.compile(r"^(Call result: .+|Katastr check)$")   # section titles call.py and katastr.py write
+MARKER_LINE = re.compile(r"^domovoy-[a-z-]+: ")                # internal markers: kept, shown small and gray
+TOGGLE_INDENT = "  "                                           # lines under a "+ " line go inside its toggle
 ID = re.compile(r"[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}", re.IGNORECASE)
 OFFSET = re.compile(r"(Z|[+-]\d{2}:\d{2})$")
 
@@ -244,6 +247,8 @@ def body_lines(block_id, depth=0):
             text = " | ".join(plain(cell) for cell in block["table_row"]["cells"])
         else:
             text = plain((block.get(kind) or {}).get("rich_text"))
+            if kind == "bulleted_list_item" and text.strip():
+                text = "- " + text           # the "- " append turned into a bullet, so readers see the same line
         if text.strip():
             lines.append(text)
         if block.get("has_children") and depth < BODY_DEPTH:
@@ -270,14 +275,64 @@ def set_status(cfg, flat_id, status):
             {"properties": {"Status": {"select": {"name": status}}}})
 
 
-def paragraph(line):
+def text_block(kind, line, color=None, bold=False):
     pieces = [line[i:i + TEXT_LIMIT] for i in range(0, len(line), TEXT_LIMIT)]
-    return {"object": "block", "type": "paragraph",
-            "paragraph": {"rich_text": [{"type": "text", "text": {"content": piece}} for piece in pieces]}}
+    rich = [{"type": "text", "text": {"content": piece}} for piece in pieces]
+    if bold:
+        for item in rich:
+            item["annotations"] = {"bold": True}
+    body = {"rich_text": rich}
+    if color:
+        body["color"] = color
+    return {"object": "block", "type": kind, kind: body}
+
+
+def paragraph(line, color=None):
+    return text_block("paragraph", line, color)
+
+
+def line_block(line):
+    """One text line as one block, by its shape."""
+    if TITLE_LINE.match(line):
+        return text_block("heading_3", line)
+    if MARKER_LINE.match(line):
+        return paragraph(line, "gray")
+    if line.startswith("- "):
+        return text_block("bulleted_list_item", line[2:])
+    if line.endswith(":") and len(line) <= 80:
+        return text_block("paragraph", line, bold=True)
+    return paragraph(line)
+
+
+def text_blocks(text):
+    """Plain text -> blocks. A title line ("Call result: ...", "Katastr check") is a heading; "- x" is a bullet;
+    a short line ending in ":" is bold; a domovoy-* marker is gray; "+ Title" is a closed toggle that holds the
+    lines under it indented by two spaces. Empty lines are dropped."""
+    blocks = []
+    for line in text.split("\n"):
+        if not line.strip():
+            continue
+        parent = blocks[-1] if blocks and blocks[-1]["type"] == "toggle" else None
+        if parent is not None and line.startswith(TOGGLE_INDENT):
+            children = parent["toggle"].setdefault("children", [])
+            if len(children) >= CHILDREN_LIMIT:
+                parent = text_block("toggle", plain_text_of(parent) + " (continued)")
+                children = parent["toggle"]["children"] = []
+                blocks.append(parent)
+            children.append(line_block(line[len(TOGGLE_INDENT):]))
+        elif line.startswith("+ "):
+            blocks.append(text_block("toggle", line[2:]))
+        else:
+            blocks.append(line_block(line))
+    return blocks
+
+
+def plain_text_of(block):
+    return "".join(item["text"]["content"] for item in block[block["type"]]["rich_text"])
 
 
 def append(cfg, flat_id, text):
-    blocks = [paragraph(line) for line in text.split("\n") if line.strip()]
+    blocks = text_blocks(text)
     path = "/blocks/%s/children" % checked_id(flat_id, "flat id")
     for start in range(0, len(blocks), CHILDREN_LIMIT):
         request("PATCH", path, {"children": blocks[start:start + CHILDREN_LIMIT]})
@@ -328,7 +383,7 @@ def attach_file(cfg, flat_id, path, caption=None, marker=None):
              "pdf": {"type": "file_upload", "file_upload": {"id": upload_id},
                      "caption": [{"type": "text", "text": {"content": (caption or "")[:TEXT_LIMIT]}}]
                      if caption else []}}
-    children = [block] + ([paragraph(marker)] if marker else [])
+    children = [block] + ([paragraph(marker, "gray")] if marker else [])
     request("PATCH", "/blocks/%s/children" % checked_id(flat_id, "flat id"), {"children": children})
 
 
