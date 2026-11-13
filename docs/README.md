@@ -9,6 +9,7 @@ These documents describe intended behavior, not completed features. They are the
 | [plan.md](plan.md) | Scope, ownership, flow, boundaries, Notion shortlist, contracts, repo layout |
 | [demo.md](demo.md) | Stage sequence, gates, fallback, submission |
 | [prd/](prd/README.md) | Build spec: main PRD plus one doc per lane (actor, voice, skill, posthog) |
+| [packaging.md](packaging.md) | Setup for a new user, prerequisites, cost per 100 cases, how to swap each service |
 | [decisions.md](decisions.md) | Reconciled conflicts, 13 Nov pre-PRD decisions and 13 Nov actor PRD decisions |
 | [open-items.md](open-items.md) | Undecided items with owners |
 | [Original exports](archive/2026-11-13-notion/README.md) | Unchanged Notion exports, including superseded plans |
