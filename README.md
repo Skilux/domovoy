@@ -19,7 +19,7 @@ The intended package is an open-source Agent Skill for Claude Code. The phone pa
 - [Docs index](docs/README.md)
 - [Current scope and architecture](docs/plan.md)
 - [Demo and acceptance gates](docs/demo.md)
-- [PostHog improvement loop](docs/posthog.md)
+- [PRD and lane specs](docs/prd/README.md)
 - [Decisions](docs/decisions.md)
 - [Open items](docs/open-items.md)
 - [Original Notion exports](docs/archive/2026-11-13-notion/README.md)

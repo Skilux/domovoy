@@ -8,7 +8,7 @@ These documents describe intended behavior, not completed features. They are the
 | --- | --- |
 | [plan.md](plan.md) | Scope, ownership, flow, boundaries, board, contracts, repo layout |
 | [demo.md](demo.md) | Stage sequence, gates, fallback, submission |
-| [posthog.md](posthog.md) | P1 improvement loop |
+| [prd/](prd/README.md) | Build spec: main PRD plus one doc per lane (actor, voice, skill, posthog) |
 | [decisions.md](decisions.md) | Reconciled conflicts and 13 Nov pre-PRD decisions |
 | [open-items.md](open-items.md) | Undecided items with owners |
 | [Original exports](archive/2026-11-13-notion/README.md) | Unchanged Notion exports, including superseded plans |

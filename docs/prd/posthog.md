@@ -1,0 +1,80 @@
+# Lane: PostHog
+
+Owner: Danila. Priority: P1. Code: `posthog/`.
+
+Optional self-improvement loop. DOMOVOY sends what happens to PostHog; Claude reads it back, finds one pattern, proposes one change, and applies it only after Vladimir says yes. Start only when the core flow has run end to end; cut at 16:00 otherwise.
+
+## Definition of done
+
+- [ ] The pipeline, board sync and call flow send the events below to PostHog, each with `property_id`.
+- [ ] A report script reads today's `listing_rejected` events from PostHog and prints one grouped finding with its evidence, e.g. "3 of 3 rejected flats: no elevator".
+- [ ] Claude proposes one specific criteria change and waits for Vladimir's yes or no.
+- [ ] On yes, the change is saved to the skill config, the shortlist is re-filtered, and the board visibly changes.
+- [ ] The decision is recorded as an event, so the same proposal is not made twice.
+- [ ] The whole step fits in 60 seconds on stage and uses only real events from today.
+
+## Diagram
+
+```mermaid
+flowchart LR
+  A[Vladimir rejects cards and types Reason] --> B[Skill reads board]
+  B --> C[capture listing_rejected]
+  P[Pipeline and call flow] --> C2[capture other events]
+  C --> PH[(PostHog)]
+  C2 --> PH
+  PH --> R[Report script: group rejections by reason]
+  R --> Q{Same reason 3+ times, not proposed before?}
+  Q -- no --> Z[Report: nothing to change]
+  Q -- yes --> S[Claude proposes one criteria change]
+  S --> V{Vladimir: yes or no}
+  V -- yes --> T[Update config, re-filter, update board]
+  V -- no --> W[Record the no]
+  T --> M[capture criteria_change_decided]
+  W --> M
+  M --> PH
+```
+
+## Details
+
+### Events
+
+`distinct_id` is the renter's first name from config. Every event carries `property_id` where one applies, plus `portal` and `run_id`.
+
+| Event | Sent when | Extra properties |
+| --- | --- | --- |
+| `listing_shortlisted` | Card created | `total_monthly`, `upfront` |
+| `listing_rejected` | Card is in Not interested with a `Reason` | `reason` |
+| `listing_interested` | Card moved to Interested | |
+| `call_started` | Context posted | |
+| `call_finished` | Result handled | `outcome`, `new_costs_count` |
+| `extraction_low_confidence` | Featherless confidence under the threshold | `field`, `confidence` |
+| `criteria_change_decided` | Vladimir answers a proposal | `change`, `approved` |
+
+Required for the demo: `listing_rejected` and `criteria_change_decided`. The rest are sent if the code path exists.
+
+Board changes carry no event of their own, so the skill reads the board and sends `listing_rejected` for each rejected card it has not sent before.
+
+### Report and change
+
+- Reasons are free text. Claude normalizes them to a short key, e.g. "no lift", "without elevator" → `no_elevator`, before grouping.
+- A proposal needs one reason on 3 or more rejections. With fewer, the report says so and proposes nothing.
+- A change adds one hard filter to the config. Flats that now fail are moved to Not interested with `Reason = filtered: <change>`; the remaining cards keep their order by `total_monthly`.
+- The chosen reason must not already be a hard filter, or those flats would never have reached the board.
+
+### Honesty
+
+- One rerank shows the change was applied, not that results got better. Say "measurement pending".
+- A local event log may back up the report if the venue network fails; label it as local.
+- Do not claim PostHog's native self-driving Inbox, session replay or agency customers. Agencies get one spoken sentence.
+- PostHog holds telemetry only. Listing facts stay in issues, state on the board.
+
+## Decisions
+
+- P1, after the core.
+- The demo signal is rejections with a reason, typed in the board's `Reason` field.
+- Approval for a criteria change is separate from Interested.
+- The Featherless labeled evaluation stays deferred.
+
+## Open items
+
+From [open-items.md](../open-items.md): 8 (PostHog project key and the sponsor prize criteria). Workshop notes and the full signal list are in the [original lane export](../archive/2026-11-13-notion/03-lane-3-posthog-self-driving-loop-mac-mini.md).
