@@ -219,7 +219,7 @@ async def test_update_writes_owned_properties_only_and_leaves_the_body_alone():
     assert body["properties"]["Rent"] == {"number": 25000}
 
 
-MOVE_IN = {"Move-in total": {"number": 60000},
+MOVE_IN = {"Move-in cost": {"number": 60000},
            "Move-in note": {"rich_text": [{"type": "text", "text": {"content": "Includes estimated energy and furniture."}}]}}
 
 
@@ -227,9 +227,11 @@ def test_interested_is_user_set_and_move_in_is_actor_owned():
     assert CONTRACT["properties"]["Interested?"] == {
         "type": "select", "owner": "vladimir", "options": ["Yes", "No"], "colors": {"Yes": "green", "No": "red"}}
     assert "Interested?" not in OWNED_ON_UPDATE and "Interested?" not in CREATE_ONLY
-    assert CONTRACT["properties"]["Move-in total"] == {"type": "number", "owner": "actor", "format": "koruna"}
+    assert CONTRACT["properties"]["Move-in cost"] == {"type": "number", "owner": "actor", "format": "koruna",
+                                                      "renamed_from": ["Upfront"]}
     assert CONTRACT["properties"]["Move-in note"] == {"type": "rich_text", "owner": "actor"}
-    assert {"Move-in total", "Move-in note"} <= set(OWNED_ON_UPDATE)
+    assert {"Move-in cost", "Move-in note"} <= set(OWNED_ON_UPDATE)
+    assert "Upfront" not in CONTRACT["properties"] and "Move-in total" not in CONTRACT["properties"]
 
 
 async def test_validate_accepts_the_live_interested_column_with_its_colors():
@@ -241,10 +243,10 @@ async def test_validate_accepts_the_live_interested_column_with_its_colors():
     await run_validate(fake)
 
 
-async def test_validate_refuses_a_database_without_the_move_in_columns():
+async def test_validate_refuses_a_database_still_named_upfront():
     fake = FakeNotion()
-    fake.reply("GET", "/data_sources/%s" % DS, {"properties": live_schema(remove=("Move-in total", "Move-in note"))})
-    with pytest.raises(SchemaDrift, match="Move-in total is missing"):
+    fake.reply("GET", "/data_sources/%s" % DS, {"properties": live_schema(rename=("Move-in cost", "Upfront"))})
+    with pytest.raises(SchemaDrift, match="Move-in cost is missing"):
         await run_validate(fake)
 
 
@@ -261,11 +263,11 @@ async def test_create_and_update_write_move_in_and_never_interested():
     fake.reply("POST", "/data_sources/%s/query" % DS, {"results": [{"id": PAGE}], "has_more": False,
                                                        "next_cursor": None})
     fake.reply("PATCH", "/pages/%s" % PAGE, {"id": PAGE})
-    await run_upsert(fake, fixture_item(move_in_total=None, move_in_note="Unknown: rent is not stated."))
+    await run_upsert(fake, fixture_item(move_in_cost=None, move_in_note="Unknown: rent is not stated."))
     [(_, _, update)] = fake.writes()
-    assert update["properties"]["Move-in total"] == {"number": None}
+    assert update["properties"]["Move-in cost"] == {"number": None}
     assert update["properties"]["Move-in note"]["rich_text"][0]["text"]["content"] == "Unknown: rent is not stated."
-    assert "Interested?" not in update["properties"]
+    assert "Interested?" not in update["properties"] and "Upfront" not in update["properties"]
 
 
 async def test_rejected_flats_never_reach_notion():
@@ -381,10 +383,10 @@ def test_the_cost_table_marks_estimates_and_unknowns():
     assert shown["Energy"] == "1,500 CZK (est.)"
     assert shown["Total monthly"] == "27,500 CZK (est.)"
     assert shown["Services"] == "2,000 CZK"
-    assert shown["Upfront"] == "52,000 CZK"
-    assert shown["Move-in total"] == "60,000 CZK (est.)"
+    assert "Upfront" not in shown
+    assert shown["Move-in cost"] == "60,000 CZK (est.)"
     assert shown["Missing furniture cost"] == "8,000 CZK"
-    assert rows(fixture_item(move_in_total=None))["Move-in total"] == "unknown"
+    assert rows(fixture_item(move_in_cost=None))["Move-in cost"] == "unknown"
     assert rows(fixture_item(energy=None))["Energy"] == "unknown"
 
 

@@ -41,7 +41,7 @@ EXPECTED_LISTING = {
     "collected_at": "2026-11-13T12:00:00+01:00",
     "rent": 22000,
     "total_monthly": 24500,
-    "upfront": None,
+    "upfront": 46500,  # call_context upfront, read from the "Move-in cost" property
     "kauce": 22000,
     "commission": None,
     "move_in_date": None,
@@ -122,7 +122,7 @@ def flat_page(page_id=PAGE_ID, status="Interested"):
             "Collected at": {"type": "date", "date": {"start": "2026-11-13T12:00:00+01:00"}},
             "Rent": {"type": "number", "number": 22000},
             "Total monthly": {"type": "number", "number": 24500},
-            "Upfront": {"type": "number", "number": None},
+            "Move-in cost": {"type": "number", "number": 46500},
             "Kauce": {"type": "number", "number": 22000},
             "Commission": {"type": "number", "number": None},
             "Move-in date": {"type": "date", "date": None},
@@ -316,25 +316,61 @@ class SetupTest(unittest.TestCase):
         schema = create[2]["initial_data_source"]["properties"]
         self.assertEqual(schema["Interested?"], {"select": {"options": [{"name": "Yes", "color": "green"},
                                                                         {"name": "No", "color": "red"}]}})
-        self.assertEqual(schema["Move-in total"], {"number": {"format": "koruna"}})
+        self.assertEqual(schema["Move-in cost"], {"number": {"format": "koruna"}})
+        self.assertNotIn("Upfront", schema)
         self.assertEqual(schema["Move-in note"], {"rich_text": {}})
 
-    def test_live_database_gets_only_the_move_in_columns_then_nothing(self):
-        # The live shortlist: Interested? added by hand with its colors, Move-in columns not there yet.
-        props = live(remove=["Move-in total", "Move-in note"])
+    def test_live_database_renames_upfront_in_place_then_changes_nothing(self):
+        # The live shortlist: Interested? added by hand with its colors, Upfront not yet renamed, no Move-in note.
+        props = live(remove=["Move-in note"])
+        props["Upfront"] = dict(props.pop("Move-in cost"), id="p-upfront")
         props["Interested?"]["select"]["options"] = [{"id": "y", "name": "Yes", "color": "green"},
                                                      {"id": "n", "name": "No", "color": "red"}]
         self.existing_database(props)
         out = notion.setup()
         self.assertEqual(self.fake.writes(), [("PATCH", "/data_sources/%s" % DS_ID, {"properties": {
-            "Move-in total": {"number": {"format": "koruna"}}, "Move-in note": {"rich_text": {}}}})])
-        self.assertEqual(out["added_properties"], ["Move-in note", "Move-in total"])
+            "p-upfront": {"name": "Move-in cost"}, "Move-in note": {"rich_text": {}}}})])
+        self.assertEqual(out["renamed_properties"], {"Upfront": "Move-in cost"})
+        self.assertEqual(out["added_properties"], ["Move-in note"])
         self.assertEqual((out["added_options"], out["conflicts"]), ({}, []))
+        self.assertTrue(out["changed"])
         self.fake.calls.clear()
         self.existing_database(live())
         out = notion.setup()
         self.assertFalse(out["changed"])
+        self.assertEqual(out["renamed_properties"], {})
         self.assertEqual(self.fake.writes(), [])
+
+    def test_an_old_name_of_another_type_is_not_renamed(self):
+        props = live()
+        props["Upfront"] = {"id": "p-upfront", "type": "rich_text", "rich_text": {}}
+        del props["Move-in cost"]
+        self.existing_database(props)
+        out = notion.setup()
+        self.assertEqual(self.fake.writes(), [("PATCH", "/data_sources/%s" % DS_ID, {"properties": {
+            "Move-in cost": {"number": {"format": "koruna"}}}})])
+        self.assertEqual((out["renamed_properties"], out["added_properties"]), ({}, ["Move-in cost"]))
+
+    def test_database_title_from_config_targets_a_separate_database(self):
+        e2e = "DOMOVOY shortlist (e2e)"
+        # The parent holds the real shortlist only: the e2e database is created next to it, never the real one used.
+        self.fake.answer("GET", "/blocks/%s/children" % PARENT, no_more([child_block(DB_ID)]))
+        self.fake.answer("POST", "/databases", {"id": "e2e-db", "url": DB_URL})
+        self.fake.answer("GET", "/databases/e2e-db", database_object("e2e-db"))
+        out = notion.setup({"notion": {"database_title": e2e}})
+        [create] = [c for c in self.fake.calls if c[:2] == ("POST", "/databases")]
+        self.assertEqual(create[2]["title"], [{"type": "text", "text": {"content": e2e}}])
+        self.assertEqual((out["database"], out["database_title_from"]), (e2e, "config notion.database_title"))
+        self.assertTrue(out["created"])
+        # Default: the contract title, reported as such.
+        self.fake.calls.clear()
+        self.existing_database(live())
+        out = notion.setup({"notion": {}})
+        self.assertEqual((out["database"], out["database_title_from"]), ("DOMOVOY shortlist",
+                                                                        "contract database_title"))
+        self.assertFalse(out["changed"])
+        with self.assertRaisesRegex(RuntimeError, "database_title"):
+            notion.setup({"notion": {"database_title": " "}})
 
     def test_a_missing_colored_option_is_added_with_its_color(self):
         props = live()

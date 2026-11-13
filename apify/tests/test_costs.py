@@ -301,7 +301,7 @@ def test_energy_table_bands_end_with_an_open_band() -> None:
     assert all(rate > 0 for _, rate in ENERGY_CZK_PER_M2_BANDS)
 
 
-# Costs: furniture table, separate from upfront
+# Costs: furniture table
 
 
 def test_furniture_table_covers_the_fixed_list() -> None:
@@ -342,7 +342,7 @@ def test_missing_furniture_cost(
     assert costs.missing_furniture_cost == expected_cost
 
 
-# Costs: totals, upfront and estimated flags. Unknown inputs stay None.
+# Costs: totals, move-in cost and estimated flags. Unknown inputs stay None.
 
 CASE_STATED: dict[str, Any] = {
     "rent": 23000,
@@ -363,7 +363,6 @@ CASE_STATED: dict[str, Any] = {
             {
                 "total_monthly": 26400,
                 "hidden_monthly": 3400,
-                "upfront": 72900,
                 "missing_furniture_cost": 0,
                 "estimated": [],
             },
@@ -372,31 +371,30 @@ CASE_STATED: dict[str, Any] = {
         pytest.param(
             {**CASE_STATED, "missing_furniture": ["wardrobe"]},
             {
-                "upfront": 72900,
                 "missing_furniture_cost": 6000,
-                "estimated": ["missing_furniture_cost", "move_in_total"],
+                "estimated": ["move_in_cost", "missing_furniture_cost"],
             },
-            id="furniture is separate: upfront does not include it",
+            id="furniture estimate is part of the move-in cost",
         ),
         pytest.param(
             {**CASE_STATED, "one_time_fees": []},
-            {"one_time_fees": 0, "upfront": 72400},
+            {"one_time_fees": 0, "move_in_cost": 72400},
             id="stated no one-time fees counts as 0",
         ),
         pytest.param(
             {**CASE_STATED, "one_time_fees": [OneTimeFee(label="key fee", czk=None)]},
-            {"one_time_fees": None, "upfront": None},
-            id="one-time fee without an amount: upfront unknown",
+            {"one_time_fees": None, "move_in_cost": 72400},
+            id="one-time fee without an amount: left out of the move-in cost",
         ),
         pytest.param(
             {**CASE_STATED, "one_time_fees": None},
-            {"one_time_fees": None, "upfront": None, "total_monthly": 26400},
-            id="one-time fees not stated: upfront unknown, total still known",
+            {"one_time_fees": None, "move_in_cost": 72400, "total_monthly": 26400},
+            id="one-time fees not stated: left out, total still known",
         ),
         pytest.param(
             {**CASE_STATED, "commission": None},
-            {"commission": None, "upfront": None, "total_monthly": 26400},
-            id="commission not stated: upfront unknown",
+            {"commission": None, "move_in_cost": 49900, "total_monthly": 26400},
+            id="commission not stated: left out of the move-in cost",
         ),
         pytest.param(
             {**CASE_STATED, "services": None},
@@ -404,10 +402,9 @@ CASE_STATED: dict[str, Any] = {
                 "total_monthly": None,
                 "hidden_monthly": None,
                 "first_payment": None,
-                "upfront": None,
                 "energy": 0,
             },
-            id="services not stated: total and upfront unknown",
+            id="services not stated: total unknown",
         ),
         pytest.param(
             {**CASE_STATED, "rent": None, "kauce": Charge(czk=23000)},
@@ -415,7 +412,6 @@ CASE_STATED: dict[str, Any] = {
                 "total_monthly": None,
                 "hidden_monthly": None,
                 "first_payment": None,
-                "upfront": None,
                 "kauce": 23000,
             },
             id="rent unknown: total unknown, a stated deposit is still known",
@@ -427,17 +423,15 @@ CASE_STATED: dict[str, Any] = {
                 "total_monthly": 28360,
                 "hidden_monthly": 5360,
                 "first_payment": 28360,
-                "upfront": 74860,
                 "estimated": [
                     "energy",
                     "total_monthly",
                     "hidden_monthly",
                     "first_payment",
-                    "upfront",
-                    "move_in_total",
+                    "move_in_cost",
                 ],
             },
-            id="estimated energy flows into total, first payment and upfront",
+            id="estimated energy flows into total, first payment and move-in cost",
         ),
         pytest.param(
             {
@@ -453,7 +447,6 @@ CASE_STATED: dict[str, Any] = {
                 "kauce": 23000,
                 "commission": 23000,
                 "one_time_fees": None,
-                "upfront": None,
                 "estimated": [],
             },
             id="real listing 1015095372: fees and energy stated, one-time fees not stated",
@@ -472,13 +465,12 @@ CASE_STATED: dict[str, Any] = {
                 "total_monthly": 31700,
                 "kauce": 84000,
                 "commission": 28000,
-                "upfront": None,
                 "estimated": [
                     "energy",
                     "total_monthly",
                     "hidden_monthly",
                     "first_payment",
-                    "move_in_total",
+                    "move_in_cost",
                 ],
             },
             id="real listing 688549964: energy estimated, VAT not stated on commission",
@@ -497,7 +489,6 @@ CASE_STATED: dict[str, Any] = {
                 "total_monthly": 31360,
                 "kauce": 55000,
                 "commission": 27500,
-                "upfront": None,
             },
             id="real listing 2073653324: per-person fee, energy transferred",
         ),
@@ -521,7 +512,7 @@ def test_costs_scenarios(case: dict[str, Any], expected: dict[str, Any]) -> None
             49900,
             "Excludes commission (not stated).",
             False,
-            id="commission unknown: left out and named, upfront stays unknown",
+            id="commission unknown: left out and named",
         ),
         pytest.param(
             {**CASE_STATED, "missing_furniture": ["wardrobe", "bed"]},
@@ -584,20 +575,19 @@ def test_costs_scenarios(case: dict[str, Any], expected: dict[str, Any]) -> None
         ),
     ],
 )
-def test_move_in_total(
+def test_move_in_cost(
     case: dict[str, Any], total: int | None, note: str, estimated: bool
 ) -> None:
     costs = _compute(**{"area": 49.0, **case})
-    assert costs.move_in_total == total
+    assert costs.move_in_cost == total
     assert costs.move_in_note == note
-    assert ("move_in_total" in costs.estimated) is estimated
+    assert ("move_in_cost" in costs.estimated) is estimated
 
 
-def test_move_in_total_leaves_upfront_as_stated_costs_only() -> None:
-    known = _compute(area=49.0, **{**CASE_STATED, "missing_furniture": ["bed"]})
-    assert (known.upfront, known.move_in_total) == (72900, 80900)
-    partial = _compute(area=49.0, **{**CASE_STATED, "commission": None})
-    assert (partial.upfront, partial.move_in_total) == (None, 49900)
+def test_move_in_cost_is_the_only_move_in_value() -> None:
+    costs = _compute(area=49.0, **{**CASE_STATED, "missing_furniture": ["bed"]})
+    assert "upfront" not in Costs.model_fields
+    assert (costs.first_payment, costs.move_in_cost) == (26400, 80900)
 
 
 # Evaluate: requirement verdicts (pass, fail, unknown), estimated flags
@@ -677,7 +667,7 @@ BASE: dict[str, Any] = {
             "max_upfront",
             "unknown",
             False,
-            id="upfront unknown: deposit and commission not stated",
+            id="move-in cost incomplete: deposit and commission not stated",
         ),
         pytest.param(
             {
@@ -691,7 +681,22 @@ BASE: dict[str, Any] = {
             "max_upfront",
             "fail",
             False,
-            id="upfront 72,900 above the cap",
+            id="move-in cost 72,900 above the cap",
+        ),
+        pytest.param(
+            {
+                "services": Charge(czk=3400),
+                "energy": Charge(included=True),
+                "kauce": Charge(rent_multiple=1),
+                "commission": Charge(rent_multiple=1),
+                "one_time_fees": [OneTimeFee(label="key", czk=500)],
+                "missing_furniture": [],
+            },
+            {"max_upfront": 80000},
+            "max_upfront",
+            "pass",
+            False,
+            id="move-in cost 72,900 under the cap, every part stated",
         ),
         pytest.param(
             {
@@ -703,9 +708,24 @@ BASE: dict[str, Any] = {
             },
             {"max_upfront": 80000},
             "max_upfront",
-            "pass",
+            "unknown",
             False,
-            id="upfront 72,900 under the cap",
+            id="move-in cost 72,900 under the cap, missing furniture not stated: unknown",
+        ),
+        pytest.param(
+            {
+                "services": Charge(czk=3400),
+                "energy": Charge(included=True),
+                "kauce": Charge(rent_multiple=1),
+                "commission": Charge(rent_multiple=1),
+                "one_time_fees": [OneTimeFee(label="key", czk=500)],
+                "missing_furniture": ["bed"],
+            },
+            {"max_upfront": 75000},
+            "max_upfront",
+            "unknown",
+            True,
+            id="move-in cost 80,900 over only with the furniture estimate (72,900 stated): unknown",
         ),
         pytest.param(
             {
@@ -720,7 +740,7 @@ BASE: dict[str, Any] = {
             "max_upfront",
             "unknown",
             True,
-            id="upfront 74,860 over only with estimated energy (72,900 stated): unknown",
+            id="move-in cost 74,860 over only with estimated energy (72,900 stated): unknown",
         ),
         pytest.param(
             {
@@ -734,8 +754,8 @@ BASE: dict[str, Any] = {
             {"max_upfront": 50000},
             "max_upfront",
             "fail",
-            True,
-            id="upfront fails even without the estimate (72,900 stated): fail",
+            False,
+            id="move-in cost fails on stated parts alone (72,900): fail",
         ),
         pytest.param(
             {**BASE},
@@ -896,7 +916,7 @@ def test_only_the_budget_cap_is_checked_when_nothing_else_is_set() -> None:
             "max_upfront",
             "fail",
             "rejected",
-            id="known upfront 123,000 over the 80,000 cap, commission and fees unknown: fail",
+            id="known move-in cost 123,000 over the 80,000 cap, commission and fees unknown: fail",
         ),
         pytest.param(
             {"rent": 23000, "services": None, "energy": Charge(included=True)},
@@ -917,7 +937,7 @@ def test_only_the_budget_cap_is_checked_when_nothing_else_is_set() -> None:
             "max_upfront",
             "unknown",
             "needs_info",
-            id="known upfront 46,000 under the cap: still unknown",
+            id="known move-in cost 46,000 under the cap: still unknown",
         ),
         pytest.param(
             {"rent": 29000, "services": None, "energy": None, "area": 49.0},

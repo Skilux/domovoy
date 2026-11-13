@@ -271,12 +271,11 @@ def fallback_costs(listing: Listing) -> Costs:
         commission=None,
         one_time_fees=None,
         first_payment=None,
-        upfront=None,
+        move_in_cost=None,
+        move_in_note=None,
         missing_furniture=[],
         missing_furniture_cost=None,
         hidden_monthly=None,
-        move_in_total=None,
-        move_in_note=None,
         estimated=[],
     )
 

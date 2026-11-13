@@ -93,7 +93,7 @@ class Requirements(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_total_monthly: Czk  # required: it is call_context.budget_cap
-    max_upfront: Czk | None = None
+    max_upfront: Czk | None = None  # checked against move_in_cost
     elevator: Literal["required"] | None = None
     lease_types: Annotated[list[LeaseType], AfterValidator(_unique)] = Field(default_factory=list)
     move_in_by: date | None = None
@@ -229,12 +229,11 @@ class Costs(BaseModel):
     commission: Czk | None
     one_time_fees: Czk | None
     first_payment: Czk | None
-    upfront: Czk | None
+    move_in_cost: Czk | None  # replaces upfront; call_context still names it upfront
+    move_in_note: str | None
     missing_furniture: list[str]
     missing_furniture_cost: Czk | None
     hidden_monthly: Czk | None
-    move_in_total: Czk | None
-    move_in_note: str | None
     estimated: list[str]
 
 
@@ -295,7 +294,7 @@ class ExtractionMeta(BaseModel):
 
 
 class FlatItem(BaseModel):
-    """Dataset item and Notion input: the 48 fields of the actor.md output table, same names."""
+    """Dataset item and Notion input: the 47 fields of the actor.md output table, same names."""
 
     property_id: str
     profile_id: str
@@ -321,11 +320,10 @@ class FlatItem(BaseModel):
     commission: Czk | None
     one_time_fees: Czk | None
     first_payment: Czk | None
-    upfront: Czk | None
+    move_in_cost: Czk | None
+    move_in_note: str | None
     missing_furniture: list[str]
     missing_furniture_cost: Czk | None
-    move_in_total: Czk | None
-    move_in_note: str | None
     move_in_date: date | None
     lease_type: LeaseType | None
     lease_length_months: int | None

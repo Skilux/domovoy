@@ -23,7 +23,7 @@ ENERGY_CZK_PER_M2_BANDS: Final[tuple[tuple[float | None, Decimal], ...]] = (
 
 # One-off purchase price in CZK for each furniture item a listing can leave out.
 # ASSUMPTION, not sourced: a rough mid-range price for a new item in Prague. Used only for
-# missing_furniture_cost, which is shown next to upfront and is never added into it.
+# missing_furniture_cost, which is part of move_in_cost and is marked as an estimate there.
 FURNITURE_CZK: Final[dict[Furniture, int]] = {
     "bed": 8000,  # ASSUMPTION: bed frame and mattress
     "wardrobe": 6000,  # ASSUMPTION: freestanding

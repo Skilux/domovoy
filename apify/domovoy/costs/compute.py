@@ -23,9 +23,8 @@ ESTIMATED_ORDER = (
     "total_monthly",
     "hidden_monthly",
     "first_payment",
-    "upfront",
+    "move_in_cost",
     "missing_furniture_cost",
-    "move_in_total",
 )
 
 
@@ -41,9 +40,8 @@ def compute_costs(listing: Listing, ex: Extraction, profile: SearchProfile) -> C
     commission = _commission(ex.commission.value, rent)
     one_time = _one_time_fees(ex.one_time_fees.value)
     first_payment = total
-    upfront = _sum(first_payment, kauce, commission, one_time)
     furniture, furniture_cost = _missing_furniture(ex.missing_furniture.value)
-    move_in_total, move_in_note = _move_in(
+    move_in_cost, move_in_note = _move_in(
         rent=rent,
         services=services,
         energy=energy,
@@ -59,19 +57,17 @@ def compute_costs(listing: Listing, ex: Extraction, profile: SearchProfile) -> C
         "total_monthly": total,
         "hidden_monthly": hidden,
         "first_payment": first_payment,
-        "upfront": upfront,
+        "move_in_cost": move_in_cost,
         "missing_furniture_cost": furniture_cost,
-        "move_in_total": move_in_total,
     }
     depends_on_estimate = {
         "energy": energy_estimated,
         "total_monthly": energy_estimated,
         "hidden_monthly": energy_estimated,
         "first_payment": energy_estimated,
-        "upfront": energy_estimated,
         # The furniture prices come from a table, so their total is an estimate.
+        "move_in_cost": energy_estimated or bool(furniture_cost),
         "missing_furniture_cost": bool(furniture),
-        "move_in_total": energy_estimated or bool(furniture_cost),
     }
     estimated = [
         name
@@ -87,11 +83,10 @@ def compute_costs(listing: Listing, ex: Extraction, profile: SearchProfile) -> C
         commission=commission,
         one_time_fees=one_time,
         first_payment=first_payment,
-        upfront=upfront,
         missing_furniture=furniture,
         missing_furniture_cost=furniture_cost,
         hidden_monthly=hidden,
-        move_in_total=move_in_total,
+        move_in_cost=move_in_cost,
         move_in_note=move_in_note,
         estimated=estimated,
     )
@@ -182,8 +177,9 @@ def _move_in(
     """Cash needed to move in, and a note on what it leaves out or estimates.
 
     First month (rent + services + energy) + kauce + commission (VAT included) + stated one-time fees + missing
-    furniture. Unlike upfront, unknown parts are left out instead of making the sum unknown, and estimates count;
-    the note names both. None only when the rent is unknown.
+    furniture. Unknown parts are left out instead of making the sum unknown, and estimates count; the note names
+    both. None only when the rent is unknown. It replaces the old upfront (stated costs only, unknown when any part
+    was unknown); call_context still calls it upfront.
     """
     if rent is None:
         return None, "Unknown: rent is not stated."

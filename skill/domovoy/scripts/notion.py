@@ -2,7 +2,10 @@
 """DOMOVOY Notion shortlist: the setup command, and the shortlist backend that call.py loads.
 
   notion.py setup   Create "DOMOVOY shortlist" under NOTION_PARENT_PAGE_ID from reference/notion_contract.json,
-                    or add what is missing. Changes nothing when the database already matches the contract.
+                    or add what is missing, and rename a property listed under renamed_from in place.
+                    Changes nothing when the database already matches the contract.
+                    config.json (DOMOVOY_CONFIG, else the skill folder; optional for setup) may set
+                    notion.database_title to target another database under the same parent, e.g. for e2e tests.
                     Prints one JSON object. Put its data_source_id in config.json as notion.data_source_id.
                     Exit 0 when done; exit 1 on an error or a conflict (then nothing is changed).
 
@@ -13,6 +16,8 @@ SHORTLIST BACKEND, shape B of the call.py docstring (config.json "backend.module
   append(cfg, flat_id, text)            text lines, one paragraph each, added to the page body
   set_viewing_date(cfg, flat_id, start) ISO 8601 with a UTC offset
 "listing" holds the call_context fields read from the page properties. Realtor contacts are never read.
+call_context's "upfront" is read from the "Move-in cost" property (the Actor renamed Upfront) until the
+call_context field is renamed.
 
 Secrets: NOTION_TOKEN and NOTION_PARENT_PAGE_ID come from the environment, else from ~/.config/domovoy/.env.
 Nothing secret is printed. Standard library only: call.py loads this module, so call needs no packages.
@@ -195,7 +200,7 @@ def listing_of(page):
         "collected_at": date_start(page, "Collected at"),
         "rent": money(page, "Rent"),
         "total_monthly": money(page, "Total monthly"),
-        "upfront": money(page, "Upfront"),
+        "upfront": money(page, "Move-in cost"),  # call_context still names it upfront
         "kauce": money(page, "Kauce"),
         "commission": money(page, "Commission"),
         "move_in_date": date_start(page, "Move-in date"),
@@ -289,19 +294,27 @@ def property_schema(spec):
 
 
 def plan_changes(live):
-    """What setup must change so that Notion matches the contract: (conflicts, payload, added_options).
+    """What setup must change so that Notion matches the contract: (conflicts, payload, added_options, renamed).
 
     payload is the body of PATCH data_sources. It holds new properties, and full option lists where options are
     missing. Existing options are sent by id, because Notion removes every option a PATCH leaves out, and so keep
     their color: setup never recolors an option.
+    A contract property that is missing while one of its renamed_from names exists with the same type is renamed:
+    the payload key is the live property id and the value {"name": <contract name>}; renamed maps old to new.
     Nothing is removed and no type is changed: a mismatch is a conflict.
     """
-    conflicts, payload, added_options = [], {}, {}
+    conflicts, payload, added_options, renamed = [], {}, {}, {}
     titles = [name for name, value in live.items() if value["type"] == "title"]
     for name, spec in PROPS.items():
         kind = spec["type"]
         if name not in live:
-            if kind == "title":
+            old = next((old for old in spec.get("renamed_from", [])
+                        if old in live and old not in PROPS and live[old]["type"] == kind), None)
+            if old is not None:
+                # Renamed in place by property id, so every page keeps its value.
+                payload[live[old]["id"]] = {"name": name}
+                renamed[old] = name
+            elif kind == "title":
                 conflicts.append("the title property is %s, the contract needs %r" % (titles, name))
             else:
                 payload[name] = property_schema(spec)
@@ -317,10 +330,38 @@ def plan_changes(live):
                 kept = [{"id": option["id"]} for option in existing]
                 payload[name] = {kind: {"options": kept + [new_option(spec, option) for option in missing]}}
                 added_options[name] = missing
-    return conflicts, payload, added_options
+    return conflicts, payload, added_options, renamed
 
 
-def find_databases(parent_id):
+def setup_config():
+    """config.json for setup. Optional: without it setup targets the contract's database title."""
+    path = os.environ.get("DOMOVOY_CONFIG")
+    if path:
+        path = os.path.expanduser(path)
+        if not os.path.isfile(path):
+            raise RuntimeError("DOMOVOY_CONFIG points to a missing file: %s" % path)
+    else:
+        path = os.path.join(ROOT, "config.json")
+        if not os.path.isfile(path):
+            return {}
+    with open(path, encoding="utf-8") as f:
+        cfg = json.load(f)
+    if not isinstance(cfg, dict):
+        raise RuntimeError("config %s is not a JSON object" % path)
+    return cfg
+
+
+def database_title(cfg):
+    """(title, where it came from). notion.database_title in config.json, else the contract's database_title."""
+    title = (cfg.get("notion") or {}).get("database_title")
+    if title is None:
+        return DB_TITLE, "contract database_title"
+    if not isinstance(title, str) or not title.strip():
+        raise RuntimeError("config notion.database_title must be a non-empty string")
+    return title.strip(), "config notion.database_title"
+
+
+def find_databases(parent_id, title=DB_TITLE):
     try:
         blocks = paginate("GET", "/blocks/%s/children" % parent_id, {})
     except NotionError as e:
@@ -329,7 +370,7 @@ def find_databases(parent_id):
                                "(page menu > Connections), then run setup again") from e
         raise
     return [block["id"] for block in blocks
-            if block.get("type") == "child_database" and block["child_database"].get("title") == DB_TITLE]
+            if block.get("type") == "child_database" and block["child_database"].get("title") == title]
 
 
 def single_data_source(database):
@@ -339,45 +380,51 @@ def single_data_source(database):
     return sources[0]["id"]
 
 
-def report(database, ds_id, created, added_properties, added_options, conflicts):
+def report(database, ds_id, created, added_properties, added_options, conflicts, renamed=None,
+           title=DB_TITLE, title_source="contract database_title"):
     return {
-        "database": DB_TITLE,
+        "database": title,
+        "database_title_from": title_source,
         "database_id": database["id"],
         "database_url": database.get("url"),
         "data_source_id": ds_id,
         "created": created,
-        "changed": created or bool(added_properties or added_options),
+        "changed": created or bool(added_properties or added_options or renamed),
         "added_properties": added_properties,
+        "renamed_properties": renamed or {},
         "added_options": added_options,
         "conflicts": conflicts,
         "config_key": "notion.data_source_id",
     }
 
 
-def setup():
+def setup(cfg=None):
+    title, title_source = database_title(cfg or {})
     parent_id = checked_id(setting("NOTION_PARENT_PAGE_ID"), "NOTION_PARENT_PAGE_ID")
-    found = find_databases(parent_id)
+    found = find_databases(parent_id, title)
     if len(found) > 1:
         raise RuntimeError("%d databases named %r sit under the parent page: keep one, archive the rest in Notion, "
-                           "then run setup again" % (len(found), DB_TITLE))
+                           "then run setup again" % (len(found), title))
     if not found:
         database_id = request("POST", "/databases", {
             "parent": {"type": "page_id", "page_id": parent_id},
-            "title": [{"type": "text", "text": {"content": DB_TITLE}}],
+            "title": [{"type": "text", "text": {"content": title}}],
             "initial_data_source": {"properties": {name: property_schema(spec) for name, spec in PROPS.items()}},
         })["id"]
         database = request("GET", "/databases/%s" % database_id)
-        return report(database, single_data_source(database), True, sorted(PROPS), {}, [])
+        return report(database, single_data_source(database), True, sorted(PROPS), {}, [],
+                      title=title, title_source=title_source)
     database = request("GET", "/databases/%s" % found[0])
     ds_id = single_data_source(database)
     live = request("GET", "/data_sources/%s" % ds_id)["properties"]
-    conflicts, payload, added_options = plan_changes(live)
+    conflicts, payload, added_options, renamed = plan_changes(live)
     if conflicts:
-        return report(database, ds_id, False, [], {}, conflicts)
+        return report(database, ds_id, False, [], {}, conflicts, title=title, title_source=title_source)
     if payload:
         request("PATCH", "/data_sources/%s" % ds_id, {"properties": payload})
-    added_properties = sorted(name for name in payload if name not in live)
-    return report(database, ds_id, False, added_properties, added_options, [])
+    added_properties = sorted(name for name, spec in payload.items() if name in PROPS and name not in live)
+    return report(database, ds_id, False, added_properties, added_options, [], renamed,
+                  title=title, title_source=title_source)
 
 
 def main(argv=None):
@@ -385,7 +432,7 @@ def main(argv=None):
     parser.add_argument("command", choices=["setup"])
     parser.parse_args(argv)
     try:
-        out = setup()
+        out = setup(setup_config())
     except (RuntimeError, OSError, ValueError, KeyError) as e:
         print(json.dumps({"error": "%s: %s" % (type(e).__name__, e)}, indent=2, ensure_ascii=False))
         return 1
