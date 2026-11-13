@@ -11,6 +11,7 @@ Only use events of one dataset: `properties.dataset = 'live'` unless the run nam
 | `listing_shortlisted` | A flat passed the hard filters and was shown | `property_id`, `portal`, `total_monthly`, `upfront` |
 | `listing_rejected` | The renter dismissed a shown flat (`Status` = Not interested or `Interested?` = No) | `property_id`, `portal`, `reason` (free text), `elevator`, `furnished`, `floor`, `commission`, `metro_m`, `total_monthly`, `upfront` |
 | `listing_interested` | The renter approved contact for a flat | `property_id`, `portal` |
+| `listing_filtered` | The agent moved a shown flat to Not interested because it broke an approved rule (`Reason` starts with `filtered:`). The renter did not decide this, so it is not a rejection | `property_id`, `portal`, `reason` |
 | `criteria_change_decided` | The renter answered an earlier proposal | `change` (short key), `approved` (bool) |
 
 ## Steps
