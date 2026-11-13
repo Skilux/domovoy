@@ -3,6 +3,21 @@
 ## Decision (Vladimir, GitHub issue #35)
 
 - Chain: `Qwen/Qwen3-30B-A3B-Instruct-2507` (primary, Featherless) → one retry → `deepseek-ai/DeepSeek-V4-Flash` (first fallback, Featherless) → `gpt-4o-mini` (OpenAI, last resort only).
+- **Superseded by Vladimir's perf2 amendment (2026-11-13):** DeepSeek-V4-Flash is dropped. Chain: Qwen (one attempt and one retry, within the per-flat budget) → OpenAI `gpt-6-luna` at reasoning effort medium, the only fallback. See "OpenAI fallback: gpt-6-luna" below. The DeepSeek notes further down are history.
+
+## OpenAI fallback: gpt-6-luna (perf2 amendment)
+
+- Id: `GET https://api.openai.com/v1/models` with this account's `OPENAI_API_KEY` lists `gpt-6-luna` (and `gpt-5.6-luna`). The responses report model `gpt-6-luna`.
+- Call: chat completions, `reasoning_effort: "medium"`, `response_format: json_object`, `max_completion_tokens` 8192 (reasoning tokens count against it), no `temperature`. Same system prompt and input as Qwen.
+- Measured on three fixture texts, one call each, one after another:
+
+| Fixture | Latency | Completion tokens (reasoning) | Result |
+| --- | --- | --- | --- |
+| sreality-1015095372 | 9.6 s | 1011 (472) | valid; 9 values, all quotes verified; status ok |
+| sreality-13369420 | 9.9 s | 1261 (630) | valid; 5 values, all verified; status partial |
+| sreality-2073653324 | 7.6 s | 882 (373) | valid; 8 values, all verified; status ok |
+
+- Its timeout is `max(llm.timeoutSec, 30)` s. OpenAI calls hold no Featherless units; they have their own limit of 8 in flight.
 - Source: the decision as relayed to the WP4 agent. A `gh` read of issue #35 was declined in this session, so the full bench table in the issue was not re-read. Figures below are the relayed ones plus what the models API reports. Issue #35 is the reference.
 
 ## Exact ids and slot costs (Featherless `GET /v1/models`, list only, no completion)
@@ -20,7 +35,7 @@
 - `GET /account/concurrency/stream` (free, SSE) shows `"limit": 100` and the in-flight requests with their unit cost: a Qwen call showed `"cost": 1`.
 - Docs (featherless.ai/docs/concurrency-limits, /docs/api-reference-error-codes): each request reserves its model's units while in flight; a request that would push the organization over the limit gets HTTP 429 ("concurrent-unit or model-switch limit"). The limit is shared by every app on the account.
 - Probe: 10 Qwen calls on the five fixture texts with 8 in flight at once: 10 of 10 valid, no 429, 7 to 12 s each, the same as one at a time.
-- Default `llm.concurrency` is now **8** units: up to 8 Qwen calls, or a DeepSeek fallback (4 units) beside 4 Qwen calls. That is 8 % of the plan, leaving room for other apps on the account. With request pricing, the number of requests per run, not the concurrency, sets the cost.
+- Default `llm.concurrency` was **8** units after the perf ticket, **16** in perf2 and is **40** since Vladimir's perf2 amendment (40 % of the plan; Qwen takes 1 unit, nothing else uses Featherless now). At 8: up to 8 Qwen calls, or a DeepSeek fallback (4 units) beside 4 Qwen calls. That is 8 % of the plan, leaving room for other apps on the account. With request pricing, the number of requests per run, not the concurrency, sets the cost.
 
 ## Bench as relayed from issue #35
 
@@ -40,29 +55,30 @@ Paid model calls in this session: about 37 (Qwen 29, DeepSeek-V4-Flash 3, OpenAI
 
 ## Attempts and what gets recorded
 
-- Concurrency is a weighted, first-come-first-served slot limiter (`llm.SlotLimiter`) with `llm.concurrency` units. A call holds its model's units (`llm.MODEL_SLOTS`; an unknown model counts as 4) while in flight; a cost is never lowered: a model whose units exceed `llm.concurrency` is left out of the chain, with a warning (DeepSeek-V4-Flash below 4). An OpenAI call holds 1 unit, so the last resort is bounded too.
+- Concurrency is a weighted, first-come-first-served slot limiter (`llm.SlotLimiter`) with `llm.concurrency` units. A call holds its model's units (`llm.MODEL_SLOTS`; an unknown model counts as 4) while in flight; a cost is never lowered: a primary model whose units exceed `llm.concurrency` is left out of the chain, with a warning. OpenAI calls use their own limiter (8 in flight) and hold no Featherless units.
+- Per-flat budget (`llm.flatBudgetSec`, 45 s): only time inside Qwen requests counts; waiting for a slot, before the first call or between attempts, and 429 back-off are free. Each Qwen request is cut at the time left. Then the fallback gets its one call. A flat with no answer whose chain ran out of time (budget or a per-attempt timeout) gets status `timeout`: nothing cached, the note "fees not extracted yet", a pending state hash, so the next Notion run re-extracts and upserts it. With no answer for any other reason, `failed`.
 - HTTP 429 is waited out with `Retry-After` or a backoff from 1 s (at most 30 s), outside the slots and without using an attempt, up to 5 times per call.
 - Every failed attempt is logged with its reason class only: `transport:<error>`, `http_<status>`, `no_choices`, `empty`, `truncated` (finish reason `length`), `refusal`, `json_parse` or `schema:<field path>`, with the token counts. Never the content.
 
 - Qwen: one attempt and one retry. A transport error is retried as it was sent; an invalid answer is retried with a repair message.
-- DeepSeek-V4-Flash: one attempt. OpenAI: one attempt. Worst case per listing: four requests.
+- OpenAI `gpt-6-luna`: one attempt. Worst case per listing: three requests.
 - `Extraction.provider` is `featherless` for either Featherless model and `openai` for OpenAI. `Extraction.model` is the id that actually answered. A cache hit returns provider `cache` with the stored model.
 - Cache key: `sha256(text + model + prompt_version)`, where text is the listing text (price_note and description) and model is the configured primary. A fallback answer is stored under the Qwen key, so later runs reuse it. Bump `PROMPT_VERSION` to force a fresh extraction.
 - The cache holds the raw answer and the model that gave it, not the gated result. Every read goes through the same gate as a fresh answer: verbatim quotes against the current listing's description and price_note, the active threshold, and the structured rent. A stored answer never skips a check.
 
 ## Defaults for the Actor input (integrator)
 
-`LlmConfig` is WP0's `models.py`, so these are for WP8 to wire. The code exports them as `DEFAULT_MODEL`, `DEFAULT_FALLBACK_MODEL` and `DEFAULT_OPENAI_MODEL`.
+`LlmConfig` is WP0's `models.py`, so these are for WP8 to wire. The code exports them as `DEFAULT_MODEL` and `DEFAULT_FALLBACK_MODEL`.
 
 | Input (`llm`) | Default | Why |
 | --- | --- | --- |
 | `model` | `Qwen/Qwen3-30B-A3B-Instruct-2507` | primary, one slot per call |
-| `fallbackModel` | `deepseek-ai/DeepSeek-V4-Flash` | first fallback, four slots per call |
-| `concurrency` | `8` | Featherless units held at once (weighted: Qwen 1, DeepSeek-V4-Flash 4). The plan allows 100. Was 1 before the perf ticket |
-| `timeoutSec` | `60` | covers the 5 to 15 s cold start |
-| (no input field) | `gpt-4o-mini` | OpenAI last resort, `DEFAULT_OPENAI_MODEL`. An assumption: it answered on this account, Vladimir has not chosen it |
+| `fallbackModel` | `gpt-6-luna` | OpenAI, the only fallback, reasoning effort medium (perf2 amendment). Was DeepSeek-V4-Flash on Featherless |
+| `concurrency` | `40` | Featherless units held at once (Qwen 1). The plan allows 100. Was 1 before the perf ticket, 8 after it, 16 in perf2 |
+| `timeoutSec` | `20` | per attempt. Answers take 7 to 12 s and a cold first call 5 to 15 s, so no separate first-call allowance. Was 60: on platform run MbC62afDfIfoKehgQ six flats waited out 60 s timeouts and finished at 391 s |
+| `flatBudgetSec` | `45` | Qwen request time per flat (slot waits do not count), then the fallback. Out of time with no answer: status `timeout`, nothing cached, retried by the next run |
 
-`featherlessApiKey`, `openaiApiKey` and the env file are read as before. `OPENAI_API_KEY` is only needed for the last resort.
+`featherlessApiKey`, `openaiApiKey` and the env file are read as before. `OPENAI_API_KEY` is only needed for the fallback.
 
 ## Confidence threshold (open item 7)
 
@@ -81,6 +97,7 @@ Paid model calls in this session: about 37 (Qwen 29, DeepSeek-V4-Flash 3, OpenAI
 | before | main 882f2b2, concurrency 1, extract all then write | 13 | 155.8 s | about 12 s | about 11 s on average, one after another (no per-flat log then) |
 | after 1 | streaming, 8 units, prompt v1 | 12 | 69.9 s | 12.3 s | 7.1 to 22.0 s, median 12.2 s; one 55.1 s (`schema:kauce.value.rent_multiple`, then a retry) |
 | after 2 | final: streaming, 8 units, prompt v2 | 12 | 51.4 s | 11.3 s | 7.3 to 18.7 s, median 13.1 s; one 37.6 s (`truncated`, then a retry) |
+| perf2 | sources concurrent, 16 units, 20 s attempts, 45 s budget | 12 | 22.3 s | 6.6 s (all three at once; slowest idnes) | 6.7 to 13.2 s, median 10.4 s; no retry, timeout or invalid answer in this run |
 
 With streaming, the wall time is about the sources plus the slowest flat. max_listings 5 per source (15 listings) instead of 15 kept the paid calls within the ticket's budget: 52 Featherless calls in all (runs 14 + 13 + 13, diagnosis 10, replay 2), no OpenAI.
 

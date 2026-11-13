@@ -52,7 +52,7 @@ LeaseType = Literal["najem", "podnajem"]
 UnitType = Literal["flat", "studio", "non-residential"]
 Precision = Literal["exact", "street", "district"]
 Provider = Literal["featherless", "openai", "cache"]
-ExtractionStatus = Literal["ok", "partial", "failed"]
+ExtractionStatus = Literal["ok", "partial", "failed", "timeout"]  # timeout: the per-flat budget ran out
 Furniture = Literal[
     "bed", "wardrobe", "fridge", "washing machine", "stove", "sofa", "dining table", "desk"
 ]

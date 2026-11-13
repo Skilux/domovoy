@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 
 import domovoy.costs as costs_stage
@@ -533,9 +534,9 @@ def test_flatitem_assembly_matches_the_hand_built_example():
 def test_llm_defaults_follow_the_wp4_decisions():
     cfg = llm_config({}, {})
     assert cfg.model == "Qwen/Qwen3-30B-A3B-Instruct-2507"
-    assert cfg.fallback_model == "deepseek-ai/DeepSeek-V4-Flash"
-    assert cfg.concurrency == 8
-    assert cfg.timeout_sec == 60
+    assert cfg.fallback_model == "gpt-6-luna"
+    assert cfg.concurrency == 40
+    assert cfg.timeout_sec == 20
     assert cfg.featherless_api_key is None and cfg.openai_api_key is None
     custom = llm_config({"llm": {"model": "m2", "concurrency": 3, "fallbackModel": "f2", "timeoutSec": 30}}, {})
     assert (custom.model, custom.concurrency, custom.fallback_model, custom.timeout_sec) == ("m2", 3, "f2", 30)
@@ -579,7 +580,7 @@ async def test_open_extractor_builds_the_extractor_over_the_cache(monkeypatch):
     )
     assert isinstance(extractor, Extractor)
     assert built["cache"] is cache
-    assert built["kwargs"] == {"min_confidence": 0.5}
+    assert built["kwargs"] == {"min_confidence": 0.5, "flat_budget_sec": 45}
     assert built["cfg"].model == "Qwen/Qwen3-30B-A3B-Instruct-2507"
     assert built["cfg"].featherless_api_key.get_secret_value() == "fake-featherless-key-for-tests"
 
@@ -726,3 +727,188 @@ async def test_an_unexpected_error_in_one_flat_leaves_it_retryable_and_the_rest_
     summary2, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform, environ={"NOTION_TOKEN": "t"})
     assert summary2.change == {"new": 1, "changed": 0, "unchanged": 1}
     assert upserts2 == ["p-sreality-2"]
+
+
+async def test_open_extractor_passes_the_flat_budget_input(monkeypatch):
+    built: dict[str, Any] = {}
+
+    class Extractor:
+        def __init__(self, cfg: Any, cache: Any, **kwargs: Any) -> None:
+            built.update(kwargs)
+
+    async def open_cache() -> object:
+        return object()
+
+    monkeypatch.setattr(pipeline_module, "open_apify_cache", open_cache)
+    monkeypatch.setattr(pipeline_module, "Extractor", Extractor)
+    await open_extractor({"llm": {"flatBudgetSec": 30}}, {}, LOG)
+    assert built["flat_budget_sec"] == 30
+
+
+async def test_a_timed_out_flat_is_delivered_with_a_note_and_the_next_run_delivers_its_fees():
+    """Run 1: flat 2's extraction times out. It still reaches the dataset and Notion, with status timeout and
+    "fees not extracted yet"; flat 1 is unaffected. Run 2: flat 2 extracts, counts as changed and is upserted
+    again with its fees; flat 1 is unchanged."""
+    timed_out = {"2"}
+
+    async def extract(listing: Listing) -> Extraction:
+        if listing.source_id in timed_out:
+            data = empty_extraction().model_dump(mode="json")
+            data.update(status="timeout", prompt_version="v2")
+            return Extraction.model_validate(data)
+        return extraction_with(rent=listing.rent)
+
+    dedup = fake_dedup()
+    sink, upserts = fake_notion()
+    platform = FakePlatform()
+    sources = {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2")])}
+    modules = Modules(dedup=dedup, extraction=SimpleNamespace(extract=extract), costs=fake_costs(), notion=sink)
+    run = {"skipExtraction": False, "notion": {"dataSourceId": "ds"}}
+    summary, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform, environ={"NOTION_TOKEN": "t"})
+    by_id = {item["property_id"]: item for item in platform.items}
+    assert by_id["p-sreality-2"]["extraction"]["status"] == "timeout"
+    assert "fees not extracted yet" in by_id["p-sreality-2"]["unknowns"]
+    assert "fees not extracted yet" not in by_id["p-sreality-1"]["unknowns"]
+    assert sorted(upserts) == ["p-sreality-1", "p-sreality-2"]
+    assert summary.notion.created == 2
+
+    timed_out.clear()
+    real_diff = dedup.diff
+
+    def diff(flats: list[Flat], state: ProfileState) -> list[tuple[Flat, str]]:
+        """Like WP6 diff: a stored hash that differs from the flat's ("fake" here) means changed."""
+        return [
+            (flat, "changed" if state.flats[flat.property_id].content_hash != "fake" else change)
+            if flat.property_id in state.flats else (flat, change)
+            for flat, change in real_diff(flats, state)
+        ]
+
+    dedup.diff = diff
+    sink2, upserts2 = fake_notion(action="updated")
+    modules = Modules(dedup=dedup, extraction=SimpleNamespace(extract=extract), costs=fake_costs(), notion=sink2)
+    summary2, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform, environ={"NOTION_TOKEN": "t"})
+    assert summary2.change == {"new": 0, "changed": 1, "unchanged": 1}
+    assert upserts2 == ["p-sreality-2"]
+
+
+async def test_sources_run_concurrently_and_keep_profile_order():
+    """bezrealitky yields only after sreality has started and idnes has finished: sequential collection would hang."""
+    sreality_started = asyncio.Event()
+    idnes_done = asyncio.Event()
+
+    class Waiting(FakeSource):
+        def __init__(self, name: str, listings: list[Listing], before=None, after=None) -> None:
+            super().__init__(name, listings)
+            self.before, self.after = before, after
+
+        async def collect(self, profile: SearchProfile, ctx: Any):
+            if self.after is not None:
+                self.after.set()
+            if self.before is not None:
+                await self.before.wait()
+            for listing in self.listings:
+                yield listing
+            if self.name == "idnes":
+                idnes_done.set()
+
+    class Bezrealitky(FakeSource):
+        async def collect(self, profile: SearchProfile, ctx: Any):
+            await sreality_started.wait()
+            await idnes_done.wait()
+            for listing in self.listings:
+                yield listing
+
+    sources = {
+        "sreality": Waiting("sreality", [make_listing("1")], after=sreality_started),
+        "bezrealitky": Bezrealitky("bezrealitky", [make_listing("2", portal="bezrealitky")]),
+        "idnes": Waiting("idnes", [make_listing("3", portal="idnes")]),
+        "broken": FakeSource("broken", [], error=SourceError("down")),
+    }
+    search = profile()
+    async with asyncio.timeout(2):
+        statuses, listings = await pipeline_module.collect_listings(search, sources, LOG)
+    assert [s.portal for s in statuses] == list(search.filters.sources)
+    assert [listing.portal for listing in listings] == ["sreality", "bezrealitky", "idnes"]
+    assert all(s.status == "ok" for s in statuses)
+
+
+async def test_final_provider_expiry_is_delivered_as_timeout_and_the_next_run_upserts_the_fees():
+    """Review perf2 #2, end to end with the real Extractor, dedup and costs: run 1, Qwen spends the flat's budget and
+    the final provider (luna) times out, so the flat is delivered with status timeout and the note, and its state is
+    pending. Run 2: Qwen answers; the flat counts as changed and is upserted with the extracted services."""
+    from openai import APITimeoutError
+
+    from domovoy.extraction import Extractor, MemoryCache
+
+    request = httpx.Request("POST", "https://example.invalid/v1/chat/completions")
+    quote = "services 2 000 CZK per month"
+    charge = {"czk": 2000, "rent_multiple": None, "per_person": False, "included": False, "vat_extra": None}
+    answer = json.dumps({"services": {"value": charge, "quote": quote, "confidence": 0.9}})
+
+    def reply(content: str) -> Any:
+        message = SimpleNamespace(content=content, refusal=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")], usage=None)
+
+    class Qwen:
+        def __init__(self, delay: float) -> None:
+            self.delay = delay
+
+        async def create(self, **kwargs: Any) -> Any:
+            await asyncio.sleep(self.delay)
+            return reply(answer)
+
+    class Luna:
+        async def create(self, **kwargs: Any) -> Any:
+            raise APITimeoutError(request=request)
+
+    def client(completions: Any) -> Any:
+        return SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+    items: list[Any] = []
+
+    class Sink:
+        def __init__(self, *, token: str, data_source_id: str) -> None:
+            pass
+
+        async def validate(self) -> None:
+            return None
+
+        async def aclose(self) -> None:
+            return None
+
+        async def upsert(self, item: Any) -> UpsertResult:
+            items.append(item)
+            return UpsertResult(page_id="page-" + item.property_id, action="created" if len(items) == 1 else "updated")
+
+    def evaluate(listing: Listing, ex: Extraction, costs: Costs, p: SearchProfile) -> Evaluation:
+        evaluation = costs_stage.evaluate(listing, ex, costs, p)
+        return evaluation.model_copy(update={"match": "needs_info"})  # never rejected, so Notion sees it
+
+    costs = SimpleNamespace(compute_costs=costs_stage.compute_costs, evaluate=evaluate)
+    cache = MemoryCache()
+    platform = FakePlatform()
+    run = {"skipExtraction": False, "notion": {"dataSourceId": "ds"}}
+    sources = {"sreality": FakeSource("sreality", [make_listing("1")])}
+
+    async def run_with(qwen: Any, luna: Any) -> Any:
+        extractor = Extractor(llm_config({}, {}), cache, featherless=client(qwen), openai=client(luna),
+                              flat_budget_sec=0.05)
+        modules = Modules(dedup=dedup_stage, extraction=extractor, costs=costs, notion=SimpleNamespace(NotionSink=Sink))
+        summary, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform,
+                                        environ={"NOTION_TOKEN": "t"})
+        return summary
+
+    first = await run_with(Qwen(0.5), Luna())
+    [item] = items
+    assert item.extraction.status == "timeout" and "fees not extracted yet" in item.unknowns
+    assert item.services is None
+    assert first.change["new"] == 1 and first.notion.created == 1
+    assert cache._items == {}
+
+    second = await run_with(Qwen(0.0), Luna())
+    assert second.change == {"new": 0, "changed": 1, "unchanged": 0}
+    assert second.notion.updated == 1
+    updated = items[1]
+    assert updated.extraction.status in ("ok", "partial") and updated.extraction.provider == "featherless"
+    assert updated.services == 2000
+    assert "fees not extracted yet" not in updated.unknowns

@@ -47,7 +47,7 @@
     "llm": {
       "title": "LLM settings",
       "type": "object",
-      "description": "Featherless extraction settings. Each listing is tried on the model, then on the fallback model; OpenAI is a last resort set in code (gpt-4o-mini).",
+      "description": "Extraction settings. Each listing is tried on the Featherless model (Qwen, two attempts within the per-flat budget), then once on the OpenAI fallback model (gpt-6-luna, reasoning effort medium).",
       "editor": "schemaBased",
       "properties": {
         "model": {
@@ -59,21 +59,28 @@
         "fallbackModel": {
           "title": "Fallback model",
           "type": "string",
-          "description": "Featherless fallback model, tried once when the primary model fails. Not OpenAI. DeepSeek-V4-Flash takes 4 concurrency slots.",
-          "default": "deepseek-ai/DeepSeek-V4-Flash"
+          "description": "OpenAI fallback model, the only fallback: tried once, at reasoning effort medium, when Qwen has no valid answer. Needs an OpenAI key. Id checked on GET /v1/models.",
+          "default": "gpt-6-luna"
         },
         "concurrency": {
           "title": "Concurrency",
           "type": "integer",
-          "description": "Featherless concurrent units the run may hold at once. A Qwen3-30B call takes 1 unit, a DeepSeek-V4-Flash fallback call 4 (left out of the chain when this value is below 4). The plan allows 100 (GET /v1/plan).",
-          "default": 8,
+          "description": "Featherless concurrent units the run may hold at once. A Qwen3-30B call takes 1 unit; OpenAI fallback calls take none. The plan allows 100 (GET /v1/plan).",
+          "default": 40,
           "minimum": 1
         },
         "timeoutSec": {
           "title": "Timeout (seconds)",
           "type": "integer",
-          "description": "Timeout per LLM call.",
-          "default": 60,
+          "description": "Timeout per Qwen call attempt. Answers take 7 to 12 s, a cold first call 5 to 15 s. The OpenAI fallback gets at least 30 s.",
+          "default": 20,
+          "minimum": 1
+        },
+        "flatBudgetSec": {
+          "title": "Per-flat budget (seconds)",
+          "type": "integer",
+          "description": "Time one flat may spend inside Qwen requests (waiting for a slot does not count). Then the OpenAI fallback gets one call. If the flat still has no answer and time ran out, it goes on with extraction status timeout and 'fees not extracted yet' in its unknowns; nothing is cached, so the next run extracts it again and delivers it as changed.",
+          "default": 45,
           "minimum": 1
         }
       }
@@ -88,7 +95,7 @@
     "openaiApiKey": {
       "title": "OpenAI API key",
       "type": "string",
-      "description": "OpenAI API key for the last resort only: gpt-4o-mini, set in code, tried when both Featherless models fail. Falls back to the environment variable OPENAI_API_KEY (Apify secret openaiApiKey).",
+      "description": "OpenAI API key for the fallback model (llm.fallbackModel, gpt-6-luna), tried when Qwen has no valid answer. Falls back to the environment variable OPENAI_API_KEY (Apify secret openaiApiKey).",
       "editor": "textfield",
       "isSecret": true
     },
