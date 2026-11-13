@@ -81,7 +81,7 @@ Made by Danila for the call half of the Skill lane.
 | --- | --- | --- |
 | Notion switch | Danila accepted the Notion switch and the `notion_page_id` rename, 13 Nov 2026 | Open item 13: review after the merge |
 | Calendar access | No calendar script and no Google API setup. Claude reads free windows and creates the test event with whatever calendar access it has; `call.py` takes the windows as input and prints the event to create | Open item 2; `calendar.*` script |
-| Shortlist access from `call.py` | Through one backend module named in `config.json` (`backend.module`) with four functions; `notion.py` is the real one, `tests/gh_test_backend.py` a labeled test backend | `board.py` over `gh` |
-| Call idempotency | The appended summary carries a `domovoy-call: <conversation_id>` line, and the id is also kept in local `.state/`; a result seen in either changes nothing | Unspecified |
+| Shortlist access from `call.py` | Notion only, through one module named in `config.json` (`backend.module`) with three functions: list pages by `Status`, set `Status`, append to the page body. `notion.py` is the real one; `tests/fake_notion_backend.py` is a local fake. No GitHub board or issue code anywhere in DOMOVOY | `board.py` over `gh` |
+| Call idempotency | The handled `conversation_id` is kept in local `.state/handled.json`; the appended summary also carries a `domovoy-call: <conversation_id>` line. A result seen before changes nothing | Unspecified |
 | Receipt order | `call.py` appends the summary and sets `Viewing booked`, then Claude creates the event from the printed `event` | Event first, then status |
-
+| Extra `call_context` fields | `call.py` passes listing fields it does not know through; the phone server accepts them (`phone/lib/context.js` requires only `property_id` and `address`) | Unspecified |

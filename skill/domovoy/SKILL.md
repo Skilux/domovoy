@@ -7,12 +7,14 @@ description: Find a flat to rent and book a viewing by voice. Use when the user 
 
 Commands: **setup** and **research** (listings to the Notion shortlist) and **call** (one approved voice call, then the receipt). Scripts do everything that must be exact. Run them from this skill's folder with `python3`; the call command needs only the Python 3 standard library.
 
+Test without any network: `python3 -m unittest discover -s tests` (fake phone server and fake Notion backend).
+
 ## Setup, once
 
 1. Copy `config.example.json` to `config.json` and fill it in. `config.json` is never committed.
 2. Phone server URL and secret: put `PHONE_URL=...` and `DOMOVOY_SECRET=...` in the file named by `phone.env_file` (default `~/.config/domovoy/.env`, mode 600), or export them, or set `phone.url` and `phone.secret` in `config.json`. Never print or commit the secret.
 
-3. `backend.module` in `config.json` names the script that reaches the shortlist. It is `scripts/notion.py`. `tests/gh_test_backend.py` is a labeled test backend, never a DOMOVOY surface.
+3. `backend.module` in `config.json` names the script that reaches the Notion shortlist: `scripts/notion.py`. `tests/fake_notion_backend.py` is a local fake for tests only.
 
 All names that may change live in one place: status names, the backend, viewing hours, the renter's values and the search profiles in `config.json`; contract fields in `reference/*.schema.json`. `budget_cap` is the active profile's `requirements.max_total_monthly`.
 
@@ -42,17 +44,17 @@ Trigger: the user moved a flat to Interested in Notion and says something like "
    `python3 scripts/call.py run --windows '<the JSON>'`
    The script finds the single Interested flat, builds and validates the `call_context`, posts it to the phone server, sets `Status = Calling`, polls for the result, rechecks it (agreed time inside a window, monthly total within the budget cap), then sets `Viewing booked` or `Not booked` and appends the summary or the reason to the Notion page. While it runs, tell the user the phone page is ringing.
 3. **Read the JSON it prints.**
-   - `"refused": true` (exit 2): nobody was contacted. Tell the user the `reason`. With zero Interested flats, stop. With several, ask which one and run again with `--flat ID`.
+   - `"refused": true` (exit 2): nobody was contacted. Tell the user the `reason`. With zero Interested flats, stop. With several, ask which one and run again with `--page ID` (the `notion_page_id` in the refusal).
    - `"error"` (exit 1): tell the user what failed. Do not retry the call without asking.
-   - `"create_event": true`: create one event in calendar `calendar_id` with exactly the `event.title`, `event.start`, `event.end` and `event.description` printed. Then tell the user the time, the new status and the page link (`flat_url`).
+   - `"create_event": true`: create one event in calendar `calendar_id` with exactly the `event.title`, `event.start`, `event.end` and `event.description` printed. Then tell the user the time, the new status and the page link (`page_url`).
    - `"booked": false`: create no event. Tell the user the `reason` and the page link.
    - `"already_handled": true`: this result was processed before. Create nothing and say so.
 
 Other forms:
 
-- `python3 scripts/call.py check --windows '<JSON>' [--flat ID]` builds and validates the context and contacts nobody. Use it to preview.
-- `python3 scripts/call.py resume --flat ID` fetches the result again for a call this machine already posted, for example after a crash. It is safe to repeat.
-- `--listing <file or JSON>` gives the listing fields (named as in `call_context`) when the backend cannot supply them.
+- `python3 scripts/call.py check --windows '<JSON>' [--page ID]` builds and validates the context and contacts nobody. Use it to preview.
+- `python3 scripts/call.py resume --page ID` fetches the result again for a call this machine already posted, for example after a crash. It is safe to repeat.
+- `--listing <file or JSON>` gives the listing fields as one JSON object (named as in `call_context`) when the backend cannot supply them.
 
 Warnings in the output (`total_monthly` unknown or over the cap) mean the recheck will end in Not booked. Tell the user before they take the call.
 
