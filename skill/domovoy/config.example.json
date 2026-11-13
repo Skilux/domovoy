@@ -26,6 +26,26 @@
   "profiles": [
     {
       "id": "example-2kk-30k",
+      "version": 1,
+      "filters": {
+        "offer_type": "rent",
+        "property_type": "flat",
+        "locations": [
+          {
+            "city": "Praha",
+            "citypart": null
+          }
+        ],
+        "dispositions": [
+          "2+kk"
+        ],
+        "sources": [
+          "sreality"
+        ]
+      },
+      "household": {
+        "occupants": 1
+      },
       "requirements": {
         "max_total_monthly": 30000
       }
