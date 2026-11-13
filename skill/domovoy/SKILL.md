@@ -67,7 +67,8 @@ Optional, and it must never delay or fail the call: if `repo_path` is set in `co
    - `"already_handled": true`: this result was processed before. Create nothing and say so.
 4. **Tell the user what the call found.** After any result, read `answers` and `new_costs` from the output and say them in one or two lines.
    - The voice agent puts the reply to an unknown field (commission, deposit, move-in date, pets) in `answers` as free text, not in `new_costs`. `call.py` appends every answer to the Notion page. It does not turn free text into numbers and does not change the cost properties.
-   - If an answer states a one-time cost, for example a commission of "about thirty thousand CZK", say that upfront cash rises by about that amount on top of the listed `upfront`, and that the number is the realtor's spoken estimate. Do not write a computed total into Notion.
+   - `upfront` in the `call_context` is the shortlist's move-in cost as the Actor computed it: first month, deposit, and the commission, one-time fees and furniture estimate it already knew. A part it did not know is not in the number and is listed in `unknowns`.
+   - If an answer states a one-time cost that was in `unknowns`, for example a commission of "about thirty thousand CZK", say that the cost to move in is about that much higher than the listed figure, and that the number is the realtor's spoken estimate. If the cost was already known before the call, do not add it again. Do not write a computed total into Notion.
    - The budget recheck is on the monthly total only: `total_monthly` plus `new_costs` marked recurring. A one-time fee, in `answers` or in `new_costs`, never turns a booked viewing into Not booked. A monthly cost that pushes the total over `budget_cap` does.
 
 Other forms:
