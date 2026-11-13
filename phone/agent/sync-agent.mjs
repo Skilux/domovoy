@@ -19,7 +19,7 @@ function phoneHost() {
 agent.conversation_config.agent.prompt.prompt = read('./prompt.md').trim();
 agent.conversation_config.agent.prompt.tool_ids = tools.map((tool) => `<id of ${tool.name}>`);
 agent.platform_settings.auth.allowlist = withAllowlist ? [{ hostname: phoneHost() }] : [];
-if (agentId) delete agent.conversation_config.tts;
+if (agentId) agent.conversation_config.tts = { speed: agent.conversation_config.tts.speed };
 
 if (dryRun) {
   const request = agentId ? 'PATCH /v1/convai/agents/{agent_id}' : 'POST /v1/convai/agents/create';
