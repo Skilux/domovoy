@@ -8,6 +8,8 @@
                                     file the report: an inactive feature flag that holds the change, and a notebook
   loop.py decide --key K --yes|--no [--real]
                                     record the human answer; on yes switch the flag on and re-filter the shortlist
+  loop.py measure [--key K]         after a later search: compare shown and rejected flats before and after each approved
+                                    change, write the result into its notebook and into the agent's memory
   loop.py apply [--real]            re-filter the shortlist by every approved change (safe to repeat)
   loop.py overrides                 print the approved requirement changes, for search.py to merge into the profile
 
@@ -236,6 +238,44 @@ def cmd_report(args):
     })
 
 
+STATUS = "**Status: "
+NOTHING_YET = "Nothing yet. This part fills in by itself after the answer."
+RESULT = "**Result:** "
+
+
+def measure_sql(ds, base_version, pretty=False):
+    """Flats shown and rejected by the renter, before and after the change that follows rules version base_version."""
+    names = ("`When`", "`Flats shown`", "`Rejected by the renter`", "`Rejection rate`") if pretty else ("period", "shown", "rejected", "rate")
+    return (
+        "select if(toInt(properties.criteria_version) <= %d, 'Before this change', 'After this change') as %s, "
+        "count(distinct if(event = 'listing_shortlisted', properties.property_id, null)) as %s, "
+        "count(distinct if(event = 'listing_rejected', properties.property_id, null)) as %s, "
+        "concat(toString(round(100 * %s / %s)), ' %%') as %s "
+        "from events where event in ('listing_shortlisted', 'listing_rejected') and properties.dataset = '%s' "
+        "group by 1 order by 1 desc" % (base_version, names[0], names[1], names[2], names[2], names[1], names[3], ds))
+
+
+def edit_notebook(short_id, replace):
+    """Rewrite lines of a report notebook. `replace` maps a text that marks a line to the new line."""
+    if not short_id:
+        return False
+    notebook = api("GET", "notebooks/%s/" % short_id)
+    content = notebook["content"]
+    node = content["content"][0]["attrs"]
+    lines = node["markdown"].split("\n")
+    for index, line in enumerate(lines):
+        for marker, new in replace.items():
+            if marker in line.replace("\\", ""):
+                lines[index] = new
+    node["markdown"] = "\n".join(lines)
+    api("PATCH", "notebooks/%s/" % short_id, {"content": content, "version": notebook["version"]})
+    return True
+
+
+def clock():
+    return datetime.datetime.now().astimezone().strftime("%H:%M")
+
+
 def cmd_propose(args):
     key = re.sub(r"[^a-z0-9_]", "", args.key.lower())
     change = json.loads(args.change)
@@ -256,6 +296,7 @@ def cmd_propose(args):
         return out({"refused": True, "reason": "unsupported change %s; supported: %s" % (unknown_names, ", ".join(SUPPORTED))}, 2)
     flats = shortlist.list_flats()
     would_remove = [f["property_id"] for f in flats if open_for_review(f) and fails(f, change)]
+    base_version = sum(1 for f in criteria_flags(args.dataset) if f["active"])
     flag = api("POST", "feature_flags/", {
         "key": flag_key,
         "name": "DOMOVOY approved criteria change: %s. Off = proposed or declined, on = approved." % args.title,
@@ -264,30 +305,29 @@ def cmd_propose(args):
         "filters": {"groups": [{"properties": [], "rollout_percentage": 100}],
                     "payloads": {"true": json.dumps({"requirements": change, "reason_key": key})}},
     })
-    id_list = ", ".join("'%s'" % i.replace("'", "") for i in ids)
     by_id = {f["property_id"]: f for f in flats}
-    rows = "\n".join("| %s | %s | %s |" % (i, (by_id.get(i) or {}).get("portal") or "unknown",
-                                          ((by_id.get(i) or {}).get("reason") or "not in the shortlist now").replace("|", "/"))
+    understood = key.replace("_", " ")
+    rows = "\n".join("| %s | \"%s\" | %s |" % (i, ((by_id.get(i) or {}).get("reason") or "not in the shortlist now").replace("|", "/"), understood)
                      for i in ids)
     wish = "; ".join(describe(name, value) for name, value in sorted(change.items()))
-    synthetic = "" if ds == "live" else "> Test run on synthetic flats (dataset `%s`). Nothing here is a real listing.\n\n" % ds
+    who = renter() if renter() != "renter" else "the renter"
     title = "DOMOVOY suggests: " + args.title
     env = load_env()
-    mcp("notebooks-create-markdown", {"title": title, "markdown": synthetic + "\n\n".join([
-        "DOMOVOY is the agent that finds flats and calls realtors for %s. It watches which flats get rejected and why. "
-        "When the same reason comes back 3 times, it suggests one change to the search and asks here. "
-        "Nothing changes until the switch in step 3 is turned on." % (renter() if renter() != "renter" else "the renter"),
+    intro = [] if ds == "live" else ["> Example on synthetic flats (dataset `%s`). No real listing is shown here." % ds]
+    mcp("notebooks-create-markdown", {"title": title, "markdown": "\n\n".join(intro + [
+        STATUS + "🟡 Waiting for your answer**",
+        "DOMOVOY finds flats for %s and learns from every flat that gets rejected. "
+        "This page is one thing it learned, and one question to you." % who,
         "## 1. What the agent noticed",
         args.finding or args.title,
-        "| Flat | Portal | The renter's own words |\n| --- | --- | --- |\n" + rows,
+        "| Flat | What %s wrote | What the agent understood |\n| --- | --- | --- |\n%s" % (who, rows),
         "## 2. What it suggests",
-        "From now on show **%s**." % wish,
-        "- Right now: %s." % ("%d flat%s still on the shortlist would be removed (%s)" % (
-            len(would_remove), "" if len(would_remove) == 1 else "s", ", ".join(would_remove)) if would_remove
-            else "no flat on the shortlist would be removed"),
-        "- Every later search: flats that fail this are not shown. A flat where the answer is unknown stays.",
+        "> From now on, show **%s**." % wish,
+        ("%d flat%s on the shortlist now would be removed: %s." % (len(would_remove), "" if len(would_remove) == 1 else "s", ", ".join(would_remove))
+         if would_remove else "No flat on the shortlist now would be removed.")
+        + " A flat where the answer is unknown always stays.",
         "## 3. Your answer",
-        "**Yes:** turn the switch below on. **No:** leave it off. Either answer is remembered, so the agent does not ask this twice.",
+        "Switch on = yes. Leave it off = no. The agent remembers either answer and does not ask twice.",
     ])})
     short_id = next((n["short_id"] for n in api("GET", "notebooks/?limit=50").get("results", []) if n.get("title") == title), None)
     notebook_url = None
@@ -297,26 +337,19 @@ def cmd_propose(args):
         def cell(cell_type, **fields):
             mcp("notebooks-add-cell", dict(fields, notebook_id=short_id, cell_type=cell_type))
 
-        def text(*parts):
-            cell("markdown", markdown="\n\n".join(parts))
-
         cell("component", tag_name="FeatureFlag", props={"id": flag["id"], "view": "editor"})
-        chart = next((i["short_id"] for i in api("GET", "insights/?search=DOMOVOY&saved=true&limit=20").get("results", [])
-                      if (i.get("name") or "").startswith(MEASURE_INSIGHT)), None)
-        if chart:
-            text("## 4. Did it help?",
-                 "Not known yet. One change proves that it was applied, not that the results got better. "
-                 "The chart counts flats shown, rejected and liked, split by the version of the search rules. "
-                 "After a yes, a new version starts; fewer rejections per flat shown in the new version means the change helped.")
-            cell("saved_insight", insight_short_id=chart, title="Flats shown, rejected and liked, by version of the search rules")
-        text("## How this page was made",
-             "The agent wrote it from the rejections stored as PostHog events, following its instructions `%s` kept in PostHog. "
-             "The answer is a PostHog feature flag (`%s`); the search reads it before every run. "
-             "The query below shows the raw events behind step 1." % (SCOUT_SKILL, flag_key))
-        cell("sql", title="Raw events behind step 1",
-             code="select properties.property_id as flat, properties.portal as portal, properties.reason as reason, "
-                  "timestamp from events where event = 'listing_rejected' and properties.dataset = '%s' "
-                  "and properties.property_id in (%s) order by timestamp" % (ds, id_list))
+        cell("markdown", markdown="## 4. What happened next\n\n" + NOTHING_YET)
+        table = api("POST", "insights/", {
+            "name": "DOMOVOY before and after: %s (%s)" % (args.title, ds), "saved": True, "tags": ["domovoy"],
+            "query": {"kind": "DataVisualizationNode", "display": "ActionsTable",
+                      "source": {"kind": "HogQLQuery", "query": measure_sql(ds, base_version, pretty=True)}}})
+        cell("saved_insight", insight_short_id=table["short_id"], title="Flats shown and rejected, before and after this change")
+        cell("markdown", markdown="---\n\nWritten by the DOMOVOY agent from PostHog events. Its instructions and memory: skill `%s`. "
+                                  "The switch: feature flag `%s`." % (SCOUT_SKILL, flag_key))
+        api("PATCH", "feature_flags/%s/" % flag["id"], {"filters": {
+            "groups": [{"properties": [], "rollout_percentage": 100}],
+            "payloads": {"true": json.dumps({"requirements": change, "reason_key": key, "notebook": short_id,
+                                             "base_version": base_version, "title": args.title})}}})
     capture("criteria_change_proposed", renter(), dict(
         base_props(args, criteria_flags(args.dataset)), change=key, flag=flag_key, requirements=change,
         evidence_property_ids=ids, would_remove=len(would_remove), notebook=notebook_url))
@@ -395,7 +428,64 @@ def cmd_decide(args):
               "learned": write_back(args, key, approved, flag["payload"].get("requirements"))}
     if approved:
         result.update(refilter(args, flags))
+    learned, moved = result["learned"], result.get("moved_to_not_interested") or []
+    memory = "The agent then rewrote its own instructions (PostHog skill `%s`, version %d → %d). New line in its memory: \"%s\"" % (
+        SCOUT_SKILL, learned["version"] - 1, learned["version"], learned["line"].lstrip("- ").replace("`", ""))
+    if approved:
+        story = "**%s: you said yes.** %s %s" % (
+            clock(), ("%d flat%s left the shortlist: %s." % (len(moved), "" if len(moved) == 1 else "s", ", ".join(m["property_id"] for m in moved))
+                      if moved else "No flat had to leave the shortlist."), memory)
+        status = STATUS + "🟢 Approved at %s. Waiting for the next search to measure it**" % clock()
+        tail = ["", RESULT + "not measured yet. The numbers appear after the next search."]
+    else:
+        story = "**%s: you said no.** Nothing changed in the search. %s It will not ask this again." % (clock(), memory)
+        status, tail = STATUS + "⚪ Declined at %s. Remembered, not asked again**" % clock(), []
+    result["notebook_updated"] = edit_notebook(flag["payload"].get("notebook"), {STATUS: status, NOTHING_YET: "\n".join([story] + tail)})
     return out(result)
+
+
+def cmd_measure(args):
+    """Compare flats shown and rejected before and after each approved change; write the result into its notebook
+    and into the agent's memory."""
+    ds, results = args.dataset.replace("'", ""), []
+    for flag in criteria_flags(args.dataset):
+        payload = flag["payload"]
+        if not flag["active"] or "base_version" not in payload:
+            continue
+        key = payload.get("reason_key")
+        if args.key and key != re.sub(r"[^a-z0-9_]", "", args.key.lower()):
+            continue
+        rows = {r["period"]: r for r in query(measure_sql(ds, int(payload["base_version"])))}
+        before, after = rows.get("Before this change") or {}, rows.get("After this change") or {}
+        entry = {"change": key, "before": before, "after": after}
+        if not after.get("shown"):
+            entry["verdict"] = "not measurable yet: no flat was shown after the change"
+            results.append(entry)
+            continue
+        rate = lambda r: round(100.0 * r["rejected"] / r["shown"]) if r.get("shown") else 0
+        numbers = "before %d of %d flats shown were rejected (%d %%), after %d of %d (%d %%)" % (
+            before.get("rejected", 0), before.get("shown", 0), rate(before), after["rejected"], after["shown"], rate(after))
+        better = rate(after) < rate(before)
+        small = " Small sample: %d flats so far." % after["shown"] if after["shown"] < 10 else ""
+        entry["verdict"] = ("helped: " if better else "no improvement yet: ") + numbers
+        status = STATUS + ("✅ Helped: rejection rate %d %% → %d %%**" if better else "🟠 No improvement yet: rejection rate %d %% → %d %%**") % (rate(before), rate(after))
+        entry["notebook_updated"] = edit_notebook(payload.get("notebook"), {
+            STATUS: status,
+            RESULT: RESULT + "%s at %s: %s.%s The agent wrote this result into its memory too." % (
+                "it helped" if better else "no improvement yet", clock(), numbers, small)})
+        skill = api("GET", "llm_skills/name/%s/" % SCOUT_SKILL)
+        mark = "measured `%s`, dataset `%s`:" % (key, ds)
+        kept = [line for line in skill["body"].rstrip("\n").split("\n") if mark not in line]
+        line = "- %s %s %s.%s" % (datetime.date.today().isoformat(), mark, entry["verdict"], small)
+        mcp("skill-update", {"skill_name": SCOUT_SKILL, "body": "\n".join(kept + [line]) + "\n", "base_version": skill["version"],
+                             "version_description": "Measured: %s (%s)" % (key, ds)})
+        entry["learned"] = {"skill": SCOUT_SKILL, "version": skill["version"] + 1, "line": line}
+        capture("criteria_change_measured", renter(), dict(
+            base_props(args, criteria_flags(args.dataset)), change=key, helped=better,
+            shown_before=before.get("shown", 0), rejected_before=before.get("rejected", 0),
+            shown_after=after["shown"], rejected_after=after["rejected"]))
+        results.append(entry)
+    return out({"measured": results})
 
 
 def cmd_apply(args):
@@ -438,12 +528,14 @@ def main():
     group.add_argument("--yes", action="store_true")
     group.add_argument("--no", action="store_true")
     d.add_argument("--real", action="store_true", help=REAL_HELP)
+    m = sub.add_parser("measure")
+    m.add_argument("--key", default="")
     args = parser.parse_args()
     if args.dataset != "live" and not shortlist.explicit_data_source():
         return out({"refused": True, "reason": "a test dataset needs an explicit shortlist: set NOTION_DATA_SOURCE_ID or "
                     "DOMOVOY_FAKE_SHORTLIST. Without one this would read and re-filter the real DOMOVOY shortlist."}, 2)
     return {"sync": cmd_sync, "report": cmd_report, "propose": cmd_propose, "decide": cmd_decide,
-            "apply": cmd_apply, "overrides": cmd_overrides}[args.cmd](args)
+            "apply": cmd_apply, "overrides": cmd_overrides, "measure": cmd_measure}[args.cmd](args)
 
 
 if __name__ == "__main__":

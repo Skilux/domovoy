@@ -1,0 +1,77 @@
+{
+  "_note": "SYNTHETIC second search for the posthog/loop.py example: what a search returns after 'elevator required' was approved. Not real listings.",
+  "flats": [
+    {
+      "page_id": "fake-page-101",
+      "property_id": "synthetic-101",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 101",
+      "status": "Shortlisted",
+      "reason": "",
+      "elevator": "Yes",
+      "portal": "sreality",
+      "total_monthly": 26500,
+      "upfront": 79500,
+      "floor": 3
+    },
+    {
+      "page_id": "fake-page-102",
+      "property_id": "synthetic-102",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 102",
+      "status": "Shortlisted",
+      "reason": "",
+      "elevator": "Yes",
+      "portal": "bezrealitky",
+      "total_monthly": 27000,
+      "upfront": 81000,
+      "floor": 2
+    },
+    {
+      "page_id": "fake-page-103",
+      "property_id": "synthetic-103",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 103",
+      "status": "Shortlisted",
+      "reason": "",
+      "elevator": "Yes",
+      "portal": "idnes",
+      "total_monthly": 25500,
+      "upfront": 76500,
+      "floor": 5
+    },
+    {
+      "page_id": "fake-page-104",
+      "property_id": "synthetic-104",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 104",
+      "status": "Not interested",
+      "reason": "street is too loud",
+      "elevator": "Yes",
+      "portal": "sreality",
+      "total_monthly": 28000,
+      "upfront": 84000,
+      "floor": 4
+    },
+    {
+      "page_id": "fake-page-105",
+      "property_id": "synthetic-105",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 105",
+      "status": "Shortlisted",
+      "reason": "",
+      "elevator": "Yes",
+      "portal": "bezrealitky",
+      "total_monthly": 26000,
+      "upfront": 78000,
+      "floor": 1
+    },
+    {
+      "page_id": "fake-page-106",
+      "property_id": "synthetic-106",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 106",
+      "status": "Shortlisted",
+      "reason": "",
+      "elevator": "Yes",
+      "portal": "idnes",
+      "total_monthly": 27500,
+      "upfront": 82500,
+      "floor": 6
+    }
+  ]
+}
