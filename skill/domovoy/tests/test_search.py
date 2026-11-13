@@ -377,5 +377,23 @@ class SearchTest(unittest.TestCase):
         self.assertEqual(out["console_url"], CONSOLE)
 
 
+class CoworkEnvFileTest(unittest.TestCase):
+    def test_domovoy_env_file_wins_over_apify_env_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "cowork.env")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("APIFY_TOKEN=file-token\n")
+            cfg = {"apify": {"env_file": os.path.join(tmp, "config.env")}}
+            with mock.patch.dict(os.environ, {"DOMOVOY_ENV_FILE": path}, clear=True):
+                settings = search.apify_settings(cfg)
+                self.assertEqual(settings["env_file"], path)
+                self.assertEqual(search.apify_token(settings["env_file"]), "file-token")
+            with mock.patch.dict(os.environ, {"DOMOVOY_ENV_FILE": path, "APIFY_TOKEN": "env-token"}, clear=True):
+                self.assertEqual(search.apify_token(search.apify_settings(cfg)["env_file"]), "env-token")
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(search.apify_settings(cfg)["env_file"], cfg["apify"]["env_file"])
+                self.assertEqual(search.apify_settings({})["env_file"], search.DEFAULT_ENV_FILE)
+
+
 if __name__ == "__main__":
     unittest.main()
