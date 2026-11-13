@@ -7,7 +7,9 @@ Two backends with the same functions:
            Property names follow docs/prd/actor.md.
   Fake     a JSON file named by DOMOVOY_FAKE_SHORTLIST, for tests. Never talks to Notion.
 
-A flat is a dict: page_id, property_id, title, status, reason, elevator, portal, total_monthly, upfront, floor.
+A flat is a dict: page_id, property_id, title, status, reason, elevator, portal, total_monthly, upfront, floor,
+interested (the renter's "Interested?" column: Yes, No or None; None also when the column does not exist),
+furnished, commission, metro_m. Only Status and Reason are ever written.
 """
 import json
 import os
@@ -53,10 +55,14 @@ def _select(prop):
     return ((prop or {}).get("select") or {}).get("name")
 
 
+def explicit_data_source():
+    """A data source named on purpose: NOTION_DATA_SOURCE_ID, a data_source_id in the skill config, or the fake file."""
+    return (_fake_path() or os.environ.get("NOTION_DATA_SOURCE_ID") or load_env().get("NOTION_DATA_SOURCE_ID")
+            or find_key(skill_config(), "data_source_id"))
+
+
 def data_source_id():
-    env = load_env()
-    known = (os.environ.get("NOTION_DATA_SOURCE_ID") or env.get("NOTION_DATA_SOURCE_ID")
-             or find_key(skill_config(), "data_source_id"))
+    known = explicit_data_source()
     if known:
         return known
     title = os.environ.get("DOMOVOY_SHORTLIST_TITLE") or TITLE
@@ -81,6 +87,10 @@ def _flat(page):
         "total_monthly": (p.get("Total monthly") or {}).get("number"),
         "upfront": (p.get("Upfront") or {}).get("number"),
         "floor": (p.get("Floor") or {}).get("number"),
+        "interested": _select(p.get("Interested?")),
+        "furnished": _select(p.get("Furnished")),
+        "commission": (p.get("Commission") or {}).get("number"),
+        "metro_m": (p.get("Metro m") or {}).get("number"),
     }
 
 
