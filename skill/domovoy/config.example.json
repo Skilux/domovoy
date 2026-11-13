@@ -1,0 +1,44 @@
+{
+  "github": {
+    "owner": "Skilux",
+    "repo": "Skilux/domovoy",
+    "project_number": 1
+  },
+  "board": {
+    "status_field": "Status",
+    "statuses": {
+      "interested": "Interested",
+      "calling": "Calling",
+      "booked": "Viewing booked",
+      "not_booked": "Not booked"
+    }
+  },
+  "issue": {
+    "property_id_pattern": "<!--\\s*property_id:\\s*(\\S+)\\s*-->"
+  },
+  "phone": {
+    "url": "",
+    "secret": "",
+    "env_file": "~/.config/domovoy/.env",
+    "url_env": "PHONE_URL",
+    "secret_env": "DOMOVOY_SECRET",
+    "poll_seconds": 3,
+    "timeout_seconds": 300
+  },
+  "call_context": {
+    "user_name": "Vladimir",
+    "budget_cap": 30000,
+    "realtor_name": "Demo Realtor"
+  },
+  "calendar": {
+    "calendar_id": "primary",
+    "timezone": "Europe/Prague",
+    "viewing_weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "viewing_from": "17:00",
+    "viewing_to": "20:00",
+    "days_ahead": 7,
+    "window_minutes": 60,
+    "max_windows": 5,
+    "event_title": "Viewing (demo): {address}"
+  }
+}
