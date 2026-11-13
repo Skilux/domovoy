@@ -8,7 +8,8 @@ const dryRun = flags.has('--dry-run');
 const withAllowlist = flags.has('--allowlist');
 
 const read = (name) => readFileSync(new URL(name, import.meta.url), 'utf8');
-const { agent, tool } = JSON.parse(read('./agent.json'));
+const { agent, tools } = JSON.parse(read('./agent.json'));
+const agentId = (process.env.ELEVENLABS_AGENT_ID || '').trim();
 
 function phoneHost() {
   const raw = (process.env.PHONE_URL || DEFAULT_PHONE_URL).trim();
@@ -16,11 +17,13 @@ function phoneHost() {
 }
 
 agent.conversation_config.agent.prompt.prompt = read('./prompt.md').trim();
-agent.conversation_config.agent.prompt.tool_ids = ['<id of submit_call_result>'];
+agent.conversation_config.agent.prompt.tool_ids = tools.map((tool) => `<id of ${tool.name}>`);
 agent.platform_settings.auth.allowlist = withAllowlist ? [{ hostname: phoneHost() }] : [];
+if (agentId) delete agent.conversation_config.tts;
 
 if (dryRun) {
-  console.log(JSON.stringify({ tool: { tool_config: tool }, agent }, null, 2));
+  const request = agentId ? 'PATCH /v1/convai/agents/{agent_id}' : 'POST /v1/convai/agents/create';
+  console.log(JSON.stringify({ request, tools: tools.map((tool) => ({ tool_config: tool })), agent }, null, 2));
   process.exit(0);
 }
 
@@ -44,7 +47,7 @@ async function call(method, path, body) {
   return text ? JSON.parse(text) : {};
 }
 
-async function syncTool() {
+async function syncTool(tool) {
   const found = await call('GET', `/tools?search=${encodeURIComponent(tool.name)}&page_size=100`);
   const existing = (found.tools || []).find((t) => t.tool_config?.name === tool.name && t.tool_config?.type === 'client');
   if (existing) {
@@ -54,9 +57,10 @@ async function syncTool() {
   return (await call('POST', '/tools', { tool_config: tool })).id;
 }
 
-agent.conversation_config.agent.prompt.tool_ids = [await syncTool()];
+const toolIds = [];
+for (const tool of tools) toolIds.push(await syncTool(tool));
+agent.conversation_config.agent.prompt.tool_ids = toolIds;
 
-const agentId = process.env.ELEVENLABS_AGENT_ID;
 const saved = agentId
   ? await call('PATCH', `/agents/${agentId}`, agent)
   : await call('POST', '/agents/create', agent);
