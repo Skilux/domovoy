@@ -17,3 +17,8 @@ register(SrealitySource())
 from domovoy.sources import bezrealitky as _bezrealitky  # noqa: E402  (WP2)
 
 register(_bezrealitky.SOURCE)
+
+# WP3: iDNES, registered after sreality (WP1) and bezrealitky (WP2).
+from domovoy.sources.idnes import IdnesSource  # noqa: E402
+
+register(IdnesSource())

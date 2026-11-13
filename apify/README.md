@@ -5,7 +5,7 @@ WP0 foundation. The Actor runs, but it does not search any portal yet.
 ## What works now
 
 - Profile validation: `profile` is validated into `SearchProfile` (`domovoy/models.py`). The schema copy is `domovoy/schemas/profile.schema.json`.
-- `mode: search`: runs the registered portal sources. None is registered in WP0, so the run returns zero listings. The summary lists each requested portal as `failed` with the error "source not registered".
+- `mode: search`: runs the registered portal sources. `idnes` (WP3) is registered; Sreality and Bezrealitky are not yet, so their summaries say `failed` with "source not registered".
 - `mode: katastr_lookup`: returns `{"status": "NOT_IMPLEMENTED"}`.
 - An unknown mode raises an error, so the run fails.
 - `skipExtraction` is logged. No LLM client exists yet.
