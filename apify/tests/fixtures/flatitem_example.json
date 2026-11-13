@@ -1,0 +1,77 @@
+{
+  "property_id": "p-EXAMPLE234",
+  "profile_id": "vinohrady-2kk-30k",
+  "run_id": "example-run",
+  "change": "new",
+  "match": "needs_info",
+  "url": "https://www.sreality.cz/api/v1/estates/1000000001",
+  "collected_at": "2026-11-13T12:00:00+01:00",
+  "title": "Example listing (hand-built fixture, not a real flat)",
+  "address": "Example street 1, Praha 2",
+  "address_detail": {
+    "street": "Example street",
+    "house_number": "1",
+    "citypart": "Vinohrady",
+    "district": "Praha 2",
+    "gps": null,
+    "precision": "district"
+  },
+  "disposition": "2+kk",
+  "area_m2": 54.0,
+  "floor": 3,
+  "elevator": true,
+  "furnished": "partial",
+  "rent": 24000,
+  "services": 2000,
+  "energy": 1500,
+  "total_monthly": 27500,
+  "estimated": ["energy", "total_monthly"],
+  "kauce": 24000,
+  "commission": 0,
+  "one_time_fees": 500,
+  "first_payment": 27500,
+  "upfront": 52000,
+  "missing_furniture": ["washing machine"],
+  "missing_furniture_cost": 8000,
+  "move_in_date": "2027-01-01",
+  "lease_type": "najem",
+  "lease_length_months": 12,
+  "pets_allowed": null,
+  "permanent_residence": null,
+  "unit_type_hint": "flat",
+  "evidence": [
+    {"field": "rent", "quote": "Example quote for rent", "confidence": 0.9}
+  ],
+  "unknowns": ["Are energy costs included in the rent?"],
+  "match_reasons": ["Rent is within the budget cap"],
+  "requirements": [
+    {"name": "max_total_monthly", "verdict": "pass", "estimated": true, "reason": "Energy is estimated"}
+  ],
+  "risk_flags": ["fees not stated"],
+  "sources": [
+    {
+      "portal": "sreality",
+      "source_id": "1000000001",
+      "url": "https://www.sreality.cz/api/v1/estates/1000000001",
+      "rent": 24000,
+      "commission": 0,
+      "is_owner_listing": false,
+      "collected_at": "2026-11-13T12:00:00+01:00",
+      "contact": {
+        "name": "Example Agent",
+        "agency": null,
+        "ico": null,
+        "email": null,
+        "phone": null,
+        "form_url": null
+      }
+    }
+  ],
+  "cross_source": {"cheapest_portal": null, "commission_savings": null, "price_spread": null},
+  "image_url": null,
+  "photos": [],
+  "poi": {"metro_m": 300, "tram_m": 120, "shop_m": 80},
+  "extraction": {"provider": "openai", "model": "example-model", "status": "partial"},
+  "first_seen": "2026-11-13T12:00:00+01:00",
+  "last_seen": "2026-11-13T12:00:00+01:00"
+}

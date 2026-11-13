@@ -1,0 +1,12 @@
+{
+  "portal": "sreality",
+  "source_id": "270794828",
+  "url": "https://www.sreality.cz/api/v1/estates/270794828",
+  "description": "Nabízíme k pronájmu velmi pěkný a prakticky řešený byt 2+1, 75 m2, který se nachází v 1. patře cihlového domu s výtahem v ulici Čiklova, v oblíbené pražské rezidenční lokalitě pod Vyšehradem. Výborně řešená dispozice bytu nabízí prostorné obytné pokoje, velkou kuchyň, koupelnu s vanou a samostatné WC. Vytápění a ohřev jsou zajišťuje vlastní plynový kotel, odběr elektřiny a plynu se převádí přímo na nájemce. Kompletní občanská vybavenost a skvělá dopravní dostupnost jsou v této části Prahy samozřejmostí. Byt je ihned volný, pro bližší informace a prohlídky kontaktujte makléře.",
+  "price_note": "+ poplatky a spotřeba energií",
+  "rent": 28000,
+  "area_m2": 75,
+  "disposition": "2+1",
+  "note": "Covers: fees missing. The price note says fees and energy are extra but gives no amounts. No commission stated. Furnishing not stated.",
+  "synthetic": false
+}

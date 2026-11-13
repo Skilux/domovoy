@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "submit_call_result",
+  "description": "ElevenLabs client tool -> phone server -> Claude. Source: docs/plan.md, Contracts. Money is integer CZK. Times are ISO 8601 with offset. Extra fields are passed through.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["property_id", "conversation_id", "outcome", "viewing_start", "answers", "new_costs", "summary"],
+  "properties": {
+    "property_id": {"type": "string", "minLength": 1},
+    "conversation_id": {"type": "string", "minLength": 1},
+    "outcome": {"enum": ["booked", "not_booked"]},
+    "viewing_start": {"type": ["string", "null"]},
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question", "answer"],
+        "properties": {
+          "question": {"type": "string"},
+          "answer": {"type": "string"}
+        }
+      }
+    },
+    "new_costs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "amount", "recurring"],
+        "properties": {
+          "label": {"type": "string"},
+          "amount": {"type": ["integer", "null"]},
+          "recurring": {"type": "boolean"}
+        }
+      }
+    },
+    "summary": {"type": "string"}
+  }
+}
