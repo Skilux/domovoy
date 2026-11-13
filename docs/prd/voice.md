@@ -67,7 +67,7 @@ Vercel functions share no memory, so pending calls and results need a small stor
 ### Page
 
 - Screens: waiting → incoming call (address, Accept / Decline, ringtone) → in call (timer, live transcript) → result (outcome and time).
-- Pairing: only a paired page receives calls. Open `/?k=<DOMOVOY_RECEIVER_KEY>` once on the demo laptop (or `/start?k=`); the page keeps the key in localStorage and removes it from the address bar. A page without the key is public and viewable, shows "Demo phone. Calls ring only on the paired device.", never polls and never rings.
+- Pairing: only a paired page receives calls. Open `/?k=<DOMOVOY_RECEIVER_KEY>` once on the demo laptop (`/start?k=` and `/phone?k=` do the same; `/` opens the home page with the phone in it, `/phone` is the phone alone); the page keeps the key in localStorage and removes it from the address bar. A page without the key is public and viewable, shows "Demo phone. Calls ring only on the paired device.", never polls and never rings.
 - Browsers block audio until the user interacts with a page. The waiting screen needs one "Ready" click before the demo so the ringtone can play later.
 - Ringtone: an mp3 cut from the referenced Nokia 3310 video.
 

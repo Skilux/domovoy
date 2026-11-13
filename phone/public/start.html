@@ -59,14 +59,14 @@
     </div>
 
     <div class="live">
-      <iframe src="/" title="DOMOVOY phone" allow="microphone; autoplay"></iframe>
+      <iframe src="/phone" title="DOMOVOY phone" allow="microphone; autoplay"></iframe>
     </div>
   </div>
 
   <script>
     const key = new URLSearchParams(location.search).get("k");
     if (key) {
-      document.querySelector(".live iframe").src = "/?k=" + encodeURIComponent(key);
+      document.querySelector(".live iframe").src = "/phone?k=" + encodeURIComponent(key);
       history.replaceState(null, "", location.pathname);
     }
     const frame = document.querySelector(".live iframe");
