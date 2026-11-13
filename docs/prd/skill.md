@@ -28,7 +28,7 @@ flowchart TD
   C --> D[Read free windows from calendar]
   D --> E[Build and validate call_context]
   E --> F[POST /api/call; Status = Calling]
-  F --> G[Poll GET /api/result every 3 s, max 5 min]
+  F --> G[Poll GET /api/result every 3 s, max 7 min]
   G -- timeout --> N[Status = Not booked; append: no result]
   G -- result --> H{booked, time inside a window, total within budget?}
   H -- no --> N2[Status = Not booked; append reason]

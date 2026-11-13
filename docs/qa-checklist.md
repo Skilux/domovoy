@@ -56,7 +56,7 @@ This is a live call. It counts against the three-call budget.
 | - [ ] | Both | Watch Notion | `Status` of the demo flat changes to **Calling** |
 | - [ ] | Danila | Watch the phone page | It rings (Nokia tone) and shows the flat's address. Answer |
 | - [ ] | Danila | Listen. Answer the fee question with a one-time fee. Decline the first time, accept the second | The agent says it is an AI. It asks about the unknown fees. It offers only times from the free windows. It repeats the agreed time |
-| - [ ] | Both | Do nothing at the end | The call ends by itself and `call.py` prints one JSON object in under 5 minutes |
+| - [ ] | Both | Do nothing at the end | The call ends by itself and `call.py` prints one JSON object in under 7 minutes |
 
 ## 4. BOOK
 

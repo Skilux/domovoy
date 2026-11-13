@@ -178,6 +178,27 @@ class EndToEndFake(unittest.TestCase):
         self.assertIn("no result from the phone server", out["reason"])
         self.assertEqual(self.page()["body"].count("Call result"), 2)
 
+    def test_result_after_run_timeout_is_applied_by_resume_once(self):
+        code, out, _ = self.run_with_result(None)
+        self.assertEqual((code, out["status"]), (0, "Not booked"))
+        code, out = self.run_call("resume", "--page", PAGE)
+        self.assertEqual((code, out["refused"]), (2, True))
+        self.post_result(result("conv-late"))
+        code, out = self.run_call("resume", "--page", PAGE)
+        self.assertEqual((code, out["status"], out["create_event"]), (0, "Viewing booked", True))
+        self.assertEqual(self.page()["status"], "Viewing booked")
+        code, out = self.run_call("resume", "--page", PAGE)
+        self.assertEqual((code, out["already_handled"], out["create_event"]), (0, True, False))
+        self.assertEqual(self.page()["body"].count("domovoy-call: conv-late"), 1)
+
+    def test_resume_refuses_a_new_result_when_not_booked_without_a_timeout(self):
+        self.run_with_result(result("conv-A", outcome="not_booked", viewing_start=None))
+        self.assertEqual(self.page()["status"], "Not booked")
+        self.post_result(result("conv-B"))
+        code, out = self.run_call("resume", "--page", PAGE)
+        self.assertEqual((code, out["refused"]), (2, True))
+        self.assertEqual(self.page()["status"], "Not booked")
+
     def test_two_interested_flats_need_a_choice(self):
         db = notion._load()
         db["pages"].append(dict(db["pages"][0], notion_page_id="fake-page-002", status="Interested"))

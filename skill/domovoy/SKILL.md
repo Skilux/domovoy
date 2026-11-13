@@ -56,8 +56,9 @@ Optional, and it must never delay or fail the call: if `repo_path` is set in `co
 1. **Free windows.** Read the `calendar` block of `config.json`. With whatever calendar access you have (a Google Calendar connector, MCP server or CLI), read busy times for the next `days_ahead` days in `timezone`, intersect them with the viewing hours (`viewing_weekdays`, `viewing_from` to `viewing_to`), and pick up to `max_windows` free windows of `window_minutes` each. Write them as JSON, ISO 8601 with offset:
    `[{"start": "2026-11-16T17:00:00+01:00", "end": "2026-11-16T18:00:00+01:00"}]`
    If you cannot read the calendar, stop and tell the user. Do not invent windows.
-2. **Run the call.** This blocks until the call ends, up to `phone.timeout_seconds` (5 min):
+2. **Run the call.** This blocks until the call ends, up to `phone.timeout_seconds` (7 min: the call itself is capped at 5 min, plus time to answer):
    `python3 scripts/call.py run --windows '<the JSON>'`
+   Run this command with a 10 minute timeout, not your default command timeout. If the command is cut off or times out, do not run it again: run `python3 scripts/call.py resume --page <notion_page_id>` until it prints a result. Where one command cannot run that long (a sandboxed runner), use `start` then `resume` from "Other forms" below.
    The script finds the single Interested flat, builds and validates the `call_context`, posts it to the phone server, sets `Status = Calling`, polls for the result, rechecks it (agreed time inside a window, monthly total within the budget cap), then sets `Viewing booked` or `Not booked` and appends the summary or the reason to the Notion page. While it runs, tell the user the phone page is ringing.
 3. **Read the JSON it prints.**
    - `"refused": true` (exit 2): nobody was contacted. Tell the user the `reason`. With zero Interested flats, stop. With several, ask which one and run again with `--page ID` (the `notion_page_id` in the refusal).
@@ -75,7 +76,7 @@ Other forms:
 
 - `python3 scripts/call.py check --windows '<JSON>' [--page ID]` builds and validates the context and contacts nobody. Use it to preview.
 - `python3 scripts/call.py start --windows '<the JSON>'` posts the call, sets `Calling` and returns at once with `notion_page_id`, for a client that cannot wait 5 minutes in one command. Then run `resume --page ID` every few seconds: it exits with code 2 and `refused` while the call is running, and prints the same result as `run` once it ends. Unlike `run`, nothing sets `Not booked` if no result ever comes.
-- `python3 scripts/call.py resume --page ID` fetches the result again for a call this machine already posted, for example after a crash. It posts nothing and is safe to repeat. For a call posted from another machine, add `--windows '<JSON>'` with the same windows; the flat must still be in Calling.
+- `python3 scripts/call.py resume --page ID` fetches the result again for a call this machine already posted, for example after a crash. It posts nothing and is safe to repeat. It also applies a result that arrived after `run` gave up and set `Not booked`. For a call posted from another machine, add `--windows '<JSON>'` with the same windows; the flat must still be in Calling.
 - `tests/fixtures/real_call_2026-11-13_booked.json` is a labeled real result from a spoken demo call on a sample context. If the voice call fails on stage, show it as a prior result and say so.
 - `--listing <file or JSON>` gives the listing fields as one JSON object (named as in `call_context`) when the backend cannot supply them.
 
