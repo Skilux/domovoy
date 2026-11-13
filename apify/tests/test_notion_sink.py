@@ -472,3 +472,24 @@ async def test_a_429_pauses_every_caller_of_the_throttle():
     start = time.monotonic()
     await throttle.wait()
     assert time.monotonic() - start >= 0.04
+
+
+async def test_a_429_holds_callers_that_were_already_queued():
+    """Callers 2 to 4 hold slots when call 1 gets a 429 with Retry-After 0.3: none starts during the cooldown, and
+    after it they are still spaced at the rate."""
+    stamps: list[float] = []
+    fake = FakeNotion()
+    fake.reply("GET", "/users/me", (429, {"code": "rate_limited"}, {"Retry-After": "0.3"}), {"ok": True})
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        stamps.append(time.monotonic())
+        await asyncio.sleep(0.01)  # the reply takes a moment, so the other callers are queued when the 429 lands
+        return fake(request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        sink = NotionSink(TOKEN, DS, client=client, rate=20, retry_base=0.0)
+        await asyncio.gather(*(sink._request("GET", "/users/me") for _ in range(4)))
+    first, rest = stamps[0], stamps[1:]
+    assert len(rest) == 4  # three queued callers and the retry of the first
+    assert min(rest) - first >= 0.29
+    assert min(b - a for a, b in zip(rest, rest[1:])) >= 0.04

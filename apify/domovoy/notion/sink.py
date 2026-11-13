@@ -63,24 +63,30 @@ class Throttle:
     """Spaces requests at `rate` per second. Slots are reserved under a lock, so concurrent callers queue up.
 
     One sink, one throttle: the pipeline's per-flat tasks share the sink, so the run stays at `rate` in total.
+    pause() sets a shared cooldown. A caller that already holds a slot rechecks it right before dispatch and, if a
+    cooldown started while it waited, reserves a new slot after the cooldown, still spaced at `rate`.
     """
 
     def __init__(self, rate: float) -> None:
         self._interval = 1.0 / rate
         self._next_slot = 0.0
+        self._cooldown_until = 0.0
         self._lock = asyncio.Lock()
 
     async def wait(self) -> None:
-        async with self._lock:
-            now = time.monotonic()
-            slot = max(now, self._next_slot)
-            self._next_slot = slot + self._interval
-        if slot > now:
-            await asyncio.sleep(slot - now)
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                slot = max(now, self._next_slot, self._cooldown_until)
+                self._next_slot = slot + self._interval
+            if slot > now:
+                await asyncio.sleep(slot - now)
+            if time.monotonic() >= self._cooldown_until:
+                return
 
     def pause(self, seconds: float) -> None:
-        """Hold every caller, not only the one that saw the 429: no slot starts before `seconds` from now."""
-        self._next_slot = max(self._next_slot, time.monotonic() + seconds)
+        """Hold every caller, queued ones included: no request starts before `seconds` from now."""
+        self._cooldown_until = max(self._cooldown_until, time.monotonic() + seconds)
 
 
 def option_name(name: str) -> str:

@@ -114,7 +114,9 @@ def silent_client() -> AsyncOpenAI:
 
 
 def make_cfg(**overrides: Any) -> LlmConfig:
-    return LlmConfig(**({"model": DEFAULT_MODEL, "fallback_model": DEFAULT_FALLBACK_MODEL} | overrides))
+    """The Actor's defaults (pipeline.llm_config): 8 units, so the 4-unit fallback is in the chain."""
+    defaults = {"model": DEFAULT_MODEL, "fallback_model": DEFAULT_FALLBACK_MODEL, "concurrency": 8}
+    return LlmConfig(**(defaults | overrides))
 
 
 async def run_one(
@@ -537,9 +539,12 @@ async def test_slot_limiter_never_exceeds_capacity_and_serves_a_large_call_in_or
     assert limiter.used == 0
 
 
-async def test_slot_limiter_caps_a_cost_above_capacity_and_frees_slots_on_cancel() -> None:
+async def test_slot_limiter_refuses_a_cost_above_capacity_and_frees_slots_on_cancel() -> None:
     limiter = SlotLimiter(2)
-    async with limiter.slots(4):
+    with pytest.raises(ValueError):
+        await limiter.acquire(4)  # never lowered to fit: 4 real units cannot be counted as 2
+    assert limiter.used == 0
+    async with limiter.slots(2):
         assert limiter.used == 2
         waiter = asyncio.create_task(limiter.acquire(1))
         await asyncio.sleep(0)
@@ -549,6 +554,40 @@ async def test_slot_limiter_caps_a_cost_above_capacity_and_frees_slots_on_cancel
     assert limiter.used == 0
     async with limiter.slots(1):
         assert limiter.used == 1
+
+
+async def test_at_capacity_2_the_4_unit_fallback_is_left_out_and_real_units_stay_within_2(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING)
+    held = {DEFAULT_MODEL: 1, DEFAULT_FALLBACK_MODEL: 4}
+
+    class Units:
+        def __init__(self) -> None:
+            self.used = 0
+            self.peak = 0
+            self.models: list[str] = []
+
+        async def create(self, **kwargs: Any) -> Any:
+            self.models.append(kwargs["model"])
+            self.used += held[kwargs["model"]]
+            self.peak = max(self.peak, self.used)
+            await asyncio.sleep(0.01)
+            self.used -= held[kwargs["model"]]
+            if "fails" in kwargs["messages"][1]["content"]:
+                return completion("not json")
+            return completion(answer())
+
+    units = Units()
+    featherless = cast(AsyncOpenAI, SimpleNamespace(chat=SimpleNamespace(completions=units)))
+    openai, openai_calls = scripted(completion(answer()), completion(answer()))
+    extractor = Extractor(make_cfg(concurrency=2), featherless=featherless, openai=openai)
+    listings = [make_listing("Listing %d%s." % (i, " fails" if i < 2 else ""), source_id=str(i)) for i in range(6)]
+    results = await asyncio.gather(*(extractor.extract(item) for item in listings))
+    assert units.peak <= 2
+    assert DEFAULT_FALLBACK_MODEL not in units.models
+    assert [r.provider for r in results].count("openai") == 2 and len(openai_calls.calls) == 2
+    assert "left out of the chain" in caplog.text
 
 
 def test_slot_costs_follow_the_featherless_models_api() -> None:

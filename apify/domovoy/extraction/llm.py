@@ -157,9 +157,9 @@ def make_client(api_key: str, base_url: str | None, timeout_sec: int) -> AsyncOp
 class SlotLimiter:
     """A weighted, first-come-first-served limit on Featherless concurrent units.
 
-    A call holds `cost` slots of `capacity` while it is in flight (Qwen3-30B 1, DeepSeek-V4-Flash 4). A cost above
-    the capacity is capped at the capacity, so a large model still runs, alone. Waiters are served in order: a
-    4-slot fallback is not starved by a stream of 1-slot calls behind it.
+    A call holds `cost` slots of `capacity` while it is in flight (Qwen3-30B 1, DeepSeek-V4-Flash 4). A cost is never
+    lowered: a cost above the capacity is refused, and the Extractor leaves such a model out of its chain. Waiters
+    are served in order: a 4-slot fallback is not starved by a stream of 1-slot calls behind it.
     """
 
     def __init__(self, capacity: int) -> None:
@@ -170,7 +170,9 @@ class SlotLimiter:
         self._waiters: deque[tuple[int, asyncio.Future[None]]] = deque()
 
     async def acquire(self, cost: int) -> int:
-        cost = max(1, min(cost, self.capacity))
+        """Wait for `cost` slots and hold them. Returns the cost; release() it."""
+        if not 1 <= cost <= self.capacity:
+            raise ValueError("a call of %d units cannot run within %d units" % (cost, self.capacity))
         if not self._waiters and self.used + cost <= self.capacity:
             self.used += cost
             return cost

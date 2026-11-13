@@ -40,7 +40,7 @@ Paid model calls in this session: about 37 (Qwen 29, DeepSeek-V4-Flash 3, OpenAI
 
 ## Attempts and what gets recorded
 
-- Concurrency is a weighted, first-come-first-served slot limiter (`llm.SlotLimiter`) with `llm.concurrency` units. A call holds its model's units (`llm.MODEL_SLOTS`; an unknown model counts as 4) while in flight; a cost above the capacity is capped at it. An OpenAI call holds 1 unit, so the last resort is bounded too.
+- Concurrency is a weighted, first-come-first-served slot limiter (`llm.SlotLimiter`) with `llm.concurrency` units. A call holds its model's units (`llm.MODEL_SLOTS`; an unknown model counts as 4) while in flight; a cost is never lowered: a model whose units exceed `llm.concurrency` is left out of the chain, with a warning (DeepSeek-V4-Flash below 4). An OpenAI call holds 1 unit, so the last resort is bounded too.
 - HTTP 429 is waited out with `Retry-After` or a backoff from 1 s (at most 30 s), outside the slots and without using an attempt, up to 5 times per call.
 - Every failed attempt is logged with its reason class only: `transport:<error>`, `http_<status>`, `no_choices`, `empty`, `truncated` (finish reason `length`), `refusal`, `json_parse` or `schema:<field path>`, with the token counts. Never the content.
 

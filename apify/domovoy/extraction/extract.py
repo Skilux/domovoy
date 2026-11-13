@@ -1,5 +1,6 @@
 """Extraction of one listing: cache, provider chain, quote check and confidence threshold."""
 
+import logging
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -20,6 +21,7 @@ from domovoy.extraction.prompt import PROMPT_VERSION, listing_input
 from domovoy.models import Evidence, Extraction, Listing, LlmConfig, Provider
 
 DEFAULT_MIN_CONFIDENCE = 0.5
+log = logging.getLogger(__name__)
 EVIDENCE_FIELDS = tuple(LlmFields.model_fields)
 
 
@@ -143,6 +145,27 @@ class Extractor:
             self._openai: AsyncOpenAI | None = openai
         else:
             self._openai = self._build("OPENAI_API_KEY", cfg.openai_api_key, None)
+        self._chain = self._make_chain()
+
+    def _make_chain(self) -> list[tuple[AsyncOpenAI, str, Provider, int, int]]:
+        """The provider chain. A Featherless model whose units exceed llm.concurrency is left out, never undercounted."""
+        chain: list[tuple[AsyncOpenAI, str, Provider, int, int]] = []
+        if self._featherless is not None:
+            models = [(self._cfg.model, 2)]
+            if self._cfg.fallback_model is not None:
+                models.append((self._cfg.fallback_model, 1))
+            for model, attempts in models:
+                cost = slot_cost(model)
+                if cost > self._cfg.concurrency:
+                    log.warning(
+                        "%s needs %d Featherless units, more than llm.concurrency %d: left out of the chain",
+                        model, cost, self._cfg.concurrency,
+                    )
+                    continue
+                chain.append((self._featherless, model, "featherless", attempts, cost))
+        if self._openai is not None:
+            chain.append((self._openai, self._openai_model, "openai", 1, 1))
+        return chain
 
     def _build(self, env_name: str, configured: SecretStr | None, base_url: str | None) -> AsyncOpenAI | None:
         key = resolve_key(env_name, configured)
@@ -191,15 +214,7 @@ class Extractor:
 
         The answer records the provider and the model that actually answered.
         """
-        chain: list[tuple[AsyncOpenAI, str, Provider, int, int]] = []
-        if self._featherless is not None:
-            chain.append((self._featherless, self._cfg.model, "featherless", 2, slot_cost(self._cfg.model)))
-            if self._cfg.fallback_model is not None:
-                fallback = self._cfg.fallback_model
-                chain.append((self._featherless, fallback, "featherless", 1, slot_cost(fallback)))
-        if self._openai is not None:
-            chain.append((self._openai, self._openai_model, "openai", 1, 1))
-        for client, model, provider, attempts, cost in chain:
+        for client, model, provider, attempts, cost in self._chain:
             fields = await ask(
                 client,
                 model=model,

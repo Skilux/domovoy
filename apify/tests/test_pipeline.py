@@ -690,13 +690,38 @@ async def test_each_flat_reaches_the_dataset_and_notion_while_others_are_still_e
     assert summary.extraction_providers["featherless"] == 2
 
 
-async def test_an_unexpected_error_in_one_flat_still_fails_the_run():
-    def boom(*_args: Any) -> Costs:
-        raise RuntimeError("costs bug")
-
-    extraction, _ = fake_extraction()
+async def test_an_unexpected_error_in_one_flat_leaves_it_retryable_and_the_rest_delivered(caplog):
+    """Flat 2's evaluation raises: flat 1 is still pushed and upserted, the run succeeds, and only flat 1 is
+    recorded as seen, so the next run treats flat 2 as new again. The error message is not logged."""
+    caplog.set_level(logging.WARNING)
     costs = fake_costs()
-    costs.compute_costs = boom
+    healthy = costs.evaluate
+
+    def evaluate(listing: Listing, ex: Extraction, c: Costs, p: SearchProfile) -> Evaluation:
+        if listing.source_id == "2":
+            raise RuntimeError("costs bug near Vinohradská 12")
+        return healthy(listing, ex, c, p)
+
+    costs.evaluate = evaluate
+    extraction, _ = fake_extraction()
+    sink, upserts = fake_notion()
+    dedup = fake_dedup()
+    platform = FakePlatform()
     sources = {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2")])}
-    with pytest.raises(RuntimeError, match="costs bug"):
-        await run_pipeline(sources, Modules(extraction=extraction, costs=costs), actor_input={"skipExtraction": False})
+    modules = Modules(dedup=dedup, extraction=extraction, costs=costs, notion=sink)
+    run = {"skipExtraction": False, "notion": {"dataSourceId": "ds"}}
+    summary, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform, environ={"NOTION_TOKEN": "t"})
+    assert [item["property_id"] for item in platform.items] == ["p-sreality-1"]
+    assert upserts == ["p-sreality-1"]
+    assert summary.notion.created == 1 and summary.notion.errors == 0
+    [state] = dedup.calls.saved_states
+    assert set(state.flats) == {"p-sreality-1"}
+    assert "flat p-sreality-2 failed: RuntimeError" in caplog.text
+    assert "Vinohradská" not in caplog.text
+
+    costs.evaluate = healthy  # the bug is fixed: the next run delivers flat 2 as new
+    sink2, upserts2 = fake_notion()
+    modules = Modules(dedup=dedup, extraction=extraction, costs=costs, notion=sink2)
+    summary2, _ = await run_pipeline(sources, modules, actor_input=run, platform=platform, environ={"NOTION_TOKEN": "t"})
+    assert summary2.change == {"new": 1, "changed": 0, "unchanged": 1}
+    assert upserts2 == ["p-sreality-2"]

@@ -23,7 +23,7 @@ For each listing, in order:
 3. Featherless, the fallback model `llm.fallbackModel` (DeepSeek-V4-Flash), one attempt.
 4. OpenAI `gpt-4o-mini`, a last resort set in code, one attempt. It runs only when an OpenAI key is set.
 
-An answer whose confidence is below 0.5 becomes unknown. `llm.concurrency` is the number of Featherless concurrent units the run may hold, 8 by default (the plan allows 100): a Qwen call takes 1, a DeepSeek fallback call 4. A 429 is waited out with backoff. Every failed attempt is logged with its reason class (for example `truncated` or `schema:kauce.value.rent_multiple`), never the content. See `research/featherless.md`. The extractor is opened in `__main__` inside the Actor run and closed after it.
+An answer whose confidence is below 0.5 becomes unknown. `llm.concurrency` is the number of Featherless concurrent units the run may hold, 8 by default (the plan allows 100): a Qwen call takes 1, a DeepSeek fallback call 4 (below 4 the fallback is left out of the chain). A 429 is waited out with backoff. Every failed attempt is logged with its reason class (for example `truncated` or `schema:kauce.value.rent_multiple`), never the content. See `research/featherless.md`. The extractor is opened in `__main__` inside the Actor run and closed after it.
 
 ## Run order
 
@@ -31,7 +31,7 @@ An answer whose confidence is below 0.5 becomes unknown. `llm.concurrency` is th
 2. Collect each source in `filters.sources`, one at a time. A source that raises is `failed`. A source whose stats report failed or skipped items is `degraded`.
 3. Merge listings into flats across portals (dedup).
 4. Every flat then runs as its own task, as soon as its extraction is done: extract (skipped when `skipExtraction` is set) and cost, set `cross_source` from its commissions, diff against the profile state, evaluate, build the FlatItem and push it to the dataset. Unchanged flats are extracted too, because `cross_source` needs their commissions before diff; the cache makes that cheap. The tasks share the extraction slot limit and the Notion sink's throttle (3 requests per second in total), so dataset items arrive in completion order.
-5. In the same task, upsert `new` and `changed` flats that are not `rejected` to Notion, and with `includeUnchanged` the unchanged ones too. A failed upsert is counted in `notion.errors`. An unexpected error in one flat fails the run, as before.
+5. In the same task, upsert `new` and `changed` flats that are not `rejected` to Notion, and with `includeUnchanged` the unchanged ones too. A failed upsert is counted in `notion.errors`. An unexpected error in one flat is logged by its class, counted in the `run done` log line and leaves that flat out of the profile state, so the next run retries it; the other flats go on.
 6. Save the property-id map when every Notion write of the run succeeded. Save the profile state too only when the run has a Notion sink: a dataset-only run saves no state, so a later Notion run still delivers every flat. The state stores a hash of the profile; a changed profile re-evaluates every flat, which counts as `changed`. A failed write is never recorded as seen, so the next run retries it.
 7. Write the `RunSummary` to the key `OUTPUT`. The Notion sink is closed at the end of the run, also when the run fails.
 

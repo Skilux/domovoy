@@ -3,7 +3,8 @@
 Run order: open the two dedup stores, load the property-id map and merge. Then every flat runs as its own task,
 as soon as its extraction is done: cost, cross_source from its own commissions, diff against the profile state,
 evaluate, build the FlatItem, push it to the dataset and upsert it to Notion when new or changed (not rejected).
-The tasks share the extractor's slot limit (llm.concurrency) and the Notion sink's throttle. The property-id map
+The tasks share the extractor's slot limit (llm.concurrency) and the Notion sink's throttle. An unexpected error in
+one flat is logged by class, counted in the log and leaves that flat out of the profile state; the others go on. The property-id map
 and the profile state are saved at the end, only when every Notion write of the run succeeded, so a failed write
 is never recorded as seen.
 
@@ -396,6 +397,16 @@ async def _search(
     notion = NotionCounts()
     final: list[Flat] = list(flats)  # each task puts its flat back with cross_source set, for record_run
 
+    failed: set[str] = set()  # property ids of flats whose task raised: never recorded as seen
+
+    async def isolated(index: int, flat: Flat) -> None:
+        """One flat's failure stays with that flat: it is logged by class only, counted, and left retryable."""
+        try:
+            await process(index, flat)
+        except Exception as exc:  # siblings go on; the message is not logged, it can carry listing text
+            failed.add(flat.property_id)
+            log.warning("flat %s failed: %s; it is not recorded as seen", flat.property_id, type(exc).__name__)
+
     async def process(index: int, flat: Flat) -> None:
         """One flat, start to finish. The counters are plain ints: tasks share one event loop thread."""
         analysis = await analyse_one(flat, extractor, profile, modules, log)
@@ -441,15 +452,11 @@ async def _search(
         if sink is not None and item.match != "rejected":  # new, changed, or unchanged with includeUnchanged
             await write_notion(sink, item, notion, log)
 
-    # A TaskGroup: an unexpected error in one flat cancels the others and fails the run, as the sequential loop did.
-    # The first error is raised as itself, not wrapped in an ExceptionGroup.
-    try:
-        async with asyncio.TaskGroup() as group:
-            for index, flat in enumerate(flats):
-                group.create_task(process(index, flat))
-    except ExceptionGroup as errors:
-        raise errors.exceptions[0] from None
+    await asyncio.gather(*(isolated(index, flat) for index, flat in enumerate(flats)))
+    if failed:
+        log.warning("%d flat(s) failed and stay retryable: the next run treats them as before", len(failed))
     flats = final
+    delivered = [flat for flat in flats if flat.property_id not in failed]
 
     if dedup_on and flats:
         if notion.errors:
@@ -462,9 +469,9 @@ async def _search(
                 # Nothing reached Notion, so nothing may be recorded as seen: a later Notion run must deliver these flats.
                 log.info("profile state not saved: this run had no Notion sink")
             else:
-                new_state = dd.record_run(state, flats, started).model_copy(update={"profile_hash": current_hash})
+                new_state = dd.record_run(state, delivered, started).model_copy(update={"profile_hash": current_hash})
                 await dd.save_profile_state(state_store, new_state)
-                log.info("state saved for profile %s: %d flats recorded", profile.id, len(flats))
+                log.info("state saved for profile %s: %d flats recorded", profile.id, len(delivered))
 
     summary = RunSummary(
         run_id=run_id,
@@ -479,7 +486,7 @@ async def _search(
         extraction_providers=providers,
     )
     log.info(
-        "run done: change %s, match %s, notion created %d updated %d errors %d",
-        change_counts, match_counts, notion.created, notion.updated, notion.errors,
+        "run done: change %s, match %s, notion created %d updated %d errors %d, failed flats %d",
+        change_counts, match_counts, notion.created, notion.updated, notion.errors, len(failed),
     )
     return summary
