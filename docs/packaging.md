@@ -79,7 +79,7 @@ A call cannot exceed 300 s (`phone/agent/agent.json`), so 100 calls cost at most
 | Service | Free per month | Enough for |
 | --- | --- | --- |
 | ElevenLabs | 15 agent minutes | 7 calls of 2 minutes |
-| Apify | 5 USD of usage | About 25 compute units, about 1,700 flats at the measured rate |
+| Apify | 5 USD of usage | About 25 compute units, about 1,800 flats at the measured rate |
 | PostHog | 1,000,000 events, 100,000 AI events | The whole loop |
 | Upstash Redis | 500,000 commands | See the note below |
 | Vercel Hobby | 1,000,000 function invocations | Personal, non-commercial use only |
