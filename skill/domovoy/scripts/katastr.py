@@ -1,17 +1,30 @@
 #!/usr/bin/env python3
 """DOMOVOY katastr check: who owns a flat, what encumbers it, and whether that is a lease risk.
 
-  katastr.py lookup --page ID [--cached-lv FILE] [--unit N] [--floor F --door D] [--landlord NAME]
-      Reads the flat's address and the call answers (unit number, floor and door, landlord name) from the
-      shortlist page, resolves the unit and its LV (list of ownership), and appends a "Katastr check" section
-      to the page. Flags override what the page says. With --cached-lv the LV comes from an old WSDP LV XML
-      file and nothing is looked up live.
+The human-gated flow (see SKILL.md, "Katastr check"):
+  katastr.py locate --page ID [--point LAT,LON | --address TEXT] [--area-m2 N]
+      Free. Finds the building from the listing's map point (read from the listing page) or an address,
+      lists its units with their LV and their floor area estimated from the share on the common parts,
+      and ranks the flats by the listing's area. Bills nothing and writes nothing.
+  katastr.py fetch --area CODE --lv N [--format xml|pdf] --confirm-billed
+      BILLED on WSDP_ENV=prod: one LV extract, 100 CZK. Saves it in KATASTR_LV_DIR (default
+      ~/.config/domovoy/lv), never inside a git checkout. Refuses without --confirm-billed: ask the user first.
+  katastr.py lookup --page ID --cached-lv FILE [--unit N] [--floor F --door D] [--landlord NAME]
+      Free. Analyses the LV XML for the flat (owners, encumbrances, easements, pending changes) and appends
+      a "Katastr check" section with the questions to ask the landlord to the Notion page.
+  katastr.py attach --page ID --file LV.pdf
+      Free. Uploads the LV PDF to Notion and adds it to the flat's page, once.
+
+Also:
+  katastr.py lookup --page ID --confirm-billed [--unit N] ...
+      Live in one step: resolves the page's address, orders the LV (billed, as fetch) and analyses it.
   katastr.py parse --cached-lv FILE [--unit N] [--landlord NAME]
       Parse one LV file and print the result. Reads and writes nothing else.
 
-Output is one JSON object on stdout. It never holds a person's or company's name: owner names, beneficiaries
-and the landlord name go only into the Notion section. Exit codes: 0 done, 2 refused (nothing was changed),
-1 error.
+lookup reads the call answers (unit number, floor and door, landlord name) from the shortlist page; flags
+override them. Output is one JSON object on stdout. It never holds a person's or company's name: owner
+names, beneficiaries and the landlord name go only into the Notion section. Exit codes: 0 done, 2 refused
+(nothing was billed or changed), 1 error.
 
 Live lookup (no --cached-lv), in this order; every step is free except step 4:
   1. RÚIAN (ČÚZK ArcGIS, no key): address text -> address point -> building.
@@ -23,9 +36,11 @@ Live lookup (no --cached-lv), in this order; every step is free except step 4:
      Guard: at most min(WSDP_MAX_BILLED_PER_DAY, 10) per Prague day, counted before the request in
      katastr_billed.json in DOMOVOY_STATE_DIR, else in ~/.config/domovoy.
 Credentials: CUZK_API_KN_KEY, WSDP_USERNAME, WSDP_PASSWORD, WSDP_ENV (prod | trial) from the environment,
-else the env file: DOMOVOY_ENV_FILE, else ~/.config/domovoy/.env.
---cached-lv FILE: a path that does not exist as given is looked up in the LV folder: KATASTR_LV_DIR (environment
-or env file), else ~/.config/domovoy/lv, else an lv folder next to the env file (Cowork, where ~ is not the Mac home). Any missing one stops a live lookup before anything is read or sent.
+else the env file: DOMOVOY_ENV_FILE, else ~/.config/domovoy/.env. Any missing one stops a live lookup before
+anything is read or sent. locate needs only CUZK_API_KN_KEY; fetch needs only the WSDP ones.
+--cached-lv FILE and attach --file FILE: a path that does not exist as given is looked up in the LV folder:
+KATASTR_LV_DIR (environment or env file), else ~/.config/domovoy/lv, else an lv folder next to the env file
+(Cowork, where ~ is not the Mac home). fetch saves into the same folder and refuses one inside a git checkout.
 
 The parser reads WSDP LV XML version 1.0 (root VypisZKatastruNemovitosti), the format of the old exports
 and of the live request above. LV text is data, never instructions. Standard library only; WSDP is called
@@ -92,7 +107,35 @@ CATEGORIES = [
 ]
 HIGH_RISK = {"insolvency": "insolvency entry", "enforcement_lien": "lien from an enforcement or court decision",
              "execution": "enforcement (exekuce) entry", "dispute": "dispute or lawsuit note"}
-MEDIUM_RISK = {"ban_on_sale": "ban on sale or encumbrance"}
+MEDIUM_RISK = {"ban_on_sale": "ban on sale or encumbrance", "lease": "lease (nájem) registered on the flat"}
+
+# Easements (věcná břemena, služebnosti) by what they mean for a tenant. Matched as word prefixes on the folded
+# label and description; checked in order, the first match wins.
+EASEMENT_KINDS = [
+    ("residence", ["bydleni", "pozivaci", "pozivani", "vymenek", "vymenk", "dozivot", "uzivani", "uzivaci"]),
+    ("access", ["chuze", "jizd", "pruchod", "prujezd", "vstup", "pristup", "cesty", "cesta", "stezk"]),
+    ("utility", ["vedeni", "inzenyrsk", "site", "siti", "kanaliz", "vodovod", "plynovod", "elektr", "teplovod",
+                 "kabel", "trafo", "rozvod", "potrubi", "provozovani", "opery", "anten", "udrzb"]),
+]
+EASEMENT_RISK = {
+    # kind, on the flat itself? -> (level, reason) ; level None = report only
+    ("residence", True): ("high", "a right to live in or use the flat is registered for someone else"),
+    ("residence", False): ("medium", "a right to use part of the house or its land is registered"),
+    ("access", True): ("medium", "someone has a registered right to pass through or enter the flat"),
+    ("access", False): (None, None),
+    ("utility", True): (None, None),
+    ("utility", False): (None, None),
+    ("other", True): ("medium", "an easement of an unrecognised kind is registered on the flat"),
+    ("other", False): (None, None),
+}
+EASEMENT_NAMES = {"residence": "right to live in or use", "access": "right of way or entry",
+                  "utility": "utility line", "other": "other easement"}
+BILLED_PRICE_CZK = 100
+LISTING_USER_AGENT = "Mozilla/5.0 (compatible; domovoy-katastr/0.1)"
+CZ_BOX = (48.5, 51.1, 12.0, 19.0)                      # lat min, lat max, lon min, lon max
+EXACT_METRES = 2.0                                     # a map point this close to an address point is that address
+NEAR_METRES = 60                                       # candidates listed when the point is not exact
+MAX_UNITS = 150                                        # API KN calls per locate are 1 + units
 
 TITLES = {"ing", "mgr", "bc", "mudr", "judr", "phdr", "rndr", "paeddr", "mvdr", "mddr", "pharmdr", "thdr",
           "doc", "prof", "phd", "csc", "drsc", "dis", "mba", "llm", "dr", "arch", "akad", "mga", "bca", "msc",
@@ -189,15 +232,23 @@ def resolve_lv(path):
     return candidate if os.path.isfile(candidate) else path
 
 
-def require_live_credentials():
-    values = settings(LIVE_CREDENTIALS + ["WSDP_MAX_BILLED_PER_DAY"])
-    missing = [name for name in LIVE_CREDENTIALS if not values[name]]
+def require_live_credentials(names=None):
+    names = list(names or LIVE_CREDENTIALS)
+    values = settings(names + ["WSDP_MAX_BILLED_PER_DAY"])
+    missing = [name for name in names if not values[name]]
     if missing:
         raise Refusal("missing credentials: %s. Set them in %s. Nothing was read or changed."
                       % (", ".join(missing), ENV_FILE))
-    if values["WSDP_ENV"] not in WSDP:
+    if "WSDP_ENV" in names and values["WSDP_ENV"] not in WSDP:
         raise Refusal("WSDP_ENV must be prod or trial. Nothing was read or changed.")
     return values
+
+
+def billed_gate(creds, confirmed, what):
+    """The human gate: a billed WSDP output needs --confirm-billed, given only after the user said yes."""
+    if creds["WSDP_ENV"] == "prod" and not confirmed:
+        raise Refusal("%s orders 1 billed WSDP output (%d CZK, WSDP_ENV=prod). Ask the user, and only after a yes "
+                      "run it again with --confirm-billed. Nothing was billed or changed." % (what, BILLED_PRICE_CZK))
 
 
 # ------------------------------------------------------------------ text helpers
@@ -277,6 +328,26 @@ def category_of(label):
     return "other"
 
 
+def easement_kind(label, description=""):
+    """residence | access | utility | other, from the label first, then from the description."""
+    for text in (label, description):
+        tokens = words(text)
+        for kind, needles in EASEMENT_KINDS:
+            if any(t.startswith(n) for t in tokens for n in needles):
+                return kind
+    return "other"
+
+
+def jednotka_label(node):
+    """'1200/65' from a <jednotka> element. Real LVs keep the building number in cp_ident and only the unit
+    number in jed_ident; the synthetic fixtures carry both in jed_ident."""
+    jed, cp = txt(node, "jed_ident"), txt(node, "cp_ident")
+    digits = re.search(r"\d+", cp)
+    if jed and "/" not in jed and digits:
+        return "%s/%s" % (digits.group(0), jed)
+    return jed
+
+
 def unit_number(jed_ident):
     """('101/12' style) -> (building number, unit number) as strings, or (None, digits)."""
     m = re.search(r"(\d+)\s*/\s*(\d+)\s*$", jed_ident or "")
@@ -340,7 +411,7 @@ def parse_lv(source):
     units = []
     for t in texty:
         for j in t.findall("JEDNOTKY/JEDNOTKA"):
-            ident = txt(j, "CISLO_JEDNOTKY/jednotka/jed_ident")
+            ident = jednotka_label(j.find("CISLO_JEDNOTKY/jednotka"))
             building, number = unit_number(ident)
             usage = txt(j, "ZP_VYUZITI")
             units.append({"id": txt(j, "CISLO_JEDNOTKY/jednotka/id"), "label": ident, "building": building,
@@ -352,16 +423,25 @@ def parse_lv(source):
         for section in t.findall("JINA_PRAVA/SEKCE_LIST"):
             for jpv in section.findall("JPV_LIST/JPV"):
                 label = txt(jpv, "TYP_PRAVNIHO_VZTAHU")
+                description = joined(jpv, "JPV_POPISY/JPV_POPIS/POPIS_PRAVNIHO_VZTAHU")
                 beneficiaries = [subject_of(n) for n in
                                  jpv.findall("JPV_OPRAV_PRO_OS/JPV_PRO_OS/PRO_IDENT_OS/oprav_subjekt")]
+                burdened = jpv.findall("JPV_POVIN_K_NEM/JPV_K_NEM/K_IDENT_NEM")
+                on_units = [jednotka_label(n.find("jednotka")) for n in burdened if txt(n, "jednotka/jed_ident")]
+                others = [n for n in burdened if not txt(n, "jednotka/jed_ident")]
+                if not (label or description or on_units or others or beneficiaries):
+                    continue   # the empty JPV the XSD requires in every section: not an entry
+                category = category_of(label)
                 rights.append({
                     "section": section.get("SEKCE") if section.get("SEKCE") in SECTIONS else "unrecognised",
                     "label": label,
-                    "category": category_of(label),
-                    "description": joined(jpv, "JPV_POPISY/JPV_POPIS/POPIS_PRAVNIHO_VZTAHU"),
+                    "category": category,
+                    "description": description,
                     "beneficiaries": [b for b in beneficiaries if b and b["kind"] != "unknown"],
-                    "units": [txt(n, "jednotka/jed_ident") for n in jpv.findall("JPV_POVIN_K_NEM/JPV_K_NEM/K_IDENT_NEM")
-                              if txt(n, "jednotka/jed_ident")],
+                    "units": on_units,
+                    "other_objects": len(others),     # parcels or buildings burdened by the same entry
+                    "for_property": jpv.find("JPV_OPRAV_PRO_NEM/JPV_PRO_NEM") is not None,
+                    "easement_kind": easement_kind(label, description) if category == "easement" else None,
                 })
 
     proceedings = []
@@ -370,8 +450,11 @@ def parse_lv(source):
             if txt(p, "typriz_kod"):
                 proceedings.append("%s-%s/%s-%s" % (txt(p, "typriz_kod"), txt(p, "poradove_cislo"),
                                                     txt(p, "rok"), txt(p, "prares_kod")))
+    building_lvs = sorted({txt(s, "cislo_tel") for t in texty for s in
+                           t.findall("JEDNOTKY/JEDNOTKA/BUDOVY/BUDOVA/JED_OPSUB/stavba") if txt(s, "cislo_tel")})
     return {"lv": lv, "owners": owners, "units": units, "rights": rights,
             "proceedings": sorted(set(proceedings)), "as_of": prague_iso(txt(root, "PLATNOST")),
+            "issued": prague_iso(txt(root, "VYHOTOVENO")), "building_lvs": building_lvs,
             "signed": any(c.tag.endswith("}Signature") for c in root)}
 
 
@@ -448,12 +531,25 @@ def assess(parsed, landlord=None, number=None, floor=None, door=None, extra_plom
     match = landlord_matches(landlord, owners)
     kinds = sorted({o["kind"] for o in owners})
 
-    high, medium = [], []
+    high, medium, easements = [], [], []
     for r in relevant:
+        on_unit = (unit["label"] in r["units"]) if unit and unit["label"] else bool(r["units"])
         if r["category"] in HIGH_RISK:
             high.append("%s in section %s" % (HIGH_RISK[r["category"]], r["section"]))
         elif r["category"] in MEDIUM_RISK:
             medium.append("%s in section %s" % (MEDIUM_RISK[r["category"]], r["section"]))
+        elif r["category"] == "easement":
+            kind = r.get("easement_kind") or "other"
+            level, reason = EASEMENT_RISK[(kind, on_unit)]
+            easements.append({"section": r["section"], "kind": kind, "on_unit": on_unit,
+                              "for": "property" if r.get("for_property") else ("person" if r["beneficiaries"]
+                                                                               else "unknown"),
+                              "impact": level or "low", "label": r["label"], "description": r["description"],
+                              "beneficiaries": r["beneficiaries"]})
+            if level == "high":
+                high.append("%s (section %s)" % (reason, r["section"]))
+            elif level == "medium":
+                medium.append("%s (section %s)" % (reason, r["section"]))
     if pending:
         high.append("a change is pending in the land register (plomba)")
     if match == "no":
@@ -488,9 +584,63 @@ def assess(parsed, landlord=None, number=None, floor=None, door=None, extra_plom
         "landlord_matches_owner": match,
         "lease_risk": level,
         "risk_reasons": high + medium,
+        "easements": easements,
+        "building_lvs": list(parsed.get("building_lvs") or []),
         "as_of": parsed["as_of"],
     }
+    result["questions"] = questions_for(result, relevant, kinds, len(owners))
     return result, owners, unit
+
+
+def questions_for(result, relevant, kinds, owner_count):
+    """What to ask the landlord or the realtor, from fixed English templates only (no LV text, no names)."""
+    cats = {r["category"] for r in relevant}
+    q = []
+    if result["unit_number"] is None and result["unit_candidates"]:
+        q.append("What is the flat's unit number in the land register (číslo jednotky)?")
+    if result["landlord_matches_owner"] == "no":
+        q.append("The landlord you named is not an owner in the land register. On what basis do they rent the "
+                 "flat out, and can they show the owner's written consent to the sublease?")
+    elif result["landlord_matches_owner"] == "unknown":
+        q.append("Who exactly will be the landlord in the contract?")
+    if "company" in kinds:
+        q.append("A company owns the flat. Who signs the lease for it, and can they show their authority "
+                 "(a commercial register extract or a power of attorney)?")
+    if "cooperative" in kinds:
+        q.append("A housing co-op owns the flat. Has the co-op agreed to the sublease in writing?")
+    if owner_count > 2:
+        q.append("The flat has %d co-owners. Do the owners holding a majority of the shares agree to the lease?"
+                 % owner_count)
+    if "mortgage" in cats and "ban_on_sale" in cats:
+        q.append("The flat is mortgaged, with a ban on sale and encumbrance for the lender. Does the lender have to "
+                 "agree to the lease, and has it?")
+    elif "ban_on_sale" in cats:
+        q.append("A ban on sale or encumbrance is registered. Who holds it, and does it need to agree to the lease?")
+    if cats & {"execution", "enforcement_lien", "insolvency"}:
+        q.append("An enforcement or insolvency entry is registered on the flat. What is its status? "
+                 "A forced sale could end the lease.")
+    if "dispute" in cats:
+        q.append("A dispute note is registered on the flat. What is the dispute about?")
+    if result["pending_change"]:
+        ids = ", ".join(safe(p, PROCEEDING_RE) for p in result["pending_proceedings"])
+        q.append("A change is pending in the land register%s. What is it, and will the owner change?"
+                 % (" (%s)" % ids if ids else ""))
+    if "lease" in cats:
+        q.append("A lease is registered on the flat. Has it ended?")
+    kinds_on = {(e["kind"], e["on_unit"]) for e in result["easements"]}
+    if ("residence", True) in kinds_on:
+        q.append("A right to live in or use the flat is registered for someone else. Who holds it, and will they "
+                 "use the flat during the lease?")
+    if ("residence", False) in kinds_on:
+        q.append("A right to use part of the house or its land is registered. Which parts does it cover, and does "
+                 "it touch the flat, its cellar or the shared spaces?")
+    if ("access", True) in kinds_on:
+        q.append("Someone has a registered right to pass through or enter the flat. Where exactly, and how often?")
+    if ("utility", True) in kinds_on:
+        q.append("A utility easement is registered on the flat. Does a utility company need access to the flat?")
+    if ("other", True) in kinds_on:
+        q.append("An easement is registered on the flat. What does it allow, and does it affect a tenant?")
+    return q
 
 
 def public_result(result):
@@ -516,6 +666,11 @@ def public_result(result):
         "landlord_matches_owner": result["landlord_matches_owner"],
         "lease_risk": result["lease_risk"],
         "risk_reasons": result["risk_reasons"],
+        "easements": [{"section": e["section"] if e["section"] in SECTIONS else "unrecognised",
+                       "kind": e["kind"], "on_unit": bool(e["on_unit"]), "for": e["for"], "impact": e["impact"]}
+                      for e in result.get("easements", [])],
+        "questions": list(result.get("questions", [])),
+        "building_lvs_not_checked": [safe(n, DIGITS_RE) for n in result.get("building_lvs", [])],
         "as_of": result["as_of"],
         "source": result.get("source"),
     }
@@ -543,16 +698,36 @@ def notion_section(result, parsed, owners, source_line):
         items = [r for r in rel if r["section"] == section]
         lines.append("%s: %s" % (title, "none" if not items else len(items)))
         for r in items:
-            who = ", ".join(display_name(b) for b in r["beneficiaries"])
+            who = ", ".join(dict.fromkeys(display_name(b) for b in r["beneficiaries"]))
             lines.append("- %s (%s)%s%s" % (r["label"], r["category"], " for " + who if who else "",
-                                            ": " + r["description"][:300] if r["description"] else ""))
+                                            ": " + one_line(r["description"]) if r["description"] else ""))
     lines.append("Pending change: %s" % (", ".join(result["pending_proceedings"]) or "yes")
                  if result["pending_change"] else "Pending change: none")
+    easements = result.get("easements") or []
+    lines.append("Easements (věcná břemena) on this LV: %s" % ("none" if not easements else len(easements)))
+    for e in easements:
+        who = ", ".join(dict.fromkeys(display_name(b) for b in e["beneficiaries"]))
+        lines.append("- %s: %s, %s, in favour of %s. Impact for a tenant: %s.%s"
+                     % (e["label"] or "easement", EASEMENT_NAMES[e["kind"]],
+                        "on the flat itself" if e["on_unit"] else "on other property on this LV",
+                        who or ("a property" if e["for"] == "property" else "unknown"),
+                        e["impact"], " " + one_line(e["description"]) if e["description"] else ""))
+    for n in result.get("building_lvs") or []:
+        lines.append("Not checked: LV %s (the land and the building as a whole). An easement or other entry on "
+                     "the whole house would be listed there." % n)
     lines.append("Landlord from the call matches an owner: %s" % result["landlord_matches_owner"])
     reasons = " ".join(r[0].upper() + r[1:] + "." for r in result["risk_reasons"])
     lines.append("Lease risk: %s. %s" % (result["lease_risk"], reasons or "Nothing unusual."))
+    questions = result.get("questions") or []
+    if questions:
+        lines.append("Questions for the landlord or the realtor:")
+        lines += ["- " + q for q in questions]
     lines.append("Land register data are informative. This is not legal advice.")
     return lines
+
+
+def one_line(text, limit=300):
+    return " ".join((text or "").split())[:limit]
 
 
 def private_tokens(parsed, landlord):
@@ -780,20 +955,21 @@ def billing_guard(creds, path=None, today=None):
     return {"billed_today": used + 1, "cap": cap}
 
 
-def fetch_lv(creds, area_code=None, lv_number=None, lv_id=None, sleep=time.sleep):
+def fetch_lv(creds, area_code=None, lv_number=None, lv_id=None, sleep=time.sleep, fmt="xml"):
     """Billed: generujLVZjednodusene (area code + LV number) or generujLV (LV id) -> poll -> vratSestavu ->
-    smazSestavu. Returns (LV XML bytes, billing).
+    smazSestavu. Returns (report bytes, billing). fmt "xml" pins LV XML version 1.0; "pdf" is the print form.
 
-    The LV is kept in memory only: owner names may be stored in Notion and nowhere else.
+    lookup keeps the LV in memory only; fetch saves it outside any git checkout (KATASTR_LV_DIR).
     """
     if lv_id is not None:
         operation, body = "generujLV", "<v:lvId>%d</v:lvId>" % int(lv_id)
     else:
         operation = "generujLVZjednodusene"
         body = "<v:katastrUzemiKod>%d</v:katastrUzemiKod><v:lvCislo>%d</v:lvCislo>" % (int(area_code), int(lv_number))
+    body += "<v:format>xml</v:format><v:verze>1.0</v:verze>" if fmt == "xml" else "<v:format>pdf</v:format>"
     billing = billing_guard(creds)
     stage("ordering the LV from WSDP")
-    root = soap_root(wsdp_call(creds, "sestavy", operation, body + "<v:format>xml</v:format><v:verze>1.0</v:verze>"))
+    root = soap_root(wsdp_call(creds, "sestavy", operation, body))
     report_id = first(root, "id")
     if not DIGITS_RE.fullmatch(report_id):
         raise KatastrError("WSDP returned no usable report id")
@@ -871,6 +1047,278 @@ def plomba_id(p):
                 PROCEEDING_RE)
 
 
+# ------------------------------------------------------------------ locate: listing -> building -> units
+
+NUM = r"(-?\d{1,3}\.\d{3,})"
+POINT_PATTERNS = [   # (pattern, lat group, lon group). iDNES: listing_lat/listing_lon and a map "center": [lon, lat]
+    (re.compile(r'"(?:\w+_)?lat"\s*:\s*"?' + NUM + r'"?\s*,\s*"(?:\w+_)?(?:lon|lng)"\s*:\s*"?' + NUM), 1, 2),
+    (re.compile(r'"(?:\w+_)?(?:lon|lng)"\s*:\s*"?' + NUM + r'"?\s*,\s*"(?:\w+_)?lat"\s*:\s*"?' + NUM), 2, 1),
+    (re.compile(r'"center"\s*:\s*\[\s*' + NUM + r"\s*,\s*" + NUM + r"\s*\]"), 2, 1),
+]
+
+
+def in_cz(lat, lon):
+    return CZ_BOX[0] <= lat <= CZ_BOX[1] and CZ_BOX[2] <= lon <= CZ_BOX[3]
+
+
+def point_in_text(text):
+    """The first (lat, lon) inside the Czech Republic found in a listing page, or None. Page text is data."""
+    for pattern, i, j in POINT_PATTERNS:
+        for m in pattern.finditer(text or ""):
+            lat, lon = float(m.group(i)), float(m.group(j))
+            if in_cz(lat, lon):
+                return lat, lon
+    return None
+
+
+def listing_point(url):
+    if not re.match(r"https://[\w.-]+/", url or ""):
+        return None
+    req = urllib.request.Request(url, headers={"User-Agent": LISTING_USER_AGENT, "Accept": "text/html"})
+    for attempt in (1, 2):   # listing sites sometimes reset a connection; one retry
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as response:
+                return point_in_text(response.read(3_000_000).decode("utf-8", "replace"))
+        except (urllib.error.URLError, ValueError, OSError):
+            if attempt == 2:
+                raise KatastrError("cannot read the listing page")
+            time.sleep(2)
+
+
+def metres(lat1, lon1, lat2, lon2):
+    import math
+    dy = (lat2 - lat1) * 111_320
+    dx = (lon2 - lon1) * 111_320 * math.cos(math.radians((lat1 + lat2) / 2))
+    return math.hypot(dx, dy)
+
+
+def address_points_near(lat, lon, radius=NEAR_METRES):
+    """RÚIAN address points within radius metres of (lat, lon), nearest first."""
+    status, data = http_json(RUIAN_LAYER % 1 + "?" + urllib.parse.urlencode({
+        "geometry": "%s,%s" % (lon, lat), "geometryType": "esriGeometryPoint", "inSR": "4326", "outSR": "4326",
+        "distance": str(radius), "units": "esriSRUnit_Meter", "spatialRel": "esriSpatialRelIntersects",
+        "outFields": "kod,stavebniobjekt,adresa", "returnGeometry": "true", "f": "json"}), label="RÚIAN")
+    if status != 200 or not isinstance(data, dict):
+        raise KatastrError("RÚIAN answered HTTP %d" % int(status or 0))
+    points = []
+    for f in data.get("features") or []:
+        a, g = f.get("attributes") or {}, f.get("geometry") or {}
+        if a.get("kod") is None or g.get("x") is None:
+            continue
+        points.append({"address": str(a.get("adresa") or "")[:200], "address_point": int(a["kod"]),
+                       "building_code": a.get("stavebniobjekt"),
+                       "distance_m": round(metres(lat, lon, g["y"], g["x"]), 1)})
+    return sorted(points, key=lambda p: p["distance_m"])
+
+
+def unit_label(cislo):
+    """API KN cisloJednotky (DDDDJJJJ, building number + 4-digit unit) -> '1200/65'."""
+    n = safe(cislo, DIGITS_RE)
+    if n == "unrecognised":
+        return n
+    return "%s/%s" % (n[:-4], n[-4:].lstrip("0") or "0") if len(n) > 4 else n
+
+
+def areas_from_shares(units):
+    """Floor area per unit from its share on the common parts, or None.
+
+    Under the Civil Code the share is the unit's floor area over the total. When every share has the same
+    denominator and the numerators add up to it exactly, the numerators are areas in some unit; the scale
+    (1, 0.1 or 0.01 m2) is the one that puts the median flat between 20 and 200 m2. It is an estimate.
+    """
+    shares = [u.get("share") for u in units]
+    if not shares or any(not s for s in shares):
+        return None
+    dens = {s[1] for s in shares}
+    if len(dens) != 1:
+        return None
+    den = dens.pop()
+    if sum(s[0] for s in shares) != den or re.fullmatch(r"10*", str(den)):
+        return None
+    nums = sorted(s[0] for s in shares)
+    median = nums[len(nums) // 2]
+    for scale in (1, 0.1, 0.01):
+        if 20 <= median * scale <= 200:
+            return [round(s[0] * scale, 1) for s in shares]
+    return None
+
+
+def locate_building(creds, args, flat):
+    """(building dict, method) or a candidates dict when the point is not exactly on one address."""
+    if args.address:
+        point = resolve_address(args.address)
+        return {"address_point": point["address_point"], "address": args.address[:200]}, "address"
+    if args.point:
+        m = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*", args.point)
+        if not m or not in_cz(float(m.group(1)), float(m.group(2))):
+            raise Refusal("--point must be LAT,LON inside the Czech Republic. Nothing was read or changed.")
+        lat, lon, method = float(m.group(1)), float(m.group(2)), "point"
+    else:
+        url = args.url or ((flat or {}).get("listing") or {}).get("url")
+        stage("reading the map point from the listing page")
+        found = listing_point(url) if url else None
+        if not found:
+            raise Refusal("no map point on the listing page. Pass --point LAT,LON or --address TEXT. "
+                          "Nothing was billed or changed.")
+        (lat, lon), method = found, "listing_point"
+    stage("finding the RÚIAN address point")
+    near = address_points_near(lat, lon)
+    if near and near[0]["distance_m"] <= EXACT_METRES:
+        return near[0], method
+    return {"candidates": near[:8], "point": [round(lat, 6), round(lon, 6)]}, method
+
+
+def locate_command(args, backend_loader=None):
+    creds = require_live_credentials(["CUZK_API_KN_KEY"])
+    flat = None
+    if args.page:
+        if backend_loader is None:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import call
+            def backend_loader():
+                cfg = call.load_config()
+                return cfg, call.load_backend(cfg).module
+        stage("reading the Notion page")
+        cfg, backend = backend_loader()
+        flat = backend.get_flat(cfg, args.page)
+    building_point, method = locate_building(creds, args, flat)
+    out = {"method": method, "billed": False}
+    if "candidates" in building_point:
+        out.update(status="building_not_identified", point=building_point["point"],
+                   address_candidates=building_point["candidates"],
+                   note="the map point is not on one address point (it may be the street's centre). Read the "
+                        "listing and its photos, ask the user, then rerun with --address. Nothing was billed.")
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+        return 2
+    stage("reading the building and its units from API KN")
+    key = creds["CUZK_API_KN_KEY"]
+    building = api_kn("/Stavby/AdresniMisto/%d" % int(building_point["address_point"]), key)
+    refs = (building.get("jednotky") or [])[:MAX_UNITS]
+    units = []
+    for ref in refs:
+        u = api_kn("/Jednotky/%d" % int(ref["id"]), key)
+        share = u.get("podilNaSpolecnychCastechDomu") or {}
+        lv = u.get("lv") or {}
+        units.append({"unit": unit_label(u.get("cisloJednotky")),
+                      "use": str((u.get("zpusobVyuziti") or {}).get("nazev") or "")[:60],
+                      "lv": safe(lv.get("cislo"), DIGITS_RE),
+                      "area_code": safe((lv.get("katastralniUzemi") or {}).get("kod"), DIGITS_RE),
+                      "share": (int(share["citatel"]), int(share["jmenovatel"]))
+                      if share.get("citatel") and share.get("jmenovatel") else None,
+                      "plomba": bool(u.get("rizeniPlomby"))})
+    areas = areas_from_shares(units)
+    for u, area in zip(units, areas or [None] * len(units)):
+        u["area_m2_estimated"] = area
+        u["share"] = "%d/%d" % u["share"] if u["share"] else None
+    flats = [u for u in units if fold(u["use"]).startswith("byt")]
+    ranked = []
+    if args.area_m2 and areas:
+        ranked = sorted(flats, key=lambda u: abs(u["area_m2_estimated"] - args.area_m2))[:5]
+    lv = building.get("lv") or {}
+    out.update(status="located", address=building_point.get("address"),
+               distance_m=building_point.get("distance_m"),
+               building={"iskn_id": safe(building.get("id"), DIGITS_RE),
+                         "numbers": [safe(n, DIGITS_RE) for n in building.get("cislaDomovni") or []],
+                         "use": str((building.get("zpusobVyuziti") or {}).get("nazev") or "")[:60],
+                         "lv": safe(lv.get("cislo"), DIGITS_RE),
+                         "area_code": safe((lv.get("katastralniUzemi") or {}).get("kod"), DIGITS_RE),
+                         "area_name": str((lv.get("katastralniUzemi") or {}).get("nazev") or "")[:60],
+                         "plomba": bool(building.get("rizeniPlomby"))},
+               units=units, units_truncated=len(building.get("jednotky") or []) > MAX_UNITS,
+               area_basis="share on the common parts" if areas else None,
+               best_matches=[u["unit"] for u in ranked],
+               lvs_of_best_matches=sorted({u["lv"] for u in ranked}),
+               note="The land register has no floor or door. Pick the unit with the user (listing area, floor, "
+                    "photos), then ask before ordering the LV: fetch --area CODE --lv N --confirm-billed "
+                    "(%d CZK)." % BILLED_PRICE_CZK)
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    return 0
+
+
+# ------------------------------------------------------------------ fetch and attach
+
+def inside_git_checkout(path):
+    path = os.path.realpath(path)
+    while True:
+        if os.path.exists(os.path.join(path, ".git")):
+            return True
+        parent = os.path.dirname(path)
+        if parent == path:
+            return False
+        path = parent
+
+
+def save_dir():
+    """Where fetch saves: the LV folder (lv_dir), never one inside a git checkout."""
+    folder = lv_dir()
+    if inside_git_checkout(folder):
+        raise Refusal("KATASTR_LV_DIR is inside a git checkout; LV files hold owner names and must stay out of "
+                      "any repo. Nothing was billed or changed.")
+    return folder
+
+
+def fetch_command(args):
+    creds = require_live_credentials(["WSDP_USERNAME", "WSDP_PASSWORD", "WSDP_ENV"])
+    for value, name in ((args.area, "--area"), (args.lv, "--lv")):
+        if not DIGITS_RE.fullmatch(value or ""):
+            raise Refusal("%s must be digits. Nothing was billed or changed." % name)
+    billed_gate(creds, args.confirm_billed, "fetch")
+    folder = save_dir()
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    data, billing = fetch_lv(creds, args.area, args.lv, fmt=args.format)
+    magic = b"%PDF" if args.format == "pdf" else b"<"
+    if not data.lstrip()[:4].startswith(magic):
+        raise KatastrError("WSDP returned a file that is not %s" % args.format.upper())
+    day = (datetime.datetime.now(PRAGUE) if PRAGUE else datetime.datetime.now()).date().isoformat()
+    base = os.path.join(folder, "LV_%s_%s_%s" % (args.area, args.lv, day))
+    path, n = base + "." + args.format, 1
+    while os.path.exists(path):
+        n += 1
+        path = "%s-%d.%s" % (base, n, args.format)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+    out = {"status": "saved", "file": path, "format": args.format, "bytes": len(data), "lv": args.lv,
+           "area_code": args.area, "wsdp_env": creds["WSDP_ENV"], "billing": billing}
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    return 0
+
+
+ATTACH_MARKER = "domovoy-katastr-file: %s"
+
+
+def attach_command(args, backend_loader=None):
+    path = args.file
+    if not os.path.isfile(path):
+        raise Refusal("the file does not exist. Nothing was changed.")
+    with open(path, "rb") as f:
+        if not f.read(5).startswith(b"%PDF"):
+            raise Refusal("the file is not a PDF. Nothing was changed.")
+    if backend_loader is None:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import call
+        def backend_loader():
+            cfg = call.load_config()
+            return cfg, call.load_backend(cfg).module
+    cfg, backend = backend_loader()
+    if not hasattr(backend, "attach_file"):
+        raise KatastrError("the shortlist backend cannot attach files (config backend.module)")
+    stage("reading the Notion page")
+    flat = backend.get_flat(cfg, args.page)
+    name = os.path.basename(path)
+    marker = ATTACH_MARKER % name
+    out = {"page_id": safe(flat.get("id"), PAGE_ID_RE), "file": name}
+    if marker in (flat.get("text") or "") and not args.force:
+        out.update(status="already_attached", attached=False)
+    else:
+        stage("uploading the file to Notion")
+        backend.attach_file(cfg, flat["id"], path, caption="LV extract (výpis z katastru nemovitostí): " + name,
+                            marker=marker)
+        out.update(status="attached", attached=True)
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    return 0
+
+
 # ------------------------------------------------------------------ commands
 
 def lookup(args, backend_loader=None):
@@ -906,8 +1354,9 @@ def lookup(args, backend_loader=None):
     extra_plomba, billing = [], None
     if cached:
         source = "cached_lv"
-        source_line = ("Source: cached LV XML from an earlier WSDP export (%s), not a live lookup. "
-                       "The address was not checked against it." % ("signed" if parsed["signed"] else "unsigned"))
+        source_line = ("Source: cached LV XML from a WSDP export issued %s (%s), not a live lookup. "
+                       "The address was not checked against it."
+                       % (parsed.get("issued") or "on an unknown date", "signed" if parsed["signed"] else "unsigned"))
     else:
         address = (flat.get("listing") or {}).get("address")
         if not address:
@@ -919,6 +1368,7 @@ def lookup(args, backend_loader=None):
                        note="pass --unit with one of the candidates; nothing was billed or changed")
             print(json.dumps(out, indent=2, ensure_ascii=False))
             return 2
+        billed_gate(creds, args.confirm_billed, "A live lookup")
         if found.get("lv_id"):
             data, billing = fetch_lv(creds, lv_id=found["lv_id"])
         else:
@@ -967,15 +1417,38 @@ def main(argv=None, backend_loader=None):
         if name == "lookup":
             p.add_argument("--page", required=True, help="Notion page id of the flat")
             p.add_argument("--force", action="store_true", help="append even if this LV was already checked")
+            p.add_argument("--confirm-billed", action="store_true",
+                           help="live lookup only: the user said yes to one billed LV output")
         p.add_argument("--cached-lv", required=(name == "parse"), help="an LV XML file (WSDP LV 1.0)")
         p.add_argument("--unit", help="unit number, e.g. 12 or 1800/12")
         p.add_argument("--floor")
         p.add_argument("--door")
         p.add_argument("--landlord", help="landlord name as said in the call (never printed)")
+    p = sub.add_parser("locate")
+    p.add_argument("--page", help="Notion page id of the flat (its listing URL gives the map point)")
+    p.add_argument("--url", help="listing URL, instead of the page's")
+    p.add_argument("--point", help="LAT,LON instead of the listing's map point")
+    p.add_argument("--address", help="full address with the house number, instead of a point")
+    p.add_argument("--area-m2", type=float, help="the listing's floor area, to rank the flats")
+    p = sub.add_parser("fetch")
+    p.add_argument("--area", required=True, help="cadastral area code (katastrální území), six digits")
+    p.add_argument("--lv", required=True, help="LV number")
+    p.add_argument("--format", choices=("xml", "pdf"), default="xml")
+    p.add_argument("--confirm-billed", action="store_true", help="the user said yes to one billed output")
+    p = sub.add_parser("attach")
+    p.add_argument("--page", required=True, help="Notion page id of the flat")
+    p.add_argument("--file", required=True, help="the LV PDF from fetch --format pdf")
+    p.add_argument("--force", action="store_true", help="attach even if this file is already on the page")
     args = parser.parse_args(argv)
+    commands = {"lookup": lambda: lookup(args, backend_loader), "parse": lambda: parse_command(args),
+                "locate": lambda: locate_command(args, backend_loader), "fetch": lambda: fetch_command(args),
+                "attach": lambda: attach_command(args, backend_loader)}
     try:
-        args.cached_lv = resolve_lv(args.cached_lv)
-        return lookup(args, backend_loader) if args.command == "lookup" else parse_command(args)
+        if getattr(args, "cached_lv", None):
+            args.cached_lv = resolve_lv(args.cached_lv)
+        if getattr(args, "file", None):
+            args.file = resolve_lv(args.file)
+        return commands[args.command]()
     except Refusal as e:
         print(json.dumps({"refused": str(e)}, indent=2, ensure_ascii=False))
         return 2

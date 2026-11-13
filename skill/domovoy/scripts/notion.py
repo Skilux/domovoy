@@ -15,6 +15,8 @@ SHORTLIST BACKEND, shape B of the call.py docstring (config.json "backend.module
   set_status(cfg, flat_id, status)
   append(cfg, flat_id, text)            text lines, one paragraph each, added to the page body
   set_viewing_date(cfg, flat_id, start) ISO 8601 with a UTC offset
+  attach_file(cfg, flat_id, path, caption=None, marker=None)
+                                        upload a PDF (katastr.py attach) and add it to the page body
 "interested" is the user's "Interested?" column: True (Yes), False (No) or None (empty). call.py calls a
 Shortlisted flat only when it is True. "listing" holds the call_context fields read from the page properties. Realtor contacts are never read.
 call_context's "upfront" is read from the "Move-in cost" property (the Actor renamed Upfront) until the
@@ -279,6 +281,55 @@ def append(cfg, flat_id, text):
     path = "/blocks/%s/children" % checked_id(flat_id, "flat id")
     for start in range(0, len(blocks), CHILDREN_LIMIT):
         request("PATCH", path, {"children": blocks[start:start + CHILDREN_LIMIT]})
+
+
+def _send_bytes(url, data, content_type):
+    req = urllib.request.Request(url, data=data, method="POST", headers={
+        "Authorization": "Bearer " + setting("NOTION_TOKEN"),
+        "Notion-Version": VERSION,
+        "Content-Type": content_type,
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS * 4) as response:
+            return response.status, response.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except urllib.error.URLError as e:
+        raise NotionError("cannot reach Notion: %s" % e.reason)
+
+
+def upload_file(path, content_type="application/pdf"):
+    """Single-part Notion file upload (up to 20 MB). Returns the file upload id."""
+    name = re.sub(r'[^\w.\- ]', "_", os.path.basename(path))[:100]
+    with open(path, "rb") as f:
+        data = f.read()
+    if len(data) > 20 * 1024 * 1024:
+        raise NotionError("the file is larger than 20 MB, the single-part upload limit")
+    created = request("POST", "/file_uploads", {"filename": name, "content_type": content_type})
+    upload_id = checked_id(created.get("id"), "file upload id")
+    boundary = "domovoy-%s" % os.urandom(12).hex()
+    body = (("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: %s\r\n\r\n"
+             % (boundary, name, content_type)).encode("utf-8") + data + ("\r\n--%s--\r\n" % boundary).encode())
+    status, raw = _send_bytes(API + "/file_uploads/%s/send" % upload_id, body,
+                              "multipart/form-data; boundary=" + boundary)
+    try:
+        reply = json.loads(raw.decode("utf-8")) if raw else {}
+    except ValueError:
+        reply = {}
+    if not 200 <= status < 300 or reply.get("status") != "uploaded":
+        raise NotionError("Notion file upload failed: %s" % (reply.get("code") or "http_%d" % status))
+    return upload_id
+
+
+def attach_file(cfg, flat_id, path, caption=None, marker=None):
+    """Upload a PDF and add it to the page body as a PDF block, then a marker paragraph (if given)."""
+    upload_id = upload_file(path)
+    block = {"object": "block", "type": "pdf",
+             "pdf": {"type": "file_upload", "file_upload": {"id": upload_id},
+                     "caption": [{"type": "text", "text": {"content": (caption or "")[:TEXT_LIMIT]}}]
+                     if caption else []}}
+    children = [block] + ([paragraph(marker)] if marker else [])
+    request("PATCH", "/blocks/%s/children" % checked_id(flat_id, "flat id"), {"children": children})
 
 
 def set_viewing_date(cfg, flat_id, start):
