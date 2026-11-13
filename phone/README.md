@@ -9,13 +9,20 @@ Vercel app at https://domovoy-phone.vercel.app. Spec: [docs/prd/voice.md](../doc
 
 Env in Vercel: `DOMOVOY_SECRET`, `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
 
-Ring the page (open it and click Ready first):
+Test on production (open the paired URL `$PHONE_URL/?k=$DOMOVOY_RECEIVER_KEY` and click Ready first):
 
 ```sh
-curl -X POST https://domovoy-phone.vercel.app/api/call \
-  -H "x-domovoy-secret: $DOMOVOY_SECRET" -H 'content-type: application/json' \
-  -d @phone/example-context.json
-curl https://domovoy-phone.vercel.app/api/result/demo-vinohrady-001 -H "x-domovoy-secret: $DOMOVOY_SECRET"
+set -a; . ~/.config/domovoy/.env; set +a
+ID=test-voice-$(date +%H%M%S)
+sed "s/test-voice-001/$ID/" phone/test-context.json | curl -X POST $PHONE_URL/api/call \
+  -H "x-domovoy-secret: $DOMOVOY_SECRET" -H 'content-type: application/json' -d @-
+curl $PHONE_URL/api/result/$ID -H "x-domovoy-secret: $DOMOVOY_SECRET"
 ```
 
-`example-context.json` and `public/ringtone.mp3` (cut from the Nokia 3310 video named in the docs) are demo fixtures; the context is synthetic.
+Rules for tests on production:
+- Every test uses its own `property_id` that starts with `test-`. Never `demo-vinohrady-001` and never the id of a real flat: a new `POST /api/call` deletes the stored result for its `property_id`.
+- Clear only results you created.
+- Any paired page takes the next call. Keep one paired page open, and none while someone rehearses.
+- Every key in the store expires after 1 hour, results included. Save a result you want to keep.
+
+`test-context.json` is the synthetic context for these tests. `example-context.json` and `public/ringtone.mp3` (cut from the Nokia 3310 video named in the docs) are demo fixtures; the context is synthetic.
