@@ -75,7 +75,7 @@ Vercel functions share no memory, so pending calls and results need a small stor
 
 - Created from `phone/agent/` with `sync-agent.mjs`. Auth: signed URLs only, no allowlist, because the ElevenLabs auth guide says not to configure both on one agent.
 - English. Client tools: `submit_call_result` (the result), `mark_question_asked` (display only: ticks an open question on the page, changes no data), plus the built-in end-call. No other tools.
-- Tone: dry, warm humour about being an AI; the job comes first. The voice is picked in the ElevenLabs dashboard; `sync-agent.mjs` never overwrites it on update.
+- Tone: one short sentence per turn, no jokes. The agent asks two things, whether VAT is in the rent and the earliest viewing inside a free window, plus an `unknowns` item about the unit number or the landlord when the context carries one. The voice is picked in the ElevenLabs dashboard; `sync-agent.mjs` sends only the speaking speed on update, never the voice.
 - Dynamic variables: the `call_context` fields. `available_windows` and `unknowns` are passed as readable text, and `context_text` carries every field as `key: value` lines. The prompt names only `user_name`, `realtor_name`, `address`, `unknowns`, `available_windows` and `context_text`, so other fields can be renamed without touching the agent.
 - The page adds `property_id` and `conversation_id` to the result; the agent does not pass them.
 - Prompt rules: say it is an AI assistant calling for the renter; ask each unknown once; propose times only from the free windows; confirm the agreed time back before saving; call `submit_call_result` exactly once; never agree to payments or anything beyond a viewing.

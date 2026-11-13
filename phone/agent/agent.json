@@ -6,7 +6,7 @@
     ],
     "conversation_config": {
       "agent": {
-        "first_message": "Hi {{realtor_name}}, I'm an AI assistant, no body, just a calendar, calling for {{user_name}} about the flat at {{address}}.",
+        "first_message": "Hi, I'm an AI assistant calling for {{user_name}} about the flat at {{address}}: is VAT included in the rent?",
         "language": "en",
         "dynamic_variables": {
           "dynamic_variable_placeholders": {
@@ -20,7 +20,7 @@
         },
         "prompt": {
           "llm": "gemini-3.5-flash",
-          "temperature": 0.4,
+          "temperature": 0.2,
           "timezone": "Europe/Prague",
           "built_in_tools": {
             "end_call": {
@@ -36,15 +36,16 @@
       },
       "tts": {
         "model_id": "eleven_v4_turbo",
-        "voice_id": "UgBBYS2sOqTuMpoF3BR0"
+        "voice_id": "UgBBYS2sOqTuMpoF3BR0",
+        "speed": 1.1
       },
       "turn": {
-        "turn_timeout": 7,
-        "turn_eagerness": "normal",
+        "turn_timeout": 5,
+        "turn_eagerness": "eager",
         "speculative_turn": true
       },
       "conversation": {
-        "max_duration_seconds": 300,
+        "max_duration_seconds": 90,
         "client_events": [
           "audio",
           "interruption",
@@ -92,7 +93,7 @@
           },
           "answers": {
             "type": "array",
-            "description": "One item per open question asked during the call. Empty list when none were asked.",
+            "description": "One item per question asked during the call, including the VAT question. Empty list when none were answered.",
             "items": {
               "type": "object",
               "description": "A question and the realtor's answer.",
@@ -103,7 +104,7 @@
               "properties": {
                 "question": {
                   "type": "string",
-                  "description": "The open question, as listed in the prompt."
+                  "description": "The question that was asked, in a few words."
                 },
                 "answer": {
                   "type": "string",
@@ -149,7 +150,7 @@
     {
       "type": "client",
       "name": "mark_question_asked",
-      "description": "Tick an open question on the screen. Call right after you asked that open question aloud, once per question. Do not mention it and do not wait for a result.",
+      "description": "Tick an extra question on the screen. Call right after you asked that item of the extra questions list aloud, once per item. Do not mention it and do not wait for a result.",
       "expects_response": false,
       "pre_tool_speech": "off",
       "parameters": {
@@ -160,7 +161,7 @@
         "properties": {
           "number": {
             "type": "integer",
-            "description": "The 1-based number of the open question in the numbered list of open questions."
+            "description": "The 1-based number of the item in the numbered extra questions list."
           }
         }
       }
