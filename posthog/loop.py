@@ -23,6 +23,7 @@ else skill/domovoy/config.json in this checkout. That is the same rule call.py u
 --dataset (default "live", or the DOMOVOY_DATASET variable) tags every event. Use --dataset synthetic for tests; those events also carry synthetic=true.
 Writes to Notion happen only in decide --yes and apply. Both first print the target database's title and id on
 stderr, and refuse a database whose title has no "test" or "synthetic" in it unless --real is given.
+--max-seconds N before the command makes any command give up after N seconds (exit code 1), for callers that must not wait.
 Output is one JSON object on stdout. Exit codes: 0 ok, 2 refused, 1 error.
 """
 import argparse
@@ -30,6 +31,7 @@ import datetime
 import json
 import os
 import re
+import signal
 import sys
 import time
 
@@ -556,10 +558,14 @@ def cmd_measure(args):
 
 
 def cmd_apply(args):
+    flags = criteria_flags(args.dataset)
+    if not approved_requirements(flags):
+        return out({"approved_requirements": {}, "moved_to_not_interested": [],
+                    "note": "no approved rule: Notion was not read or written"})
     _, refusal = write_target(args)
     if refusal:
         return out(refusal, 2)
-    return out(refilter(args, criteria_flags(args.dataset)))
+    return out(refilter(args, flags))
 
 
 def cmd_overrides(args):
@@ -576,6 +582,7 @@ REAL_HELP = "allow writing to a Notion database whose title has no \"test\" or \
 def main():
     parser = argparse.ArgumentParser(description="DOMOVOY PostHog loop")
     parser.add_argument("--dataset", default=os.environ.get("DOMOVOY_DATASET") or "live")
+    parser.add_argument("--max-seconds", type=int, default=0, help="give up after this many seconds, exit code 1")
     sub = parser.add_subparsers(dest="cmd", required=True)
     for name in ("sync", "overrides"):
         sub.add_parser(name)
@@ -598,6 +605,13 @@ def main():
     m = sub.add_parser("measure")
     m.add_argument("--key", default="")
     args = parser.parse_args()
+    if args.max_seconds > 0:
+        def give_up(signum, frame):
+            print(json.dumps({"error": "gave up after %d s (--max-seconds)" % args.max_seconds}))
+            sys.stdout.flush()
+            os._exit(1)
+        signal.signal(signal.SIGALRM, give_up)
+        signal.alarm(args.max_seconds)
     if args.dataset != "live" and not shortlist.explicit_data_source():
         return out({"refused": True, "reason": "a test dataset needs an explicit shortlist: set NOTION_DATA_SOURCE_ID or "
                     "DOMOVOY_FAKE_SHORTLIST. Without one this would read and re-filter the real DOMOVOY shortlist."}, 2)
