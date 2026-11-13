@@ -1,6 +1,6 @@
 # PostHog
 
-Owner: Danila. Spec: [docs/prd/posthog.md](../docs/prd/posthog.md). Status on 13 Nov 2026: the project exists and `ph.py` can send an event and read it back. No DOMOVOY flow sends events yet.
+Owner: Danila. Spec: [docs/prd/posthog.md](../docs/prd/posthog.md). Status on 13 Nov 2026: the project exists, `ph.py` can send an event and read it back, and `loop.py` runs the rejection loop end to end on synthetic data. It has not run on the real shortlist yet.
 
 ## The project
 
@@ -44,6 +44,41 @@ The phone page needs only `POSTHOG_PROJECT_TOKEN` and `POSTHOG_INGEST_HOST`. The
 
 Sending events needs only the token. Skip the personal key if you never query.
 
+## The self-improvement loop (free plan)
+
+PostHog's own scouts and Inbox are paid (0 free credits; a scout run returned 429 and filing a report returned 402 on 13 Nov 2026). `loop.py` runs the same loop on the free parts. Do not claim the native Inbox on stage.
+
+| Step | What happens | PostHog feature |
+| --- | --- | --- |
+| Signals | `loop.py sync` reads the Notion shortlist and sends `listing_shortlisted`, `listing_rejected` (with the typed `Reason`) and `listing_interested`, each once | Events |
+| Instructions | `loop.py report` returns today's rejections, earlier decisions, and the scout instructions `domovoy-rejections` | HogQL query API, skills store |
+| Judgement | Claude normalizes the free-text reasons to a short key and groups them. One undecided key on 3 or more flats makes a proposal | none, this is the agent |
+| Report | `loop.py propose` creates an inactive flag `domovoy-criteria-<key>` whose payload holds the change, and a notebook with the finding, a live evidence query, the flag editor and the measurement chart | Feature flags, notebooks |
+| Yes or no | `loop.py decide --key K --yes` switches the flag on, moves Shortlisted flats that now fail to Not interested with `Reason = filtered: ...`, and adds a chart annotation. `--no` only records the answer | Feature flags, annotations |
+| Memory | Every decision is appended to the scout instructions as a new version, and sent as `criteria_change_decided`. A decided key is refused the second time | Skills store, events |
+| Measure | Every event carries `criteria_version` and `$feature/<flag>`. The saved chart "DOMOVOY: shown, rejected and interested flats by criteria version" splits by it | Insights |
+| Next search | `loop.py overrides` prints the approved requirements for `search.py` to merge into the profile | Feature flags |
+
+```
+python3 posthog/loop.py sync
+python3 posthog/loop.py report
+python3 posthog/loop.py propose --key no_elevator --title "3 of 5 rejected flats: no elevator" \
+    --finding "..." --change '{"elevator": "required"}' --ids id1,id2,id3
+python3 posthog/loop.py decide --key no_elevator --yes
+```
+
+- Supported changes: `{"elevator": "required"}`, `{"max_total_monthly": N}`, `{"max_upfront": N}`. An unknown value never fails a flat.
+- The shortlist is the Notion data source titled "DOMOVOY shortlist", or the one named by `NOTION_DATA_SOURCE_ID`. It reads `Property ID`, `Status`, `Reason`, `Elevator`, `Floor`, `Total monthly`, `Upfront`, `Sources` and writes only `Status` and `Reason`.
+- `--dataset NAME` before the command runs a test: events carry `synthetic: true` and flags are named `domovoy-test-NAME-...`, so a test never changes live criteria. `DOMOVOY_FAKE_SHORTLIST=posthog/tests/fake_shortlist_seed.json` (use a copy) replaces Notion with a file.
+- Send events 30 to 100 s before `report`: PostHog needs that long to show them to queries. `propose` and `decide` do not wait on it.
+- `scout/rejection-scout.md` is the source of the instructions stored in PostHog. A paused paid scout with the same instructions exists in the project; it is not used.
+
+### Run and seen on 13 Nov 2026 (synthetic data only)
+
+- Fake shortlist: `sync` sent 15 events, a second `sync` sent 0. `report` read back 5 rejections. `propose` with 2 flats was refused. `propose` with 3 created the flag and the notebook. `decide --no` recorded the answer, and proposing the same key again was refused.
+- Notion test database with 9 synthetic flats: `decide --yes` took 4 s, moved the one Shortlisted flat without an elevator to Not interested with `Reason = filtered: elevator required`, and published version 4 of the instructions.
+- Not run: the real "DOMOVOY shortlist" database (it did not exist yet), and nobody has looked at the notebook or the chart in a browser.
+
 ## ph.py
 
 Standard library only, runs on Python 3.9. The PostHog Python SDK needs 3.10, so it is not used.
@@ -54,7 +89,7 @@ python3 posthog/ph.py query "select event, count() from events group by event"
 python3 posthog/ph.py smoke
 ```
 
-From Python: `from ph import capture, query`. `capture(event, distinct_id, properties)` posts to `/i/v0/e/`. `query(hogql)` posts a `HogQLQuery` to `/api/projects/348322/query/` and returns a list of dicts.
+From Python: `from ph import capture, query, api, flags, mcp`. `capture(event, distinct_id, properties)` posts to `/i/v0/e/`. `query(hogql)` posts a `HogQLQuery` to `/api/projects/348322/query/` and returns a list of dicts.
 
 ## What was run and seen (13 Nov 2026)
 

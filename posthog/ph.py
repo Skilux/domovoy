@@ -5,6 +5,8 @@
   ph.py query "HogQL"                                      run a query, print JSON rows
   ph.py smoke                                              send one test event, then read it back
 
+Also imported by loop.py: capture, query, api (private REST), flags (public flag evaluation), mcp (one MCP tool call).
+
 Reads ~/.config/domovoy/.env (or the file named by DOMOVOY_ENV_FILE); the environment wins:
   POSTHOG_PROJECT_TOKEN      phc_...  public by design, used for capture
   POSTHOG_INGEST_HOST        capture host, default https://eu.i.posthog.com
@@ -25,6 +27,7 @@ import urllib.request
 import uuid
 
 ENV_FILE = os.environ.get("DOMOVOY_ENV_FILE") or os.path.expanduser("~/.config/domovoy/.env")
+MCP_URL = "https://mcp.posthog.com/mcp?mode=cli"
 DEFAULTS = {
     "POSTHOG_APP_HOST": "https://eu.posthog.com",
     "POSTHOG_INGEST_HOST": "https://eu.i.posthog.com",
@@ -88,6 +91,88 @@ def query(hogql, env=None, name="domovoy"):
     _, out = post(url, body, {"Authorization": "Bearer " + need(env, "POSTHOG_PERSONAL_API_KEY")}, timeout=60)
     columns = out.get("columns") or []
     return [dict(zip(columns, row)) for row in out.get("results") or []]
+
+
+def api(method, path, body=None, env=None):
+    """Private REST API under /api/projects/<id>/. Returns parsed JSON."""
+    env = env or load_env()
+    url = "%s/api/projects/%s/%s" % (env["POSTHOG_APP_HOST"].rstrip("/"), need(env, "POSTHOG_PROJECT_ID"), path.lstrip("/"))
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Content-Type", "application/json")
+    req.add_header("User-Agent", "domovoy-posthog/1")
+    req.add_header("Authorization", "Bearer " + need(env, "POSTHOG_PERSONAL_API_KEY"))
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read().decode("utf-8") or "null")
+    except urllib.error.HTTPError as e:
+        raise SystemExit("HTTP %s from %s %s: %s" % (e.code, method, path, e.read().decode("utf-8")[:500]))
+
+
+def flags(distinct_id, env=None):
+    """Evaluate feature flags with the public token. Returns {key: {"enabled", "payload"}}."""
+    env = env or load_env()
+    body = {"api_key": need(env, "POSTHOG_PROJECT_TOKEN"), "distinct_id": distinct_id}
+    _, out = post(env["POSTHOG_INGEST_HOST"].rstrip("/") + "/flags?v=2", body)
+    result = {}
+    for key, flag in (out.get("flags") or {}).items():
+        payload = (flag.get("metadata") or {}).get("payload")
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except ValueError:
+                pass
+        result[key] = {"enabled": bool(flag.get("enabled")), "payload": payload}
+    return result
+
+
+def mcp(tool, arguments, env=None):
+    """Call one PostHog MCP tool over HTTP with the personal key. Returns the text result."""
+    env = env or load_env()
+    headers = {
+        "Authorization": "Bearer " + need(env, "POSTHOG_PERSONAL_API_KEY"),
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "x-posthog-project-id": need(env, "POSTHOG_PROJECT_ID"),
+        "User-Agent": "domovoy-posthog/1",
+    }
+    session = {}
+
+    def rpc(method, params, notify=False):
+        body = {"jsonrpc": "2.0", "method": method, "params": params}
+        if not notify:
+            body["id"] = 1
+        h = dict(headers)
+        if session.get("id"):
+            h["Mcp-Session-Id"] = session["id"]
+        req = urllib.request.Request(MCP_URL, data=json.dumps(body).encode("utf-8"), headers=h, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                session["id"] = resp.headers.get("Mcp-Session-Id") or session.get("id")
+                raw = resp.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            raise SystemExit("HTTP %s from MCP %s: %s" % (e.code, method, e.read().decode("utf-8")[:500]))
+        if notify or not raw.strip():
+            return None
+        if raw.lstrip().startswith("{"):
+            return json.loads(raw)
+        out = None
+        for line in raw.splitlines():
+            if line.startswith("data:"):
+                try:
+                    out = json.loads(line[5:].strip())
+                except ValueError:
+                    pass
+        return out
+
+    rpc("initialize", {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "domovoy", "version": "1"}})
+    rpc("notifications/initialized", {}, notify=True)
+    out = rpc("tools/call", {"name": "exec", "arguments": {"command": "call %s %s" % (tool, json.dumps(arguments))}})
+    result = (out or {}).get("result") or {}
+    text = "\n".join(c.get("text", "") for c in result.get("content") or [])
+    if result.get("isError") or text.startswith("Error:") or not result:
+        raise SystemExit("MCP %s failed: %s" % (tool, (text or json.dumps(out))[:800]))
+    return text
 
 
 def smoke(env=None, wait=90):
