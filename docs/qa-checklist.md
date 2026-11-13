@@ -87,7 +87,7 @@ Run these from the repo root. `<C>` is the path of `skill/domovoy/config.json`.
 | --- | --- | --- | --- |
 | - [ ] | Danila | Scan the QR code in the README with a phone | It opens `https://domovoy-phone.vercel.app/start` |
 | - [ ] | Danila | Open `/start` in a private window | The page loads, the install prompt copies, no key in the page or the address bar |
-| - [ ] | Both | Open `https://domovoy-phone.vercel.app/stage?full=1` on the projector, press Right arrow through all states | Readable from the back row. Sample data is labelled as sample |
+| - [ ] | Both | Open `https://domovoy-phone.vercel.app/stage` on the projector, press Right arrow through all 9 slides (digit keys 1 to 9 jump to a slide) | Readable from the back row. The counter runs from 1/9 to 9/9. The slides show no flat data and no key |
 | - [ ] | Danila | Open the GitHub repo page | The mermaid diagram, the GIF and all badges render. No broken image |
 | - [ ] | Danila | From `phone/`: the route check in [phone/README.md](../phone/README.md) | `/phone`, `/start`, `/stage` and `/prompt.txt` answer 200, `/` answers 307, and `/api/pending` without the key answers 401 (seen 13 Nov 2026) |
 
