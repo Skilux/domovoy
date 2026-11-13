@@ -62,7 +62,7 @@ sequenceDiagram
 
 Contracts for `call_context` and `submit_call_result` are in [plan.md](../plan.md#contracts).
 
-Vercel functions share no memory, so pending calls and results need a small store. Built: Upstash Redis (free plan) from the Vercel Marketplace, behind `phone/lib/store.js`, with a 1-hour expiry on every key.
+Vercel functions share no memory, so pending calls and results need a small store. Built: Upstash Redis (free plan) from the Vercel Marketplace, behind `phone/lib/store.js`, with a 1-hour expiry on pending calls and call tokens and a 24-hour expiry on results.
 
 ### Page
 
