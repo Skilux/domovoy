@@ -29,7 +29,15 @@ from domovoy.models import (
     UpsertResult,
     Verdict,
 )
-from domovoy.pipeline import Modules, empty_extraction, llm_config, open_extractor, resolve_modules, run_search
+from domovoy.pipeline import (
+    Modules,
+    empty_extraction,
+    llm_config,
+    open_extractor,
+    profile_hash,
+    resolve_modules,
+    run_search,
+)
 from domovoy.profile import load_profile
 from domovoy.sources.base import SourceError
 
@@ -253,11 +261,11 @@ def fake_notion(
     return SimpleNamespace(NotionSink=Sink), upserts
 
 
-async def run_pipeline(sources, modules, *, actor_input=None, platform=None, environ=None):
+async def run_pipeline(sources, modules, *, actor_input=None, platform=None, environ=None, search_profile=None):
     platform = platform if platform is not None else FakePlatform()
     actor_input = {"skipExtraction": True, **(actor_input or {})}
     summary = await run_search(
-        profile(), actor_input, platform, LOG,
+        search_profile if search_profile is not None else profile(), actor_input, platform, LOG,
         sources=sources, modules=modules, environ=environ if environ is not None else {},
     )
     return summary, platform
@@ -366,26 +374,36 @@ async def test_a_failed_notion_write_is_counted_and_nothing_is_recorded_as_seen(
 # Dedup wiring: state round trip, unchanged flats, cross-portal flag
 
 
-async def test_a_clean_run_records_state_and_the_next_run_diffs_against_it():
+async def test_a_notion_run_records_state_and_the_next_run_diffs_against_it():
     dedup = fake_dedup()
-    modules = Modules(dedup=dedup, costs=fake_costs())
+    sink, upserts = fake_notion()
+    modules = Modules(dedup=dedup, costs=fake_costs(), notion=sink)
+    notion_input = {"notion": {"dataSourceId": "ds-1"}}
+    notion_env = {"NOTION_TOKEN": "fake-notion-token-for-tests"}
 
     def sources():
         return {"sreality": FakeSource("sreality", [make_listing("1")])}
 
-    summary1, platform = await run_pipeline(sources(), modules)
+    _, platform = await run_pipeline(sources(), modules, actor_input=notion_input, environ=notion_env)
     assert len(platform.items) == 1
     assert dedup.calls.saved_ids == [{"sreality:1": "p-sreality-1"}]
     assert "vinohrady-2kk-30k" in platform.stores[PROFILE_STATE_STORE].data
 
-    summary2, platform = await run_pipeline(sources(), modules, platform=platform)
+    summary2, platform = await run_pipeline(
+        sources(), modules, actor_input=notion_input, environ=notion_env, platform=platform,
+    )
     assert dedup.calls.diff_states[-1].flats.keys() == {"p-sreality-1"}  # loaded from the store
     assert summary2.change == {"new": 0, "changed": 0, "unchanged": 1}
     assert len(platform.items) == 1  # unchanged is not emitted by default
+    assert upserts == ["p-sreality-1"]  # and not written to Notion again
 
-    _, platform = await run_pipeline(sources(), modules, actor_input={"includeUnchanged": True}, platform=platform)
+    _, platform = await run_pipeline(
+        sources(), modules, actor_input={**notion_input, "includeUnchanged": True}, environ=notion_env,
+        platform=platform,
+    )
     assert len(platform.items) == 2
     assert platform.items[1]["change"] == "unchanged"
+    assert upserts == ["p-sreality-1", "p-sreality-1"]  # includeUnchanged writes it to Notion again
 
 
 async def test_cheaper_on_another_portal_comes_from_cross_source():
@@ -562,3 +580,72 @@ async def test_open_extractor_builds_the_extractor_over_the_cache(monkeypatch):
     assert built["kwargs"] == {"min_confidence": 0.5}
     assert built["cfg"].model == "Qwen/Qwen3-30B-A3B-Instruct-2507"
     assert built["cfg"].featherless_api_key.get_secret_value() == "fake-featherless-key-for-tests"
+
+
+# Profile hash, Notion-delivered state, rejection totals
+
+
+async def test_a_profile_change_reevaluates_every_flat():
+    dedup = fake_dedup()
+    sink, upserts = fake_notion()
+    modules = Modules(dedup=dedup, costs=fake_costs(), notion=sink)
+    notion_input = {"notion": {"dataSourceId": "ds-1"}}
+    notion_env = {"NOTION_TOKEN": "fake-notion-token-for-tests"}
+
+    def sources():
+        return {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2")])}
+
+    _, platform = await run_pipeline(sources(), modules, actor_input=notion_input, environ=notion_env)
+    assert platform.stores[PROFILE_STATE_STORE].data["vinohrady-2kk-30k"]["profile_hash"] == profile_hash(profile())
+
+    summary, platform = await run_pipeline(
+        sources(), modules, actor_input=notion_input, environ=notion_env, platform=platform,
+    )
+    assert summary.change == {"new": 0, "changed": 0, "unchanged": 2}  # the same profile: nothing to re-evaluate
+
+    changed = profile().model_copy(deep=True)
+    changed.filters.max_rent = 29000  # a changed budget is a changed profile
+    summary, platform = await run_pipeline(
+        sources(), modules, actor_input=notion_input, environ=notion_env, platform=platform,
+        search_profile=changed,
+    )
+    assert summary.change == {"new": 0, "changed": 2, "unchanged": 0}  # every flat is re-evaluated as changed
+    assert len(platform.items) == 4  # two in the first run, two re-evaluated
+    assert upserts == ["p-sreality-1", "p-sreality-2", "p-sreality-1", "p-sreality-2"]
+    assert platform.stores[PROFILE_STATE_STORE].data["vinohrady-2kk-30k"]["profile_hash"] == profile_hash(changed)
+
+
+async def test_a_dataset_only_run_saves_no_profile_state_so_a_later_notion_run_delivers():
+    dedup = fake_dedup()
+    sink, upserts = fake_notion()
+    _, platform = await run_pipeline(
+        {"sreality": FakeSource("sreality", [make_listing("1")])}, Modules(dedup=dedup, costs=fake_costs()),
+    )
+    assert len(platform.items) == 1
+    assert dedup.calls.saved_states == []
+    assert "vinohrady-2kk-30k" not in platform.stores[PROFILE_STATE_STORE].data
+
+    summary, platform = await run_pipeline(
+        {"sreality": FakeSource("sreality", [make_listing("1")])},
+        Modules(dedup=dedup, costs=fake_costs(), notion=sink),
+        actor_input={"notion": {"dataSourceId": "ds-1"}},
+        environ={"NOTION_TOKEN": "fake-notion-token-for-tests"},
+        platform=platform,
+    )
+    assert summary.change == {"new": 1, "changed": 0, "unchanged": 0}  # the dataset run recorded nothing
+    assert upserts == ["p-sreality-1"]
+
+
+async def test_every_failed_requirement_is_counted_in_rejected_by_requirement():
+    def two_failures(listing, ex, costs, profile):
+        failed = [
+            Verdict(name="max_total_monthly", verdict="fail", estimated=False, reason="over the cap"),
+            Verdict(name="elevator", verdict="fail", estimated=False, reason="no elevator"),
+        ]
+        return Evaluation(match="rejected", requirements=failed, unknowns=[], match_reasons=[], risk_flags=[])
+
+    costs = SimpleNamespace(compute_costs=fake_costs().compute_costs, evaluate=two_failures)
+    sources = {"sreality": FakeSource("sreality", [make_listing("1"), make_listing("2")])}
+    summary, _ = await run_pipeline(sources, Modules(costs=costs))
+    assert summary.match["rejected"] == 2
+    assert summary.rejected_by_requirement == {"max_total_monthly": 2, "elevator": 2}

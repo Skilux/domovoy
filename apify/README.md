@@ -31,15 +31,16 @@ An answer whose confidence is below 0.5 becomes unknown. `llm.concurrency` defau
 2. Collect each source in `filters.sources`, one at a time. A source that raises is `failed`. A source whose stats report failed or skipped items is `degraded`.
 3. Merge listings into flats across portals (dedup). Extract and cost every flat, unchanged ones too, because `cross_source` needs their commissions before diff. Skipped when `skipExtraction` is set.
 4. Set `cross_source` from the commissions, then diff against the profile state.
-5. For each emitted flat: evaluate, build the FlatItem, push it to the dataset. Upsert `new` and `changed` flats that are not `rejected` to Notion. A failed upsert is counted in `notion.errors`.
-6. Save the property-id map and the profile state only if every Notion write of the run succeeded. A failed write is never recorded as seen, so the next run retries it.
+5. For each emitted flat: evaluate, build the FlatItem, push it to the dataset. Upsert `new` and `changed` flats that are not `rejected` to Notion, and with `includeUnchanged` the unchanged ones too. A failed upsert is counted in `notion.errors`.
+6. Save the property-id map when every Notion write of the run succeeded. Save the profile state too only when the run has a Notion sink: a dataset-only run saves no state, so a later Notion run still delivers every flat. The state stores a hash of the profile; a changed profile re-evaluates every flat, which counts as `changed`. A failed write is never recorded as seen, so the next run retries it.
 7. Write the `RunSummary` to the key `OUTPUT`. The Notion sink is closed at the end of the run, also when the run fails.
 
 ## Flat fields worth knowing
 
 - `match`: `strong`, `needs_info` or `rejected`. Any failed requirement makes a flat `rejected`; rejected flats go to the dataset only.
 - Risk flag `cheaper on another portal`: added when `cross_source.cheapest_portal` is a different portal from the primary listing.
-- `change`: `new`, `changed` or `unchanged`. Unchanged flats reach the dataset only with `includeUnchanged`, and never reach Notion.
+- `change`: `new`, `changed` or `unchanged`. Unchanged flats reach the dataset and Notion only with `includeUnchanged`.
+- `rejected_by_requirement` (run summary): counts every failed requirement of each rejected flat, so one flat can count under several requirements.
 - `extraction`: null when extraction did not run (skipped, stage missing, or the run skipped it). When every model fails, it is an object with `status` `failed` and no provider.
 
 ## Secrets
@@ -59,7 +60,7 @@ Write the input to a JSON file (a `profile`, `skipExtraction` for debugging, and
 
     apify run --input-file <input.json> --user-agent apify-agent-skills/apify-actor-development
 
-The summary is the key `OUTPUT` in `storage/key_value_stores/default/` (a JSON file named `OUTPUT`, with a metadata file beside it). Each dataset item is one file in `storage/datasets/default/`. The named stores `domovoy-property-ids` and `domovoy-profile-state` persist between local runs, so a second run reports unchanged flats.
+The summary is the key `OUTPUT` in `storage/key_value_stores/default/` (a JSON file named `OUTPUT`, with a metadata file beside it). Each dataset item is one file in `storage/datasets/default/`. The named stores `domovoy-property-ids` and `domovoy-profile-state` persist between local runs. A run with a Notion data source updates the profile state; a dataset-only run does not, so a second dataset-only run reports the same flats as new.
 
 ## Inputs and outputs
 

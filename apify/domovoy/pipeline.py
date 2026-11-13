@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -228,6 +229,12 @@ def _stat(stats: Any, name: str, default: int) -> int:
     return default if value is None else int(value)
 
 
+def profile_hash(profile: SearchProfile) -> str:
+    """A hash of the profile's content, stored in the profile state. A change makes every flat count as changed."""
+    text = json.dumps(profile.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def passthrough_flat(listing: Listing) -> Flat:
     """Dedup fallback: one flat per listing, with a temporary id that is stable across runs."""
     digest = hashlib.sha256(f"{listing.portal}:{listing.source_id}".encode("utf-8")).hexdigest()[:10]
@@ -359,6 +366,7 @@ async def _search(
     run_id = environ.get("APIFY_ACTOR_RUN_ID") or f"local-{uuid4().hex[:8]}"
     include_unchanged = bool(actor_input.get("includeUnchanged"))
     skip_extraction = bool(actor_input.get("skipExtraction"))
+    current_hash = profile_hash(profile)
 
     statuses, listings = await collect_listings(profile, sources, log)
 
@@ -391,6 +399,8 @@ async def _search(
             for flat, analysis in zip(flats, analyses)
         ]
         changes = dd.diff(flats, state)
+        if state.profile_hash != current_hash:  # the profile changed: every flat is re-evaluated
+            changes = [(flat, "changed" if change == "unchanged" else change) for flat, change in changes]
     else:
         changes = [(flat, "new") for flat in flats]
 
@@ -422,11 +432,13 @@ async def _search(
             extraction_ran=analysis.ran,
         )
         match_counts[item.match] += 1
-        failed_requirement = next((v.name for v in evaluation.requirements if v.verdict == "fail"), None)
-        if item.match == "rejected" and failed_requirement is not None:
-            rejected_by[failed_requirement] = rejected_by.get(failed_requirement, 0) + 1
+        if item.match == "rejected":  # every failed requirement counts, so one flat can count under several
+            for verdict in evaluation.requirements:
+                if verdict.verdict == "fail":
+                    rejected_by[verdict.name] = rejected_by.get(verdict.name, 0) + 1
         await platform.push_data([item.model_dump(mode="json")])
-        if sink is not None and change in ("new", "changed") and item.match != "rejected":
+        delivers = change in ("new", "changed") or include_unchanged
+        if sink is not None and delivers and item.match != "rejected":
             await write_notion(sink, item, notion, log)
 
     if dedup_on and flats:
@@ -436,8 +448,13 @@ async def _search(
             )
         else:
             await dd.save_property_ids(property_store, ids)
-            await dd.save_profile_state(state_store, dd.record_run(state, flats, started))
-            log.info("state saved for profile %s: %d flats recorded", profile.id, len(flats))
+            if sink is None:
+                # Nothing reached Notion, so nothing may be recorded as seen: a later Notion run must deliver these flats.
+                log.info("profile state not saved: this run had no Notion sink")
+            else:
+                new_state = dd.record_run(state, flats, started).model_copy(update={"profile_hash": current_hash})
+                await dd.save_profile_state(state_store, new_state)
+                log.info("state saved for profile %s: %d flats recorded", profile.id, len(flats))
 
     summary = RunSummary(
         run_id=run_id,
