@@ -8,7 +8,7 @@ Vercel app at https://domovoy-phone.vercel.app. Spec: [docs/prd/voice.md](../doc
 | --- | --- | --- |
 | `/` | Home: pitch, install prompt, QR, and the live phone on the right. The phone unfolds over the pitch on Accept. The address bar shows `/start`; both addresses are the same page. | The submission form, judges, a new user, and the stage screen |
 | `/phone` | The phone alone | A screen that should show only the phone |
-| `/stage` | The stage rail, 8 states | The stage, next to Claude Code |
+| `/stage` | The stage slides, 9 slides | The projector, before and after the live demo |
 | `/prompt.txt` | The install prompt as plain text | `claude "$(curl -fsSL https://domovoy-phone.vercel.app/prompt.txt)"` |
 
 Pairing is per browser. Open `/?k=<DOMOVOY_RECEIVER_KEY>` once (`/start?k=` and `/phone?k=` do the same); after that every phone page in that browser is paired, and the key is gone from the address bar. A visitor without the key sees the home page with a phone that says "Demo phone. Calls ring only on the paired device."; it never rings for them.
@@ -27,7 +27,7 @@ Every page has the same top bar (Home, Phone, Stage rail, Install, GitHub), draw
 - `src/main.js` + `public/phone.html`: the phone page, served at `/phone`. `public/start.html` is the home page; `vercel.json` redirects `/` to it and keeps the query, so `/?k=` still pairs. `npm run build` bundles it into `public/app.js`.
 - `public/prompt.txt`: the install prompt, the only copy to edit. `/start` shows it and the terminal one-liner on that page fetches it. `public/qr.svg` is a static QR for `https://domovoy-phone.vercel.app/start`, made once with `npx qrcode@1.5.4 -t svg`; it never carries the `?k=` key.
 - `agent/`: ElevenLabs agent prompt and config. Recreate or update with `set -a; . ~/.config/domovoy/.env; set +a; node phone/agent/sync-agent.mjs`. After every sync, also run `python3 posthog/calls.py prompt` from the repo root: it records the deployed prompt as a version of `domovoy-voice-agent` in PostHog, so call traces carry the prompt version. If that command fails, the prompt deploy still counts.
-- `public/stage.html`: the stage rail for the demo, at `/stage`. A narrow window shows only the rail (FIND, APPROVE, CALL, BOOK, LEARN); a wide window shows the title, the close and labeled placeholders with sample data. Right arrow, Space or click = next, Left arrow = back, digits jump. `?rail=1` or `?full=1` forces a mode. Edit the `STATUS` object at the top of its script to change a status chip. It calls no API.
+- `public/stage.html`: the stage slides for the demo, at `/stage`. 9 static slides at 16:9: intro, problem, product, three "how it works" flow slides (the first has a QR to the Actor on the Apify Store), the learning loop, the feature list, and a closing QR to `/start`. Right arrow, Space or click = next, Left arrow = back, digits 1 to 9 jump to that slide, `a` shows all slides. `?step=4` opens on slide 4, `?view=all` opens the overview. `?full=1` and `?rail=1` are accepted and change nothing: there is one layout. It calls no API.
 
 Env in Vercel: `DOMOVOY_SECRET`, `DOMOVOY_RECEIVER_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
 
