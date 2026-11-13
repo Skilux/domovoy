@@ -1,0 +1,14 @@
+{
+  "name": "domovoy-phone",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --minify --format=esm --outfile=public/app.js"
+  },
+  "dependencies": {
+    "@elevenlabs/client": "1.36.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

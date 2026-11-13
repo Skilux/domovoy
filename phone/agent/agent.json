@@ -1,0 +1,129 @@
+{
+  "agent": {
+    "name": "DOMOVOY viewing caller",
+    "tags": ["domovoy"],
+    "conversation_config": {
+      "agent": {
+        "first_message": "Hello {{realtor_name}}, this is an AI assistant calling for {{user_name}} about the flat at {{address}}.",
+        "language": "en",
+        "dynamic_variables": {
+          "dynamic_variable_placeholders": {
+            "user_name": "Vladimir",
+            "realtor_name": "Daniel",
+            "address": "Korunni 88, Praha 2 - Vinohrady",
+            "unknowns": "1. commission\n2. Are pets allowed?",
+            "available_windows": "1. Saturday 14 November, 10:00 to 12:00 (2026-11-14T10:00:00+01:00 to 2026-11-14T12:00:00+01:00)\n2. Monday 16 November, 17:00 to 19:00 (2026-11-16T17:00:00+01:00 to 2026-11-16T19:00:00+01:00)",
+            "context_text": "address: Korunni 88, Praha 2 - Vinohrady\nrent: 24000\ntotal_monthly: 27500\nkauce: 48000\ncommission: unknown\nmove_in_date: 2026-12-01\nlease_type: najem"
+          }
+        },
+        "prompt": {
+          "llm": "gemini-3.5-flash",
+          "temperature": 0,
+          "timezone": "Europe/Prague",
+          "built_in_tools": {
+            "end_call": {
+              "type": "system",
+              "name": "end_call",
+              "description": "",
+              "params": { "system_tool_type": "end_call" }
+            }
+          }
+        }
+      },
+      "tts": {
+        "model_id": "eleven_v4_turbo",
+        "voice_id": "cjVigY5qzO86Huf0OWal"
+      },
+      "turn": {
+        "turn_timeout": 7,
+        "turn_eagerness": "normal",
+        "speculative_turn": true
+      },
+      "conversation": {
+        "max_duration_seconds": 300,
+        "client_events": [
+          "audio",
+          "interruption",
+          "user_transcript",
+          "agent_response",
+          "agent_response_correction",
+          "client_tool_call"
+        ]
+      }
+    },
+    "platform_settings": {
+      "auth": {
+        "enable_auth": true,
+        "allowlist": []
+      }
+    }
+  },
+  "tool": {
+    "type": "client",
+    "name": "submit_call_result",
+    "description": "Save the final result of the call. Call exactly once, after the realtor confirmed a viewing time or once it is clear no viewing will be booked, and before saying goodbye.",
+    "expects_response": true,
+    "response_timeout_secs": 20,
+    "parameters": {
+      "type": "object",
+      "required": ["outcome", "answers", "new_costs", "summary"],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["booked", "not_booked"],
+          "description": "booked only if the realtor explicitly agreed to and confirmed a viewing time fully inside a free window. Otherwise not_booked."
+        },
+        "viewing_start": {
+          "type": "string",
+          "description": "Agreed viewing start as ISO 8601 with the Europe/Prague offset, for example 2026-11-14T10:30:00+01:00. Set only when outcome is booked. Leave out when not booked."
+        },
+        "answers": {
+          "type": "array",
+          "description": "One item per open question asked during the call.",
+          "items": {
+            "type": "object",
+            "description": "A question and the realtor's answer.",
+            "required": ["question", "answer"],
+            "properties": {
+              "question": {
+                "type": "string",
+                "description": "The open question, as listed in the prompt."
+              },
+              "answer": {
+                "type": "string",
+                "description": "What the realtor said, in a few words. Use unknown when they did not know or did not answer."
+              }
+            }
+          }
+        },
+        "new_costs": {
+          "type": "array",
+          "description": "Costs the realtor mentioned that are not in the fact sheet. Empty list when there are none.",
+          "items": {
+            "type": "object",
+            "description": "One cost with a stated amount.",
+            "required": ["label", "amount", "recurring"],
+            "properties": {
+              "label": {
+                "type": "string",
+                "description": "Short name of the cost, for example parking or internet."
+              },
+              "amount": {
+                "type": "integer",
+                "description": "Amount in whole CZK."
+              },
+              "recurring": {
+                "type": "boolean",
+                "description": "true when the cost repeats monthly, false when it is paid once."
+              }
+            }
+          }
+        },
+        "summary": {
+          "type": "string",
+          "description": "One or two sentences on what happened in the call, with the reason when not booked."
+        }
+      }
+    }
+  }
+}

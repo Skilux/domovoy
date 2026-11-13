@@ -1,0 +1,5 @@
+.env*
+node_modules
+.vercel
+config.json
+phone/public/app.js
