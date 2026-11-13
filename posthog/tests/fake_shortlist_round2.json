@@ -1,5 +1,5 @@
 {
-  "_note": "SYNTHETIC second search for the posthog/loop.py example: what a search returns after 'elevator required' was approved. Not real listings.",
+  "_note": "SYNTHETIC second search for the posthog/loop.py example: what a search returns after 'elevator required' was approved. Two flats have no elevator, so `apply` has something to filter. Not real listings.",
   "flats": [
     {
       "page_id": "fake-page-101",
@@ -72,6 +72,30 @@
       "total_monthly": 27500,
       "upfront": 82500,
       "floor": 6
+    },
+    {
+      "page_id": "fake-page-107",
+      "property_id": "synthetic-107",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 107",
+      "status": "Shortlisted",
+      "reason": "",
+      "elevator": "No",
+      "portal": "sreality",
+      "total_monthly": 25000,
+      "upfront": 75000,
+      "floor": 4
+    },
+    {
+      "page_id": "fake-page-108",
+      "property_id": "synthetic-108",
+      "title": "[SYNTHETIC] 2+kk · Synthetic Street 108",
+      "status": "Shortlisted",
+      "reason": "",
+      "elevator": "No",
+      "portal": "idnes",
+      "total_monthly": 26500,
+      "upfront": 79500,
+      "floor": 3
     }
   ]
 }
