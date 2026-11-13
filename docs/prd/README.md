@@ -112,4 +112,4 @@ P1, only after the above: the PostHog report and rerank in [posthog.md](posthog.
 
 ## Out of scope
 
-GitHub Issues or the Projects board as a DOMOVOY surface (the board is only our hackathon task tracker; the shortlist is Notion), Czech, negotiation of alternative times or costs, more than one call, real phone calls, a custom dashboard, always-on monitoring, an agency product, Gmail unless time remains. Actor phase 2: katastr ownership check, PostHog events from the Actor. Full list in [plan.md](../plan.md#scope-and-ownership).
+GitHub Issues or the Projects board as a DOMOVOY surface (the board is only our hackathon task tracker; the shortlist is Notion), Czech, negotiation of alternative times or costs, more than one call, real phone calls, a custom dashboard, always-on monitoring, an agency product, Gmail unless time remains. Actor phase 2: PostHog events from the Actor. The katastr ownership check is a stretch for today, kept out of the scripted demo (#57). Full list in [plan.md](../plan.md#scope-and-ownership).

@@ -12,7 +12,7 @@ Build one reusable Agent Skill in Claude Code: real listing research → Notion 
 
 The demo calls about exactly one flat, in English only. Sreality, Bezrealitky and iDNES are all required by the 17:00 code freeze, Bezrealitky before iDNES; the 14:00 checkpoint needs real flats in Notion from at least Sreality. PostHog is P1 after the core path works. Gmail confirmation is an optional stretch.
 
-Out of scope: GitHub Issues or the Projects board as a DOMOVOY surface (the board is only our hackathon task tracker; the shortlist is Notion), always-on VPS monitoring, a bespoke dashboard, a new MCP orchestration server, multi-user support, buying/selling, complex geography, autonomous skill modification, agent investigation of listings, negotiation of alternative times or costs, and anything in Czech. Actor phase 2: katastr ownership check and PostHog events sent from the Actor.
+Out of scope: GitHub Issues or the Projects board as a DOMOVOY surface (the board is only our hackathon task tracker; the shortlist is Notion), always-on VPS monitoring, a bespoke dashboard, a new MCP orchestration server, multi-user support, buying/selling, complex geography, autonomous skill modification, agent investigation of listings, negotiation of alternative times or costs, and anything in Czech. Actor phase 2: PostHog events sent from the Actor. The katastr ownership check is a stretch for today ([#57](https://github.com/Skilux/domovoy/issues/57)): it's built if time allows, shown if it works, and kept out of the scripted demo.
 
 ## Data and execution
 

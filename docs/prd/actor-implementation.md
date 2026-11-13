@@ -130,8 +130,9 @@ These let WP4–WP7 start without any portal code.
 | WP6 | **Dedup** | WP0 | `dedup/`: cross-portal matcher, stable `property_id` map (named key-value store), per-profile state | Synthetic tests: same flat on 2 portals → 1 `Flat`; area or rent outside tolerance → 2 flats; stable ID across runs; new / changed / unchanged | 14:30 |
 | WP7 | **Notion** | WP0, P1, P2 | `notion_contract.json`, `scripts/notion.py` (`setup` plus the shortlist backend `call.py` loads), `notion/sink.py` | `notion.py setup` creates the database, and a second run changes nothing; the sink creates a page from the fixture `FlatItem`, and a second upsert updates owned properties only, leaving `Status`, `Reason` and the body untouched; drift test fails on a renamed property | 13:40 |
 | WP8 | Integrator (me) | each WP as it lands | `main.py` pipeline, `.actor/` schemas, Dockerfile, `search.py`, deploy, platform runs, fallback export | Each checkpoint above | Continuous |
+| WP9 | **Katastr** (stretch, Opus 5.5 high) | Research: none. Code: after 14:00 holds | `apify/research/katastr.md`, `skill/domovoy/scripts/katastr.py`, synthetic fixtures, tests ([#57](https://github.com/Skilux/domovoy/issues/57)) | `--cached-lv` appends a labeled "Katastr check" section to a Notion page with no names on stdout; one live lookup on a booked flat; billing guard blocks over the cap | Research 14:15, code 16:30, cut at 17:00 |
 
-Seven agents run in parallel: three portals plus extraction, costs, dedup and Notion. That's within the agreed limit of 10.
+Eight agents run in parallel: three portals plus extraction, costs, dedup, Notion and the katastr stretch. That's within the agreed limit of 10.
 
 ### Portal agents (WP1–WP3): common brief
 
