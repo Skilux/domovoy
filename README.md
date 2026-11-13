@@ -34,15 +34,25 @@ shows what each flat really costs, and holds a live voice call to book the viewi
 
 ---
 
+## Why this exists
+
+- **Listings hide fees.** The deposit, the commission and the utilities sit somewhere in the text, or nowhere.
+- **Realtors do not answer email.** You have to call, and they pick up during your work hours.
+- **Viewings are gone in a day.** By the time you have compared three portals, the slot is taken.
+
 ## Contents
 
+- [Why this exists](#why-this-exists)
 - [What it does](#what-it-does)
 - [How it works](#how-it-works)
+- [A real call](#a-real-call)
 - [Quick start](#quick-start)
 - [Services](#services)
 - [Costs](#costs)
 - [Interesting facts](#interesting-facts)
 - [Make it yours](#make-it-yours)
+- [Roadmap](#roadmap)
+- [FAQ](#faq)
 - [Repository layout](#repository-layout)
 - [Documentation](#documentation)
 - [Team](#team)
@@ -129,6 +139,34 @@ The two halves meet at two JSON contracts, [`call_context`](docs/plan.md#contrac
 <sub>The public stage page, <a href="https://domovoy-phone.vercel.app/stage">domovoy-phone.vercel.app/stage</a>. It shows the demo script with sample data and calls no API. Screenshot taken 13 Nov 2026.</sub>
 </div>
 
+## A real call
+
+**Real call, 13 Nov 2026, synthetic flat, the realtor was played by a team member.** A browser call, 80 s long, that ended in `booked`. The text is the ElevenLabs transcript, word for word. Names and the address are replaced with `[name]` and `[address]`, the voice style tags are removed, and cuts are marked `[...]`.
+
+> **DOMOVOY:** Hi [name], I'm an AI assistant, no body, just a calendar, calling for [name] about the flat at [address]...
+>
+> **Realtor (demo role):** Yeah, what's, what's about that?
+>
+> **DOMOVOY:** [name] is very interested in renting this flat. I would like to ask, what is the commission fee for this apartment?
+>
+> **Realtor (demo role):** About 30K.
+>
+> [...]
+>
+> **DOMOVOY:** I see, thank you. Could we schedule a viewing for [name]? He is free this Saturday, November fourteenth, between ten and twelve in the morning. Would that work for you?
+>
+> **Realtor (demo role):** No, doesn't work.
+>
+> **DOMOVOY:** No problem. I never forget a viewing, I just can't climb the stairs. How about Monday, November sixteenth, between five and seven in the evening?
+>
+> **Realtor (demo role):** Yeah, five works for me.
+>
+> **DOMOVOY:** Perfect. So we are booked for Monday, November sixteenth, at five in the evening at [address]...
+>
+> **Realtor (demo role):** Yeah, that's correct.
+
+After the last line the agent sent `submit_call_result`. Claude then rechecks the time against the free windows and the monthly total against the budget before anything is written.
+
 ## Quick start
 
 **1. Install.** Paste the prompt from [domovoy-phone.vercel.app/start](https://domovoy-phone.vercel.app/start) into Claude Code, or run one line:
@@ -138,6 +176,10 @@ claude "$(curl -fsSL https://domovoy-phone.vercel.app/prompt.txt)"
 ```
 
 The agent clones this repo, links `skill/domovoy` into `~/.claude/skills/` and runs the check below. It never asks you to paste a key in chat. You put each key into `~/.config/domovoy/.env` yourself (template: [`.env.example`](.env.example)).
+
+<img src="docs/img/qr-start.png" alt="QR code that opens https://domovoy-phone.vercel.app/start" width="200" height="200">
+
+<sub>Scan to open the start page with the install prompt: <a href="https://domovoy-phone.vercel.app/start">domovoy-phone.vercel.app/start</a></sub>
 
 **2. Check.** From `skill/domovoy/`:
 
@@ -230,7 +272,7 @@ A call cannot run longer than 300 s, so 100 calls cost at most 40 USD in minutes
 Each fact names its source in this repo.
 
 - **Fee reading is the expensive part.** Without extraction, the same 45 listings took 38 s and 0.0085 USD, so extraction is about 90% of the compute. Measured on two runs. [docs/packaging.md](docs/packaging.md#100-flats-researched)
-- **The first real booked call happened on 13 Nov 2026.** A spoken demo call on a sample context ended in `booked`. Its result is kept as a labelled fixture, `skill/domovoy/tests/fixtures/real_call_2026-11-13_booked.json`. [skill/domovoy/SKILL.md](skill/domovoy/SKILL.md)
+- **The first real booked call happened on 13 Nov 2026.** A spoken demo call on a sample context ended in `booked`. Read an excerpt in [A real call](#a-real-call). Its result is kept as a labelled fixture, `skill/domovoy/tests/fixtures/real_call_2026-11-13_booked.json`. [skill/domovoy/SKILL.md](skill/domovoy/SKILL.md)
 - **The voice agent has one tool.** It can only call `submit_call_result` and end the call. Notion, Calendar and every status change belong to Claude, which rechecks the agent's `booked` against your free windows and budget. [docs/plan.md](docs/plan.md#data-and-execution)
 - **Three models read each listing, in order.** A Qwen model on Featherless gets two attempts, then DeepSeek-V4-Flash gets one, then OpenAI `gpt-4o-mini` as a last resort when a key is set. An answer with confidence below 0.5 becomes unknown. [apify/README.md](apify/README.md#extraction-chain-wp4)
 - **It scrapes politely.** At most 3 requests in flight per portal, 0.5 to 1 s between request starts, stop on 403 or 429. No proxies and no stealth. [docs/decisions.md](docs/decisions.md#idnes-source-decisions-13-nov-2026)
@@ -249,6 +291,43 @@ Each fact names its source in this repo.
 | Add a listing portal | The `Source` protocol in `apify/domovoy/sources/base.py`. [apify/README.md](apify/README.md) |
 | Deploy my own phone page | [phone/README.md](phone/README.md) |
 | Use the kit for another job, for example booking a dentist | Three files hold the domain: the search profile schema, the voice agent prompt and the Notion contract. [docs/packaging.md](docs/packaging.md#swap-a-service) |
+
+## Roadmap
+
+All four are **planned**. None of them is on `main` today.
+
+| Planned | State today |
+| --- | --- |
+| Other cities and countries | A guide read from the code, not a tested path: [docs/other-cities.md](docs/other-cities.md). The real work is a listing source for the new market |
+| Gmail follow-up after the call | Not built. Listed as optional in [docs/open-items.md](docs/open-items.md) |
+| Real telephone calls | Not built. Today the call runs in the browser, in English. A phone provider needs a server with the two call routes: [Swap a service](docs/packaging.md#swap-a-service) |
+| A business edition for real estate agencies | In draft, as [pull request #67](https://github.com/Skilux/domovoy/pull/67). Not merged |
+
+## FAQ
+
+**Does it call real people?**
+No. Today it is a voice call in the browser, and a demo realtor from the team answers. It uses no telephone network, and the real listing agent is never called.
+
+**Does it contact anyone without asking me?**
+No. A flat can be called only after you set `Interested?` to Yes or move `Status` to Interested in Notion. Claude never sets either, and the call script refuses without it. It also never pays, signs or changes a hard filter without your yes. [skill/domovoy/SKILL.md](skill/domovoy/SKILL.md)
+
+**What does it cost?**
+100 flats researched: about 0.28 USD of Apify usage (measured on one run, scaled from 39 flats to 100), plus the Featherless plan at 25 USD per month. 100 voice calls: about 17 USD (estimated, no call length is measured yet). Claude Code needs a paid plan or an API key. Details in [Costs](#costs).
+
+**Can I try it without any account?**
+Yes, the call half. `python3 scripts/demo.py call` runs the real call command against a fake shortlist and a fake phone server, and labels everything synthetic. There is no such demo for the research half yet.
+
+**Can I swap Notion?**
+Partly. For the call command it is one small Python module, about 190 lines, named in `config.json`. The other paths are real work: `search.py`, `posthog/shortlist.py` and the Actor's Notion sink each talk to Notion directly. [Swap a service](docs/packaging.md#swap-a-service)
+
+**Where do my keys go?**
+Into `~/.config/domovoy/.env` on your machine, typed by you. The install prompt tells the agent never to read or print that file. The browser never gets the ElevenLabs API key: the server issues a signed URL for each call. The Actor reads its keys from your own Apify secrets.
+
+**Does it work outside Prague?**
+Not today. The three listing sources read Czech portals and accept Prague only. [docs/other-cities.md](docs/other-cities.md) lists what to change.
+
+**Which language does the agent speak?**
+English only.
 
 ## Repository layout
 
