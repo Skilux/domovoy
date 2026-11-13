@@ -1,0 +1,12 @@
+# Direct dependencies, pinned to the versions pip resolved in apify/.venv (Python 3.11.14).
+# Transitive dependencies are not pinned. No Playwright yet (WP1-3 decide).
+apify==4.2.1
+pydantic==2.14.3
+httpx==0.28.1
+openai==3.50.0
+crawlee[beautifulsoup]==1.11.2
+beautifulsoup4==4.15.0
+jsonschema==4.26.0
+requests==2.34.2
+pytest==9.2.0
+pytest-asyncio==1.5.0

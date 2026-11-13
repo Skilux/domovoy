@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "profile",
+  "description": "Search profile that Claude writes and stores in config.json as profiles[]. Source: docs/prd/actor.md, Search profile. Money is integer CZK. null means unknown or not set. Extra keys are rejected. Dates are YYYY-MM-DD strings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "filters", "requirements"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "version": {"type": "integer", "minimum": 1},
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["offer_type", "property_type", "locations", "dispositions", "sources"],
+      "properties": {
+        "offer_type": {"const": "rent"},
+        "property_type": {"const": "flat"},
+        "locations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["city"],
+            "properties": {
+              "city": {"type": "string", "minLength": 1},
+              "citypart": {"type": ["string", "null"]}
+            }
+          }
+        },
+        "dispositions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^[1-9]\\+(kk|1)$"}
+        },
+        "max_rent": {"type": ["integer", "null"], "minimum": 0},
+        "min_area_m2": {"type": ["integer", "null"], "minimum": 0},
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["sreality", "bezrealitky", "idnes"]}
+        },
+        "max_listings": {"type": "integer", "minimum": 1, "default": 150}
+      }
+    },
+    "household": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "occupants": {"type": "integer", "minimum": 1, "default": 1}
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_total_monthly"],
+      "properties": {
+        "max_total_monthly": {"type": "integer", "minimum": 0},
+        "max_upfront": {"type": ["integer", "null"], "minimum": 0},
+        "elevator": {"enum": ["required", null]},
+        "lease_types": {
+          "type": "array",
+          "uniqueItems": true,
+          "default": [],
+          "items": {"enum": ["najem", "podnajem"]}
+        },
+        "move_in_by": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "pets_allowed": {"type": ["boolean", "null"]}
+      }
+    }
+  }
+}
