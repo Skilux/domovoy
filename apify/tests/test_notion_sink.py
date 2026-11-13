@@ -24,6 +24,7 @@ from domovoy.notion.sink import (
     SchemaDrift,
     Throttle,
     _error_code,
+    _move_in_line,
     body_blocks,
     owned_values,
     schema_problems,
@@ -388,6 +389,59 @@ def test_the_cost_table_marks_estimates_and_unknowns():
     assert shown["Missing furniture cost"] == "8,000 CZK"
     assert rows(fixture_item(move_in_cost=None))["Move-in cost"] == "unknown"
     assert rows(fixture_item(energy=None))["Energy"] == "unknown"
+
+
+def body_line_after_the_cost_table(item: FlatItem) -> str:
+    blocks = body_blocks(item)
+    index = next(i for i, b in enumerate(blocks) if b["type"] == "table")
+    assert blocks[index + 1]["type"] == "paragraph"
+    return text_of(blocks[index + 1]["paragraph"])
+
+
+def test_the_move_in_line_explains_the_demo_flat():
+    # Demo flat: energy estimated, kauce 2 x rent, furniture from the table, commission and fees not stated.
+    item = fixture_item(rent=27000, services=2500, energy=1435, total_monthly=30935, first_payment=30935,
+                        kauce=54000, commission=None, one_time_fees=None, missing_furniture_cost=59000,
+                        move_in_cost=143935,
+                        estimated=["energy", "total_monthly", "first_payment", "move_in_cost",
+                                   "missing_furniture_cost"])
+    expected = ("Move-in cost 143,935 CZK (est.) = first payment 30,935 CZK (est.) + deposit 54,000 CZK"
+                " + furniture 59,000 CZK (est.). Commission and one-time fees not stated.")
+    assert _move_in_line(item) == expected
+    assert body_line_after_the_cost_table(item) == expected
+
+
+def test_the_move_in_line_with_every_part_stated():
+    item = fixture_item(rent=20000, services=3000, energy=2000, total_monthly=25000, first_payment=25000,
+                        kauce=40000, commission=24200, one_time_fees=1500, missing_furniture_cost=0,
+                        move_in_cost=90700, estimated=[])
+    assert _move_in_line(item) == ("Move-in cost 90,700 CZK = first payment 25,000 CZK + deposit 40,000 CZK"
+                                   " + commission 24,200 CZK + one-time fees 1,500 CZK.")
+
+
+def test_the_move_in_line_says_why_the_cost_is_unknown():
+    item = fixture_item(rent=None, total_monthly=None, first_payment=None, move_in_cost=None,
+                        move_in_note="Unknown: rent is not stated.")
+    assert _move_in_line(item) == "Move-in cost unknown: rent not stated."
+    assert body_line_after_the_cost_table(item) == "Move-in cost unknown: rent not stated."
+
+
+def test_a_stated_zero_commission_is_left_out_and_not_called_unknown():
+    # The fixture: commission 0 (stated none), energy estimated, 27,500 + 24,000 + 500 + 8,000 = 60,000.
+    line = _move_in_line(fixture_item())
+    assert line == ("Move-in cost 60,000 CZK (est.) = first payment 27,500 CZK (est.) + deposit 24,000 CZK"
+                    " + one-time fees 500 CZK + furniture 8,000 CZK.")
+    assert "commission" not in line.lower() and "not stated" not in line
+
+
+def test_the_move_in_line_splits_an_unknown_first_month_and_names_partial_fees():
+    # Services unknown: first_payment is None, but move_in_cost counts the rent; one fee of two has no amount.
+    item = fixture_item(services=None, total_monthly=None, first_payment=None, energy=1500, kauce=24000,
+                        commission=0, one_time_fees=None, missing_furniture_cost=None, move_in_cost=50000,
+                        estimated=["energy", "move_in_cost"])
+    assert _move_in_line(item) == (
+        "Move-in cost 50,000 CZK (est.) = rent 24,000 CZK + energy 1,500 CZK (est.) + deposit 24,000 CZK"
+        " + stated one-time fees 500 CZK. Services, amounts of some one-time fees and furniture not stated.")
 
 
 @pytest.mark.parametrize(

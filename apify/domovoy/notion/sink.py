@@ -33,7 +33,7 @@ MATCH_NAMES = {"strong": "Strong", "needs_info": "Needs info"}
 FURNISHED_NAMES = {"full": "Yes", "partial": "Partly", "none": "No"}
 PORTAL_NAMES = {"sreality": "Sreality", "bezrealitky": "Bezrealitky", "idnes": "iDNES"}
 TEXT_LIMIT = 2000  # Notion: characters per rich text object
-# Caps keep one create request under Notion's 100 top-level blocks (89 at most, with every cap reached). A flat has at
+# Caps keep one create request under Notion's 100 top-level blocks (90 at most, with every cap reached). A flat has at
 # most one source link per portal (3 today), so the source cap of 10 never drops a link from a real item.
 BODY_LIMITS = {"photos": 12, "reasons": 20, "quotes": 20, "unknowns": 20, "sources": 10}
 RATE_PER_SECOND = 3.0
@@ -224,6 +224,50 @@ def _cost_table(item: FlatItem) -> dict[str, Any]:
                             "children": children})
 
 
+def _move_in_line(item: FlatItem) -> str:
+    """One sentence under the cost table: the parts of move_in_cost (domovoy.costs.compute._move_in) that add up to
+    it, then the parts it leaves out because they are not stated. A stated 0 is left out and is not called unknown."""
+    if item.move_in_cost is None:
+        return "Move-in cost unknown: %s." % ("rent not stated" if item.rent is None else "not computed")
+    est = set(item.estimated)
+    parts: list[tuple[str, int, bool]] = []
+    unknown: list[str] = []
+
+    def add(label: str, value: int | None, estimated: bool = False) -> None:
+        if value is None:
+            unknown.append(label)
+        elif value > 0:
+            parts.append((label, value, estimated))
+
+    if item.first_payment is not None:
+        add("first payment", item.first_payment, bool(est & {"first_payment", "total_monthly"}))
+    else:  # the first month is unknown as a whole; move_in_cost still counts the rent and the known monthly parts
+        add("rent", item.rent)
+        add("services", item.services)
+        add("energy", item.energy, "energy" in est)
+    add("deposit", item.kauce)
+    add("commission", item.commission)
+    if item.one_time_fees is None:
+        # compute._move_in counts the stated fee amounts even when some amounts are missing (one_time_fees is None
+        # then); whatever move_in_cost holds beyond the other parts is those stated fees.
+        stated_fees = item.move_in_cost - sum(v for _, v, _ in parts) - (item.missing_furniture_cost or 0)
+        if stated_fees > 0:
+            parts.append(("stated one-time fees", stated_fees, False))
+            unknown.append("amounts of some one-time fees")
+        else:
+            unknown.append("one-time fees")
+    else:
+        add("one-time fees", item.one_time_fees)
+    add("furniture", item.missing_furniture_cost, "missing_furniture_cost" in est)
+    line = "Move-in cost %s = %s." % (
+        _money(item.move_in_cost, "move_in_cost" in est),
+        " + ".join("%s %s" % (label, _money(value, e)) for label, value, e in parts) or "0 CZK")
+    if unknown:
+        names = unknown[0] if len(unknown) == 1 else "%s and %s" % (", ".join(unknown[:-1]), unknown[-1])
+        line += " %s not stated." % (names[0].upper() + names[1:])
+    return line
+
+
 def _source_line(source: SourceRef) -> str:
     return "%s: %s, rent %s, commission %s, collected %s" % (
         PORTAL_NAMES[source.portal], source.url, _money(source.rent), _money(source.commission),
@@ -239,7 +283,7 @@ def body_blocks(item: FlatItem) -> list[dict[str, Any]]:
     blocks.append(_heading("Why it matches"))
     reasons = [_bullet(text) for text in item.match_reasons[:BODY_LIMITS["reasons"]]]
     blocks += reasons or [_paragraph("No match reasons recorded.")]
-    blocks += [_heading("Costs"), _cost_table(item)]
+    blocks += [_heading("Costs"), _cost_table(item), _paragraph(_move_in_line(item))]
     blocks.append(_heading("Quotes"))
     quotes = [e for e in item.evidence if e.quote][:BODY_LIMITS["quotes"]]
     blocks += [_quote('%s: "%s" (confidence %.2f)' % (e.field, scrub(e.quote or ""), e.confidence)) for e in quotes]
