@@ -72,3 +72,16 @@ Made by Vladimir while specifying the Actor lane ([prd/actor.md](prd/actor.md)).
 | Katastr owner check | Phase 2 (`katastr_lookup` mode, WSDP); storing owner names needs compliance sign-off | — |
 | PostHog from the Actor | Phase 2; the PostHog lane stays P1 | — |
 | GitHub Projects board | Team task tracking during the hackathon only; never a DOMOVOY or demo surface | Shortlist UI for DOMOVOY |
+
+## Call flow decisions, 13 Nov 2026
+
+Made by Danila for the call half of the Skill lane.
+
+| Topic | Decision | Replaces |
+| --- | --- | --- |
+| Notion switch | Danila accepted the Notion switch and the `notion_page_id` rename, 13 Nov 2026 | Open item 13: review after the merge |
+| Calendar access | No calendar script and no Google API setup. Claude reads free windows and creates the test event with whatever calendar access it has; `call.py` takes the windows as input and prints the event to create | Open item 2; `calendar.*` script |
+| Shortlist access from `call.py` | Notion only, through one module named in `config.json` (`backend.module`) that lists flats by `Status`, sets `Status` and appends to the page body. `call.py` accepts either naming (`list_pages`, or `list_flats` plus `get_flat`) and adapts to `notion.py`. The modules in `tests/` are local fakes. No GitHub board or issue code anywhere in DOMOVOY | `board.py` over `gh` |
+| Call idempotency | The handled `conversation_id` is kept in local `.state/handled.json`; the appended summary also carries a `domovoy-call: <conversation_id>` line. A result seen before changes nothing | Unspecified |
+| Receipt order | `call.py` appends the summary and sets `Viewing booked`, then Claude creates the event from the printed `event` | Event first, then status |
+| Extra `call_context` fields | `call.py` passes listing fields it does not know through; the phone server accepts them (`phone/lib/context.js` requires only `property_id` and `address`) | Unspecified |

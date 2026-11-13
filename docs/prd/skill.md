@@ -46,8 +46,7 @@ skill/domovoy/
   scripts/
     search.*          start the Actor run with the active profile, poll it, print the run summary
     notion.*          setup the database, list pages by Status, set Status, append to page body
-    call.*            build context, POST /api/call, poll result
-    calendar.*        free windows, create event (if not done through a connector)
+    call.py           build context, POST /api/call, poll result, recheck, update the shortlist through the backend
   reference/          JSON Schemas for call_context, submit_call_result and search profiles;
                       notion_contract.json
   config.example.json
@@ -69,7 +68,7 @@ Scripts do everything that must be exact: Notion edits, validation, the window a
 
 ### Calendar
 
-Claude reads busy times for the next 7 days, intersects them with the configured viewing hours, and passes up to 5 free one-hour windows as `available_windows`.
+Claude reads busy times for the next 7 days, intersects them with the configured viewing hours, and passes up to 5 free one-hour windows as `available_windows`. There is no calendar script: Claude uses whatever calendar access it has, gives the windows to `call.py`, and creates the event that `call.py` prints after a result passes the recheck.
 
 ## Decisions
 
@@ -82,4 +81,4 @@ Claude reads busy times for the next 7 days, intersects them with the configured
 
 ## Open items
 
-From [open-items.md](../open-items.md): 2 (calendar through the Google Calendar connector or a script), 5 (Notion integration and `NOTION_TOKEN`), 6 (run `notion.py setup`). New for this lane: who writes `SKILL.md` and `call.*`; suggested Danila, since they sit next to the Voice lane, with Vladimir owning `search.*` and `notion.*`.
+From [open-items.md](../open-items.md): 5 (Notion integration and `NOTION_TOKEN`), 6 (run `notion.py setup`). New for this lane: who writes `SKILL.md` and `call.*`; suggested Danila, since they sit next to the Voice lane, with Vladimir owning `search.*` and `notion.*`.

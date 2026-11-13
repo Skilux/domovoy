@@ -4,7 +4,6 @@ Things to settle before or during the build. When one is decided, move it to [de
 
 | # | Item | Owner | Blocks |
 | --- | --- | --- | --- |
-| 2 | Calendar access: Google Calendar MCP connector or a skill script with the Google API | Danila + Vladimir | `available_windows`, test event |
 | 3 | Vladimir's real criteria and permission to show his listings and rejection reasons | Vladimir | Filters, PostHog example |
 | 4 | Vladimir confirms the `call_context` fields match his Actor output | Vladimir | Phone page, voice agent |
 | 5 | Notion integration **DOMOVOY** + `NOTION_TOKEN` on Vladimir's laptop and as an Apify secret input | Vladimir | Notion writes, skill |
@@ -15,4 +14,6 @@ Things to settle before or during the build. When one is decided, move it to [de
 | 10 | Vladimir's separate final demo-flow page: import and reconcile | Vladimir | — |
 | 11 | Gmail confirmation: build only if time remains | Danila | — |
 | 12 | Bezrealitky access: its GraphQL API returns 403 to plain requests; investigate the page's data loading with REA | Vladimir | Bezrealitky source |
-| 13 | Danila reviews the merged switch to Notion and the `call_context` change (`issue_number` → `notion_page_id`); merged by Vladimir's call without prior review | Danila | Voice lane payload, skill call flow |
+| 15 | A flat with `total_monthly` unknown, or an unknown recurring new cost, ends in Not booked because the budget cannot be confirmed. Confirm, or pick a demo flat with a known total | Vladimir + Danila | Demo flat choice |
+| 17 | How the active profile is marked in `config.json`. `call.py` reads `active_profile` (a profile `id`), or takes the only profile | Vladimir | `budget_cap` |
+| 14 | `notion.py` must offer one of the two shapes of the shortlist interface in the `call.py` module docstring: `list_pages`, or `list_flats` plus `get_flat`; with `set_status` and `append`; `set_viewing_date` is optional. Each flat's `listing` uses the `call_context` field names. Until it lands, `call.py` is tested on the fakes in `tests/` | Vladimir | Call command on real Notion pages |
