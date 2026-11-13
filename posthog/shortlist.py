@@ -9,7 +9,9 @@ Two backends with the same functions:
 
 A flat is a dict: page_id, property_id, title, status, reason, elevator, portal, total_monthly, upfront, floor,
 interested (the renter's "Interested?" column: Yes, No or None; None also when the column does not exist),
-furnished, commission, metro_m. Only Status and Reason are ever written.
+furnished, commission, metro_m. `upfront` is read from "Move-in cost" when the database has it, else "Upfront".
+Only Property ID and Status are required; any other missing property reads as None and is listed in MISSING.
+Only Status and Reason are ever written, and only to a test or synthetic database unless ALLOW_REAL is set.
 """
 import json
 import os
@@ -73,9 +75,23 @@ def data_source_id():
     raise SystemExit('no Notion data source titled "%s" is shared with the integration' % title)
 
 
+REQUIRED = ("Property ID", "Status")
+OPTIONAL = ("Name", "Reason", "Interested?", "Elevator", "Furnished", "Floor", "Metro m", "Commission",
+            "Total monthly", "Sources")
+UPFRONT_NAMES = ("Move-in cost", "Upfront")  # first one present wins; issue #84 renames Upfront to Move-in cost
+MISSING = []  # optional properties the last list_flats() did not find; reported by loop.py
+ALLOW_REAL = False  # set by loop.py --real; without it only a test or synthetic database is ever written
+
+
+def _number(p, name):
+    value = (p.get(name) or {}).get("number")
+    return value if isinstance(value, (int, float)) else None
+
+
 def _flat(page):
-    p = page["properties"]
-    sources = [s["name"] for s in (p.get("Sources") or {}).get("multi_select", [])]
+    p = page.get("properties") or {}
+    sources = [s.get("name") for s in (p.get("Sources") or {}).get("multi_select") or [] if s.get("name")]
+    upfront = next((_number(p, name) for name in UPFRONT_NAMES if name in p), None)
     return {
         "page_id": page["id"],
         "property_id": _plain(p.get("Property ID") or {}),
@@ -84,21 +100,39 @@ def _flat(page):
         "reason": _plain(p.get("Reason") or {}),
         "elevator": _select(p.get("Elevator")),
         "portal": sources[0].lower() if sources else None,
-        "total_monthly": (p.get("Total monthly") or {}).get("number"),
-        "upfront": (p.get("Upfront") or {}).get("number"),
-        "floor": (p.get("Floor") or {}).get("number"),
+        "total_monthly": _number(p, "Total monthly"),
+        "upfront": upfront,
+        "floor": _number(p, "Floor"),
         "interested": _select(p.get("Interested?")),
         "furnished": _select(p.get("Furnished")),
-        "commission": (p.get("Commission") or {}).get("number"),
-        "metro_m": (p.get("Metro m") or {}).get("number"),
+        "commission": _number(p, "Commission"),
+        "metro_m": _number(p, "Metro m"),
     }
+
+
+def target():
+    """The shortlist every command reads and writes: {"title", "id", "is_test"}. A title counts as a test
+    when it contains "test" or "synthetic"; the fake file always does."""
+    if _fake_path():
+        return {"title": "fake file (synthetic test) " + _fake_path(), "id": "fake", "is_test": True}
+    source = data_source_id()
+    info = _notion("GET", "/data_sources/" + source)
+    title = "".join(t.get("plain_text", "") for t in info.get("title") or []).strip()
+    names = set(info.get("properties") or {})
+    absent = [name for name in REQUIRED if name not in names]
+    if absent:
+        raise SystemExit('Notion database "%s" has no %s property; the loop cannot run on it' % (title, " or ".join(absent)))
+    MISSING[:] = [name for name in OPTIONAL if name not in names]
+    if not any(name in names for name in UPFRONT_NAMES):
+        MISSING.append(" / ".join(UPFRONT_NAMES))
+    return {"title": title, "id": source, "is_test": any(w in title.lower() for w in ("test", "synthetic"))}
 
 
 def list_flats():
     if _fake_path():
         with open(_fake_path(), encoding="utf-8") as f:
             return json.load(f)["flats"]
-    source = data_source_id()
+    source = target()["id"]
     flats, cursor = [], None
     while True:
         body = {"page_size": 100}
@@ -112,7 +146,10 @@ def list_flats():
 
 
 def reject(flat, reason, status="Not interested"):
-    """Move one flat to Not interested and write the Reason."""
+    """Move one flat to Not interested and write the Reason. Refuses a real database unless ALLOW_REAL is set."""
+    where = target()
+    if not where["is_test"] and not ALLOW_REAL:
+        raise SystemExit('refusing to write to "%s" (%s): not a test database and --real was not given' % (where["title"], where["id"]))
     if _fake_path():
         with open(_fake_path(), encoding="utf-8") as f:
             db = json.load(f)
