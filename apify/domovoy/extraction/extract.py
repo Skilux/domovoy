@@ -1,6 +1,5 @@
 """Extraction of one listing: cache, provider chain, quote check and confidence threshold."""
 
-import asyncio
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -11,9 +10,11 @@ from domovoy.extraction.llm import (
     DEFAULT_OPENAI_MODEL,
     FEATHERLESS_BASE_URL,
     LlmFields,
+    SlotLimiter,
     ask,
     make_client,
     resolve_key,
+    slot_cost,
 )
 from domovoy.extraction.prompt import PROMPT_VERSION, listing_input
 from domovoy.models import Evidence, Extraction, Listing, LlmConfig, Provider
@@ -109,7 +110,10 @@ def _from_cache(raw: Any) -> tuple[LlmFields, str] | None:
 
 
 class Extractor:
-    """Extracts listings for one run: one cache, one concurrency limit, one client per provider.
+    """Extracts listings for one run: one cache, one slot limit, one client per provider.
+
+    cfg.concurrency is the number of Featherless concurrent units this run may hold at once. A Qwen call takes 1,
+    a DeepSeek-V4-Flash call 4 (llm.MODEL_SLOTS); an OpenAI call takes 1 so the last resort is bounded too.
 
     Clients passed in are used as they are. Clients this object builds from the keys are closed by aclose().
     The cache holds raw model answers. Every read, fresh or cached, goes through to_extraction().
@@ -128,7 +132,7 @@ class Extractor:
         self._cfg = cfg
         self._cache = cache
         self._min_confidence = min_confidence
-        self._gate = asyncio.Semaphore(cfg.concurrency)
+        self._gate = SlotLimiter(cfg.concurrency)
         self._built: list[AsyncOpenAI] = []
         if featherless is not None:
             self._featherless: AsyncOpenAI | None = featherless
@@ -187,14 +191,15 @@ class Extractor:
 
         The answer records the provider and the model that actually answered.
         """
-        chain: list[tuple[AsyncOpenAI, str, Provider, int]] = []
+        chain: list[tuple[AsyncOpenAI, str, Provider, int, int]] = []
         if self._featherless is not None:
-            chain.append((self._featherless, self._cfg.model, "featherless", 2))
+            chain.append((self._featherless, self._cfg.model, "featherless", 2, slot_cost(self._cfg.model)))
             if self._cfg.fallback_model is not None:
-                chain.append((self._featherless, self._cfg.fallback_model, "featherless", 1))
+                fallback = self._cfg.fallback_model
+                chain.append((self._featherless, fallback, "featherless", 1, slot_cost(fallback)))
         if self._openai is not None:
-            chain.append((self._openai, self._openai_model, "openai", 1))
-        for client, model, provider, attempts in chain:
+            chain.append((self._openai, self._openai_model, "openai", 1, 1))
+        for client, model, provider, attempts, cost in chain:
             fields = await ask(
                 client,
                 model=model,
@@ -202,6 +207,7 @@ class Extractor:
                 timeout_sec=self._cfg.timeout_sec,
                 gate=self._gate,
                 attempts=attempts,
+                cost=cost,
             )
             if fields is not None:
                 return fields, provider, model

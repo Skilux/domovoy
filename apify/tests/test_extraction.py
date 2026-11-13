@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,7 +11,7 @@ from typing import Any, cast
 
 import httpx
 import pytest
-from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 
 from domovoy.extraction import (
     DEFAULT_MIN_CONFIDENCE,
@@ -24,7 +25,8 @@ from domovoy.extraction import (
     extract,
 )
 from domovoy.extraction.extract import EVIDENCE_FIELDS, is_verbatim
-from domovoy.extraction.llm import LlmFields
+import domovoy.extraction.llm as llm_module
+from domovoy.extraction.llm import LlmFields, SlotLimiter, failure_reason, slot_cost
 from domovoy.extraction.prompt import listing_input
 from domovoy.models import AddressDetail, Extraction, Listing, LlmConfig
 
@@ -475,3 +477,177 @@ async def test_live_forced_featherless_failure_falls_back_to_openai() -> None:
         await broken.close()
     assert result.provider == "openai"
     assert result.model == DEFAULT_OPENAI_MODEL
+
+
+# Slot limiter, 429 backoff and failure reasons (perf)
+
+
+def rate_limited() -> RateLimitError:
+    response = httpx.Response(429, request=REQUEST, headers={"Retry-After": "0"})
+    return RateLimitError("Concurrency limit exceeded", response=response, body=None)
+
+
+def completion(content: str | None, finish_reason: str = "stop", refusal: str | None = None) -> Any:
+    message = SimpleNamespace(content=content, refusal=refusal)
+    usage = SimpleNamespace(prompt_tokens=10, completion_tokens=5)
+    return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason=finish_reason)], usage=usage)
+
+
+class ScriptedCompletions:
+    """Replies are completions (from completion()) or exceptions, in order."""
+
+    def __init__(self, replies: list[Any]) -> None:
+        self._replies = list(replies)
+        self.calls: list[dict[str, Any]] = []
+
+    async def create(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        reply = self._replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+def scripted(*replies: Any) -> tuple[AsyncOpenAI, ScriptedCompletions]:
+    completions = ScriptedCompletions(list(replies))
+    return cast(AsyncOpenAI, SimpleNamespace(chat=SimpleNamespace(completions=completions))), completions
+
+
+async def test_slot_limiter_never_exceeds_capacity_and_serves_a_large_call_in_order() -> None:
+    limiter = SlotLimiter(4)
+    order: list[str] = []
+    peak = 0
+
+    async def call(name: str, cost: int, hold: float) -> None:
+        nonlocal peak
+        async with limiter.slots(cost):
+            order.append(name)
+            peak = max(peak, limiter.used)
+            await asyncio.sleep(hold)
+
+    # Three 1-slot calls run; the 4-slot call waits for all of them; the 1-slot call queued after it waits too.
+    first = [asyncio.create_task(call("q%d" % i, 1, 0.02)) for i in range(3)]
+    await asyncio.sleep(0)
+    big = asyncio.create_task(call("deepseek", 4, 0.02))
+    await asyncio.sleep(0)
+    late = asyncio.create_task(call("late", 1, 0.0))
+    await asyncio.gather(*first, big, late)
+    assert peak == 4
+    assert order == ["q0", "q1", "q2", "deepseek", "late"]
+    assert limiter.used == 0
+
+
+async def test_slot_limiter_caps_a_cost_above_capacity_and_frees_slots_on_cancel() -> None:
+    limiter = SlotLimiter(2)
+    async with limiter.slots(4):
+        assert limiter.used == 2
+        waiter = asyncio.create_task(limiter.acquire(1))
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+    assert limiter.used == 0
+    async with limiter.slots(1):
+        assert limiter.used == 1
+
+
+def test_slot_costs_follow_the_featherless_models_api() -> None:
+    assert slot_cost(DEFAULT_MODEL) == 1
+    assert slot_cost(DEFAULT_FALLBACK_MODEL) == 4
+    assert slot_cost("some/unknown-model") == 4
+
+
+async def test_the_deepseek_fallback_holds_four_slots_and_never_overlaps_past_the_limit() -> None:
+    held = {DEFAULT_MODEL: 1, DEFAULT_FALLBACK_MODEL: 4}
+
+    class Units:
+        def __init__(self) -> None:
+            self.used = 0
+            self.peak = 0
+
+        async def create(self, **kwargs: Any) -> Any:
+            self.used += held[kwargs["model"]]
+            self.peak = max(self.peak, self.used)
+            await asyncio.sleep(0.01)
+            self.used -= held[kwargs["model"]]
+            if kwargs["model"] == DEFAULT_MODEL and "fails" in kwargs["messages"][1]["content"]:
+                return completion("not json")
+            return completion(answer())
+
+    units = Units()
+    client = cast(AsyncOpenAI, SimpleNamespace(chat=SimpleNamespace(completions=units)))
+    extractor = Extractor(make_cfg(concurrency=4), featherless=client, openai=silent_client())
+    listings = [make_listing("Listing %d%s." % (i, " fails" if i % 3 == 0 else ""), source_id=str(i))
+                for i in range(9)]
+    results = await asyncio.gather(*(extractor.extract(item) for item in listings))
+    assert units.peak == 4
+    assert {r.model for r in results} == {DEFAULT_MODEL, DEFAULT_FALLBACK_MODEL}
+
+
+async def test_a_429_is_waited_out_without_using_an_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(llm_module, "RATE_LIMIT_BASE_WAIT", 0.0)
+    client, calls = scripted(rate_limited(), rate_limited(), completion("not json"), completion(answer()))
+    result = await run_one(make_listing(DESCRIPTION, rent=28000), client)
+    assert result.provider == "featherless" and result.model == DEFAULT_MODEL
+    assert len(calls.calls) == 4  # two 429s, then attempt 1 (invalid) and attempt 2 (valid) on Qwen
+
+
+async def test_429s_past_the_retry_budget_count_as_a_failed_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(llm_module, "RATE_LIMIT_RETRIES", 1)
+    client, calls = scripted(rate_limited(), rate_limited(), completion(answer()))
+    result = await run_one(make_listing(DESCRIPTION, rent=28000), client)
+    assert result.model == DEFAULT_MODEL
+    assert len(calls.calls) == 3
+
+
+@pytest.mark.parametrize(
+    ("reply", "reason"),
+    [
+        (completion('{"rent": {"value": 28000, "quote": "Nájemné', finish_reason="length"), "truncated"),
+        (completion(""), "empty"),
+        (completion(None, refusal="I cannot help"), "refusal"),
+        (completion('{"rent": {"value": 28000, "quote": "Nájemné je" '), "json_parse"),
+        (completion(answer(rent=field("dvacet osm tisíc", RENT_QUOTE))), "schema:rent.value"),
+        (completion(answer(lease_type=field("dlouhodobý", "Kauce"))), "schema:lease_type.value"),
+    ],
+)
+async def test_an_invalid_answer_logs_its_reason_class_and_never_the_content(
+    reply: Any, reason: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING)
+    client, _ = scripted(reply, completion(answer()))
+    result = await run_one(make_listing(DESCRIPTION, rent=28000), client)
+    assert result.model == DEFAULT_MODEL
+    [message] = [r.getMessage() for r in caplog.records if "invalid answer" in r.getMessage()]
+    assert message.startswith("%s attempt 1 gave an invalid answer: %s (" % (DEFAULT_MODEL, reason))
+    for secret in ("Nájemné", "28000", "dvacet", "dlouhodobý", "I cannot help"):
+        assert secret not in caplog.text
+
+
+async def test_transport_and_http_errors_log_their_class() -> None:
+    assert failure_reason(APITimeoutError(request=REQUEST)) == "transport:APITimeoutError"
+    assert failure_reason(TimeoutError()) == "transport:TimeoutError"
+    assert failure_reason(rate_limited()) == "http_429"
+
+
+async def test_a_fractional_rent_multiple_is_unknown_not_an_invalid_answer(caplog: pytest.LogCaptureFixture) -> None:
+    """The 13:48 cause: "1 a 1/2 měsíčního nájmu" gave rent_multiple 1.5, which failed the answer; the repair then
+    rounded it to 1. Now the fraction is null at once, the stated amount is kept, and no retry is spent."""
+    caplog.set_level(logging.WARNING)
+    quote = "kauce je ve výši 1 a 1/2 měsíčního nájmu, tj. 37.500,-Kč"
+    kauce = {**NO_CHARGE, "czk": 37500.0, "rent_multiple": 1.5}
+    client, calls = scripted(completion(answer(kauce=field(kauce, quote))))
+    result = await run_one(make_listing(DESCRIPTION + " " + quote, rent=28000), client)
+    assert len(calls.calls) == 1
+    assert "invalid answer" not in caplog.text
+    assert result.kauce.value is not None
+    assert (result.kauce.value.czk, result.kauce.value.rent_multiple) == (37500, None)
+    whole = LlmFields.model_validate({"kauce": field({**NO_CHARGE, "rent_multiple": 2.0}, quote)})
+    assert whole.kauce is not None and whole.kauce.value is not None and whole.kauce.value.rent_multiple == 2
+
+
+async def test_an_answer_cut_after_a_complete_object_is_used_without_a_retry() -> None:
+    client, calls = scripted(completion(answer(rent=field(28000, RENT_QUOTE)) + "\n" * 50, finish_reason="length"))
+    result = await run_one(make_listing(DESCRIPTION, rent=28000), client)
+    assert len(calls.calls) == 1
+    assert result.rent.value == 28000 and result.rent.verified
