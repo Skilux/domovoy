@@ -145,6 +145,29 @@ class EndToEndFake(unittest.TestCase):
         code, out = self.run_call("check", "--windows", WINDOWS, "--page", "fake-page-002")
         self.assertEqual((code, out["call_context"]["notion_page_id"]), (0, "fake-page-002"))
 
+    def test_real_fixture_resume_without_local_state(self):
+        with open(os.path.join(HERE, "fixtures", "real_call_2026-11-13_booked.json")) as f:
+            real = json.load(f)
+        listing = {k: v for k, v in real["context"].items()
+                   if k not in ("notion_page_id", "available_windows", "user_name", "budget_cap", "realtor_name")}
+        db = notion._load()
+        db["pages"] = [{"notion_page_id": "fake-page-real", "title": "[SAMPLE] Korunni 88", "status": "Calling",
+                        "url": "https://example.com/fake-notion/fake-page-real", "listing": listing, "body": ""}]
+        notion._save(db)
+        self.post_result(real["result"])
+        windows = json.dumps(real["context"]["available_windows"])
+        code, out = self.run_call("resume", "--page", "fake-page-real", "--windows", windows)
+        self.assertEqual((code, out["status"], out["create_event"]), (0, "Viewing booked", True))
+        self.assertEqual(out["event"]["start"], "2026-11-16T17:00:00+01:00")
+        self.assertEqual(out["answers"][0], {"question": "commission", "answer": "About thirty thousand CZK"})
+        self.assertIsNone(fake_phone_server.STATE["pending"])
+        page = notion._page(notion._load(), "fake-page-real")
+        self.assertEqual(page["body"].count("Call result"), 1)
+        code, out = self.run_call("resume", "--page", "fake-page-real", "--windows", windows)
+        self.assertEqual((out["already_handled"], out["create_event"]), (True, False))
+        page = notion._page(notion._load(), "fake-page-real")
+        self.assertEqual((page["status"], page["body"].count("Call result")), ("Viewing booked", 1))
+
     def test_unreachable_phone_server_leaves_interested(self):
         notion.set_status(self.cfg, PAGE, "Interested")
         self.cfg["phone"]["url"] = "http://127.0.0.1:9"
