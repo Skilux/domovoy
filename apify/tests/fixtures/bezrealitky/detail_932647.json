@@ -1,0 +1,194 @@
+{
+ "advert": {
+  "__typename": "Advert",
+  "id": "932647",
+  "uri": "932647-nabidka-pronajem-bytu-francouzska-hlavni-mesto-praha",
+  "type": "UNDEFINED",
+  "locale": "CS",
+  "address": "Francouzská, Praha - Vinohrady",
+  "street": "Francouzská",
+  "city": "Praha",
+  "zip": "101 00",
+  "estateType": "BYT",
+  "offerType": "PRONAJEM",
+  "disposition": "DISP_3_1",
+  "surface": 72,
+  "etage": 1,
+  "lift": true,
+  "equipped": "VYBAVENY",
+  "tags": [
+   "Novostavba",
+   "Vybaveno",
+   "Výtah",
+   "Terasa 5 m²"
+  ],
+  "price": 35900,
+  "originalPrice": 35900,
+  "isDiscounted": false,
+  "charges": 110,
+  "utilityCharges": 0,
+  "serviceCharges": 110,
+  "deposit": 71800,
+  "fee": 0,
+  "currency": "CZK",
+  "availableFrom": 1802646000,
+  "datePosted": 1777292189,
+  "ownership": "UNDEFINED",
+  "shortTerm": false,
+  "roommate": false,
+  "gps": {
+   "__typename": "GPSPoint",
+   "lat": 50.07202,
+   "lng": 14.4451824
+  },
+  "description": "Nabízíme krásný studentský byt o dispozici 3+1 v srdci Vinohrad. \n\nByt se nachází  v prvním patře zrekonstruované neorenesanční budovy s výtahem. Nabízí tři oddělené ložnice, praktický úložný prostor v komoře a dvě oddělené toalety. \n \nByt je plně zařízený a naleznete v něm tedy veškeré spotřebiče a potřebné vybavení, včetně peřin a polštářů. K dispozici je také terasa o velikosti 5m2 do vnitrobloku. \n\nByt se nachází v krásné části Vinohrad s výbornou dostupností do centra Prahy. Zastávka tramvaje je cca 2 minuty chůze od domu, na metro Náměstí Míru se dostanete za 3 minuty tramvají nebo pěšky za 12 minut. V blízkosti je park Grébovka, přímo před domem Bezručovy sady.\n\nObjekt je střežen kamerovým systémem. Servisní podpora je zajištěna Správou Living Apartments.\n\nMěsíční zálohy za energie a služby 110 Kč/m2+21% DPH.\n\nVybavení bytu:\n\tPlně vybavený byt\n\tInteriér na míru od architekta\n\tKompletně zařízená kuchyň\n\tPračka, myčka, sušička a další elektrospotřebiče\n\tWi-Fi, LED TV, sat. programy\n\tZdravotní matrace\n\tDálková 24/7 ostraha\n\tVýtah\n\tRekuperace vzduchu s protialergeními filtry\n\tNadstandartní akustická izolace mezi byty\n\tOnline přehled o spotřebě energií\n\tVysokorychlostní internet FTTD\n\tNepřímé LED osvětlení\n\tDruhé samostatné WC\n\tBidetová sprcha",
+  "dataJson": "null",
+  "regionTree": [
+   {
+    "__typename": "Region",
+    "id": "486",
+    "name": "Praha",
+    "uri": "praha",
+    "subType": "REGION",
+    "osmId": 435514
+   },
+   {
+    "__typename": "Region",
+    "id": "15466",
+    "name": "Praha-Vinohrady",
+    "uri": "praha-vinohrady",
+    "subType": "CITY_DISTRICT",
+    "osmId": 428841
+   }
+  ],
+  "pageTitle": "Pronájem bytu 3+1 • 72 m² • Francouzská • Praha - Vinohrady • bez RK",
+  "publicImages": [
+   {
+    "id": "25881582",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-yncwtmngwt-2018-12-23-000809.jpg"
+   },
+   {
+    "id": "25881583",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755067881-fyamthuaze-101-p-c5-afdorys.png"
+   },
+   {
+    "id": "25881584",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068063-vmwfqqkutl-2018-12-23-000687.jpg"
+   },
+   {
+    "id": "25881585",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068063-nsfcwdmque-2018-12-23-000692.jpg"
+   },
+   {
+    "id": "25881586",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068063-ezrmlyvngq-2018-12-23-000804.jpg"
+   },
+   {
+    "id": "25881587",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-lbdyzitoul-2018-12-23-000808.jpg"
+   },
+   {
+    "id": "25881588",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-unfigsfmsp-2018-12-23-000814.jpg"
+   },
+   {
+    "id": "25881589",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-nfitpnjtwu-2018-12-23-000825.jpg"
+   },
+   {
+    "id": "25881590",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-svikhmeeyv-2018-12-23-000828.jpg"
+   },
+   {
+    "id": "25881591",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-hzfvhtqcep-2018-12-23-000837.jpg"
+   },
+   {
+    "id": "25881592",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-bretxnnrfm-2018-12-23-000843.jpg"
+   },
+   {
+    "id": "25881593",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-fjnlbgcuoi-2018-12-23-000852.jpg"
+   },
+   {
+    "id": "25881594",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-zxoivncdju-2018-12-22-000637.jpg"
+   },
+   {
+    "id": "25881595",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-evjeixheua-2018-12-22-000641.jpg"
+   },
+   {
+    "id": "25881596",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-otzznoijdz-2018-12-23-000643.jpg"
+   },
+   {
+    "id": "25881597",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-tchzphjjer-2018-12-23-000649.jpg"
+   },
+   {
+    "id": "25881598",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068064-zqflndezgm-2018-12-23-000680.jpg"
+   },
+   {
+    "id": "25881599",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068371-nirydhjkxf-2018-12-18-000054.jpg"
+   },
+   {
+    "id": "25881600",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068371-afwzzonspv-2018-12-18-000099.jpg"
+   },
+   {
+    "id": "25881601",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/932k/932647/1755068371-wqshqqsgvl-2018-12-18-000022.jpg"
+   }
+  ],
+  "messageData": {
+   "messageType": "MESSAGE",
+   "requireLogin": true,
+   "url": null
+  }
+ },
+ "jsonld": {
+  "@type": "RealEstateListing",
+  "name": "Pronájem bytu 3+1 • 72 m² • Francouzská • Praha - Vinohrady • bez RK",
+  "url": "https://www.bezrealitky.cz/nemovitosti-byty-domy/932647-nabidka-pronajem-bytu-francouzska-hlavni-mesto-praha",
+  "identifier": "932647",
+  "datePosted": "2026-04-27",
+  "description": "Nabízíme krásný studentský byt o dispozici 3+1 v srdci Vinohrad. Byt se nachází v prvním patře zrekonstruované neorenesanční budovy s výtahem. Nabízí tři oddělené ložnice, praktický úložný prostor v komoře a dvě oddělené toalety. Byt je plně zařízený a naleznete v něm tedy veškeré spotřebiče a potřebné vybavení, včetně peřin a polštářů. K dispozici je také terasa o velikosti 5m2 do vnitrobloku. Byt se nachází v krásné části Vinohrad s výbornou dostupností do centra Prahy. Zastávka tramvaje je cca 2 minuty chůze od domu, na metro Náměstí Míru se dostanete za 3 minuty tramvají nebo pěšky za 12 minut. V blízkosti je park Grébovka, přímo před domem Bezručovy sady. Objekt je střežen kamerovým systémem. Servisní podpora je zajištěna Správou Living Apartments. Měsíční zálohy za energie a služby 110 Kč/m2+21% DPH. Vybavení bytu:  Plně vybavený byt  Interiér na míru od architekta  Kompletně zařízená kuchyň  Pračka, myčka, sušička a další elektrospotřebiče  Wi-Fi, LED TV, sat. programy  Zdravotní matrace  Dálková 24/7 ostraha  Výtah  Rekuperace vzduchu s protialergeními filtry  Nadstandartní akustická izolace mezi byty  Online přehled o spotřebě energií  Vysokorychlostní internet FTTD  Nepřímé LED osvětlení  Druhé samostatné WC  Bidetová sprcha",
+  "about": {
+   "@type": "Apartment",
+   "name": "Byt 3+1, 72 m²",
+   "floorLevel": "1. podlaží z 4",
+   "floorSize": {
+    "@type": "QuantitativeValue",
+    "value": 72,
+    "unitCode": "MTK"
+   },
+   "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "Francouzská",
+    "addressLocality": "Praha",
+    "addressRegion": "Praha",
+    "addressCountry": "CZ"
+   },
+   "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": 50.07202,
+    "longitude": 14.4451824
+   },
+   "numberOfRooms": 3
+  },
+  "offers": {
+   "@type": "Offer",
+   "price": 35900,
+   "priceCurrency": "CZK",
+   "seller": {
+    "@type": "Person",
+    "name": "<name>"
+   }
+  }
+ },
+ "source_url": "https://www.bezrealitky.cz/nemovitosti-byty-domy/932647-nabidka-pronajem-bytu-francouzska-hlavni-mesto-praha"
+}

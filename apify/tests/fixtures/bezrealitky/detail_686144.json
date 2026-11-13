@@ -1,0 +1,149 @@
+{
+ "advert": {
+  "__typename": "Advert",
+  "id": "686144",
+  "uri": "686144-nabidka-pronajem-bytu-na-folimance-hlavni-mesto-praha",
+  "type": "UNDEFINED",
+  "locale": "CS",
+  "address": "Na Folimance, Praha - Vinohrady",
+  "street": "Na Folimance",
+  "city": "Praha",
+  "zip": "12000",
+  "estateType": "BYT",
+  "offerType": "PRONAJEM",
+  "disposition": "DISP_2_KK",
+  "surface": 63,
+  "etage": 5,
+  "lift": true,
+  "equipped": "NEVYBAVENY",
+  "tags": [
+   "MHD 4 minuty pěšky",
+   "Výtah",
+   "Sklep 2 m²"
+  ],
+  "price": 25000,
+  "originalPrice": 25000,
+  "isDiscounted": false,
+  "charges": 4000,
+  "utilityCharges": 0,
+  "serviceCharges": 4000,
+  "deposit": 50000,
+  "fee": 0,
+  "currency": "CZK",
+  "availableFrom": 1796079600,
+  "datePosted": 1794564740,
+  "ownership": "OSOBNI",
+  "shortTerm": false,
+  "roommate": false,
+  "gps": {
+   "__typename": "GPSPoint",
+   "lat": 50.06615,
+   "lng": 14.43427
+  },
+  "description": "Tichý byt 2+kk, 63 m², s výhledem do zeleně – Na Folimance, Praha 2-Vinohrady\n\nNabízíme k pronájmu útulný a světlý byt 2+kk o velikosti 63 m² v udržovaném činžovním domě s výtahem. Obě hlavní místnosti jsou orientované do zeleného vnitrobloku se vzrostlými stromy, takže je byt naprosto tichý. Přitom jste pěšky v centru za 18 minut.\n\nDispozice\n\nobývací pokoj s kuchyňským koutem (23,5 m²)\nložnice (20,0 m²)\nvstupní hala (11,6 m²)\nkoupelna se sprchovým koutem (3,9 m²)\nsamostatné WC\n2 komory\nsklep (3,0 m²)\n\nVybavení a charakter bytu\nByt si zachovává atmosféru vinohradského činžovního domu: v ložnici je původní prkenná podlaha, v obývacím pokoji dubové parkety. Kuchyňský kout je vybaven lednicí, myčkou, plynovou troubou, plynovou varnou deskou a digestoří. Vytápění a ohřev vody zajišťuje vlastní plynový kotel, teplo si tedy regulujete podle sebe. V bytě je možné připojení k vysokorychlostnímu internetu (Vodafone, O2).\n\nDům a okolí\nDům i zahrada ve vnitrobloku jsou pečlivě udržovány. Park Folimanka máte prakticky před domem a v okolí je veškerá občanská vybavenost včetně obchodů Billa a Lidl.\n\nDoprava\nMetro C Vyšehrad a tramvajové zastávky Divadlo Na Fidlovačce a Nuselské schody jsou v docházkové vzdálenosti.\n\nNáklady\nZálohy na služby pro dvě osoby (bez elektřiny a plynu) činí cca 4 000 Kč měsíčně. Spotřeba elektřiny a plynu je odhadem cca 1 500 Kč měsíčně pro dvě osoby. PENB není k dispozici, proto je uvedena třída G.",
+  "dataJson": "null",
+  "regionTree": [
+   {
+    "__typename": "Region",
+    "id": "486",
+    "name": "Praha",
+    "uri": "praha",
+    "subType": "REGION",
+    "osmId": 435514
+   },
+   {
+    "__typename": "Region",
+    "id": "15466",
+    "name": "Praha-Vinohrady",
+    "uri": "praha-vinohrady",
+    "subType": "CITY_DISTRICT",
+    "osmId": 428841
+   }
+  ],
+  "pageTitle": "Pronájem bytu 2+kk • 63 m² • Na Folimance • Praha - Vinohrady • bez RK",
+  "publicImages": [
+   {
+    "id": "28535013",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/686k/686144/1794498064-tesatoqhby-folimankai-2016-img-0201.jpg"
+   },
+   {
+    "id": "28535014",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/686k/686144/1794498064-muwrmwdprc-folimankai-2016-img-0213.jpg"
+   },
+   {
+    "id": "28535015",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/686k/686144/1794498064-sxsfjtnzzd-folimankai-2016-img-0218.jpg"
+   },
+   {
+    "id": "28535016",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/686k/686144/1794498064-knnqwatvji-folimankai-2016-img-0228.jpg"
+   },
+   {
+    "id": "28535017",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/686k/686144/1794498063-acshsibtfh-folimankai-2016-img-0248.jpg"
+   },
+   {
+    "id": "28535018",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/686k/686144/1794498065-pqtfxvfrhy-folimankai-2016-img-0259.jpg"
+   },
+   {
+    "id": "28535019",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/686k/686144/1794498064-fpnpfxprjq-folimankai-2016-img-0279.jpg"
+   },
+   {
+    "id": "28535020",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/686k/686144/1794498064-avejvppyur-folimankai-2016-img-0289.jpg"
+   },
+   {
+    "id": "28535021",
+    "url": "https://api.bezrealitky.cz/media/cache/record_main/data/images/advert/686k/686144/1794498064-vrgurxqcsn-folimankai-2016-img-0294.jpg"
+   }
+  ],
+  "messageData": {
+   "messageType": "REQUIRE_PREMIUM",
+   "requireLogin": true,
+   "url": null
+  }
+ },
+ "jsonld": {
+  "@type": "RealEstateListing",
+  "name": "Pronájem bytu 2+kk • 63 m² • Na Folimance • Praha - Vinohrady • bez RK",
+  "url": "https://www.bezrealitky.cz/nemovitosti-byty-domy/686144-nabidka-pronajem-bytu-na-folimance-hlavni-mesto-praha",
+  "identifier": "686144",
+  "datePosted": "2026-11-13",
+  "description": "Tichý byt 2+kk, 63 m², s výhledem do zeleně – Na Folimance, Praha 2-Vinohrady Nabízíme k pronájmu útulný a světlý byt 2+kk o velikosti 63 m² v udržovaném činžovním domě s výtahem. Obě hlavní místnosti jsou orientované do zeleného vnitrobloku se vzrostlými stromy, takže je byt naprosto tichý. Přitom jste pěšky v centru za 18 minut. Dispozice obývací pokoj s kuchyňským koutem (23,5 m²) ložnice (20,0 m²) vstupní hala (11,6 m²) koupelna se sprchovým koutem (3,9 m²) samostatné WC 2 komory sklep (3,0 m²) Vybavení a charakter bytu Byt si zachovává atmosféru vinohradského činžovního domu: v ložnici je původní prkenná podlaha, v obývacím pokoji dubové parkety. Kuchyňský kout je vybaven lednicí, myčkou, plynovou troubou, plynovou varnou deskou a digestoří. Vytápění a ohřev vody zajišťuje vlastní plynový kotel, teplo si tedy regulujete podle sebe. V bytě je možné připojení k vysokorychlostnímu internetu (Vodafone, O2). Dům a okolí Dům i zahrada ve vnitrobloku jsou pečlivě udržovány. Park Folimanka máte prakticky před domem a v okolí je veškerá občanská vybavenost včetně obchodů Billa a Lidl. Doprava Metro C Vyšehrad a tramvajové zastávky Divadlo Na Fidlovačce a Nuselské schody jsou v docházkové vzdálenosti. Náklady Zálohy na služby pro dvě osoby (bez elektřiny a plynu) činí cca 4 000 Kč měsíčně. Spotřeba elektřiny a plynu je odhadem cca 1 500 Kč měsíčně pro dvě osoby. PENB není k dispozici, proto je uvedena třída G.",
+  "about": {
+   "@type": "Apartment",
+   "name": "Byt 2+kk, 63 m²",
+   "floorLevel": "5. podlaží",
+   "floorSize": {
+    "@type": "QuantitativeValue",
+    "value": 63,
+    "unitCode": "MTK"
+   },
+   "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "Na Folimance",
+    "addressLocality": "Praha",
+    "addressRegion": "Praha",
+    "addressCountry": "CZ"
+   },
+   "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": 50.06615,
+    "longitude": 14.43427
+   },
+   "numberOfRooms": 2
+  },
+  "offers": {
+   "@type": "Offer",
+   "price": 25000,
+   "priceCurrency": "CZK",
+   "seller": {
+    "@type": "Person",
+    "name": "<name>"
+   }
+  }
+ },
+ "source_url": "https://www.bezrealitky.cz/nemovitosti-byty-domy/686144-nabidka-pronajem-bytu-na-folimance-hlavni-mesto-praha"
+}

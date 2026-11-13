@@ -9,7 +9,7 @@ Scope: rental flats (`offerType` PRONAJEM, `estateType` BYT).
 ## 1. Recommendation
 
 - **Access path: plain HTTP GET, no Playwright.** Listing and detail data are server-side JSON, either in `__NEXT_DATA__` on HTML pages or from the page's own `_next/data` JSON route. No GraphQL call and no header changes.
-- **Phase B entry point (region JSON route):** `GET https://www.bezrealitky.cz/_next/data/<buildId>/cs/vyhledat.json?estateType=BYT&offerType=PRONAJEM&country=ceska-republika&currency=CZK&locale=CS&location=exact&regionOsmIds=R<osmId>&page=N`. Verified with a plain request on 13 Nov: HTTP 200, JSON (about 36 KB), and the region filter is applied server-side. Vinohrady (`R428841`) returned `totalCount` 71. `<buildId>` is `__NEXT_DATA__.buildId` from any `/vypis/` page (`47e6d89414dc43cfe44900f6fc5fa9339f433218` on 13 Nov). It changes on each deploy, so read it first. Page 2 of this route is not yet verified.
+- **Phase B entry point (region JSON route):** `GET https://www.bezrealitky.cz/_next/data/<buildId>/cs/vyhledat.json?estateType=BYT&offerType=PRONAJEM&country=ceska-republika&currency=CZK&locale=CS&location=exact&regionOsmIds=R<osmId>&page=N`. Verified with a plain request on 13 Nov: HTTP 200, JSON (about 36 KB), and the region filter is applied server-side. Vinohrady (`R428841`) returned `totalCount` 71. `<buildId>` is `__NEXT_DATA__.buildId` from any `/vypis/` page (`47e6d89414dc43cfe44900f6fc5fa9339f433218` on 13 Nov). It changes on each deploy, so read it first. Page 2 of this route is verified (13 Nov).
 - **Verified fallback (HTML):** `GET https://www.bezrealitky.cz/vypis/nabidka-pronajem/byt/praha-vinohrady?page=N` (71 flats; pages 1 and 2 checked, 15 per page) and `…/byt/praha?page=N` (Praha, 1067 flats).
 - **`regionOsmIds` needs the `R` prefix.** The bare id (428841) returned HTTP 500. Do not retry it.
 - **Owner default:** `is_owner_listing = True`, as a documented assumption (section 8).
@@ -18,7 +18,7 @@ Scope: rental flats (`offerType` PRONAJEM, `estateType` BYT).
 
 | Purpose | Request | Where the data is | Verified |
 | --- | --- | --- | --- |
-| Region listing, JSON (Phase B entry) | `GET https://www.bezrealitky.cz/_next/data/<buildId>/cs/vyhledat.json?…&regionOsmIds=R<osmId>&page=N` | `pageProps.apolloCache.ROOT_QUERY["listAdverts({…})"]` (`list`, `totalCount`); `pageProps.filter` | Vinohrady page 1 (71 flats), HTTP 200, JSON; page 2 not yet |
+| Region listing, JSON (Phase B entry) | `GET https://www.bezrealitky.cz/_next/data/<buildId>/cs/vyhledat.json?…&regionOsmIds=R<osmId>&page=N` | `pageProps.apolloCache.ROOT_QUERY["listAdverts({…})"]` (`list`, `totalCount`); `pageProps.filter` | Vinohrady pages 1 and 2 (71 flats), HTTP 200, JSON |
 | Region listing, HTML | `GET https://www.bezrealitky.cz/vypis/nabidka-pronajem/byt/<region>?page=N` (`praha`, `praha-vinohrady`) | `__NEXT_DATA__`, same keys as below | `praha-vinohrady` pages 1–2; `praha` page 1 |
 | Nationwide listing, HTML | `GET https://www.bezrealitky.cz/vypis/nabidka-pronajem/byt?page=N` | `__NEXT_DATA__` | pages 1 and 2 |
 | Detail | `GET https://www.bezrealitky.cz/nemovitosti-byty-domy/<id>-<slug>` | `props.pageProps.origAdvert` (110 keys); JSON-LD `RealEstateListing` | 3 pages |
@@ -32,7 +32,7 @@ The listing filter echoes `limit` 15, `offset` 15×(N−1), `order` TIMEORDER_DE
 - Page size is 15 on every route checked.
 - Nationwide page 2: offset 15, no ids in common with page 1.
 - `praha-vinohrady` page 2: offset 15, no ids in common with page 1 (verified).
-- The JSON route's page 2 is still to be checked.
+- The JSON route's page 2 was checked on 13 Nov: HTTP 200, JSON, no overlap with page 1.
 - Nationwide `totalCount` was 4925 (last page 329). The search-UI header showed a different count (2 100) for the map view, so use only the SSR `totalCount`.
 - Larger page sizes were not tested.
 - Newest-first ordering can shift items between pages during a scan. Dedupe by `id`.
@@ -95,7 +95,7 @@ Source keys: `D` = detail page (`origAdvert` or JSON-LD). `L` = list payload (`A
 | price_note | `dataJson` (L, D): `priceNote.cs` / `.en` / `.sk` | Null when there is no note. The list payload carries it, so no detail request is needed. |
 | description | `description` (D) | Not in the list payload |
 | ready_date | `availableFrom` (epoch seconds) converted to a date in Europe/Prague | Midnight Prague in all three details |
-| ownership | `ownership` | "UNDEFINED" in all three details: unknown |
+| ownership | `ownership` | "OSOBNI" (personal ownership) on 686144; UNDEFINED on the other two details (null in `Listing`) |
 | is_owner_listing | assumption | `True` by default; see section 8 |
 | contact | JSON-LD `offers.seller`; `messageData` (D) | Section 7 |
 | photos | `publicImages` (D: 9; L: 3 via `publicImages({"limit":3})`); `mainImage` | Section 7 |
@@ -192,9 +192,20 @@ robots.txt (`https://www.bezrealitky.cz/robots.txt`, HTTP 200, 338 bytes, 12:42 
 
 ## 13. Open items
 
-1. **JSON route page 2** (`&page=2` on `vyhledat.json`): verify on the first Phase B run.
+1. **JSON route page 2** (`&page=2` on `vyhledat.json`): verified on 13 Nov (HTTP 200, JSON).
 2. **Owner signal:** the default is True. Review the "Developerský projekt" rows, and find one owner and one agency listing to confirm.
 3. **Quarter ids for Praha 2 and Praha 10:** not observed. Collect them from `regionTree`.
 4. **Main terms PDF:** read before publication (API host; plain requests return 403).
 5. **Field semantics:** the `charges` split (energy vs services), the meaning of `fee`, and whether a deposit of 0 means none or unknown.
 6. **Page sizes above 15:** untested.
+
+## 14. Phase B: access method as built (13 Nov 2026)
+
+- Module: `apify/domovoy/sources/bezrealitky.py`. Plain httpx, no Playwright, no header changes. Registered in `apify/domovoy/sources/__init__.py`.
+- Region list: page 1 comes from `/vypis/nabidka-pronajem/byt/praha-vinohrady` (HTML). Its `__NEXT_DATA__` gives the `buildId` and page 1. Pages 2 and later come from the page's JSON route `/_next/data/<buildId>/cs/vyhledat.json?...&regionOsmIds=R428841&page=N`. Page 2 returned HTTP 200 JSON (about 37 KB).
+- Details: `/nemovitosti-byty-domy/<uri>` (HTML). The data is in `props.pageProps.origAdvert` and the JSON-LD `RealEstateListing`.
+- Limits: at most 3 detail requests in flight. Request starts are at least 0.5 s apart, through one shared pacer. One retry after a timeout or a 5xx, and after a 10 s wait on 429. A failing detail is logged and skipped. A failing page 2 or later stops paging, and the candidates already found still yield. If every detail fails, the source fails.
+- Live smoke (13 Nov, plain requests, `max_listings` 5): 5 listings (ids 686144, 1088787, 936312, 222297, 1082825). All 5 have photos (9 to 17 each) and a seller name, and `is_owner_listing` is true on all 5. Requests: one list page and five details, in 3.7 s.
+- Fixtures: `apify/tests/fixtures/bezrealitky/` holds two list pages (pages 1 and 2 from the JSON route) and three details (686144, 932647, 1089140). The scrubbing rules are in that folder's README.
+- Corrections from this phase: `ownership` is "OSOBNI" on 686144 and UNDEFINED on the other two details (section 6 had said UNDEFINED for all three). A zero area or rent is unknown (None), not zero.
+- Not mapped: `poi` metres (the portal gives walking minutes only), house number, the energy vs services split, and the deposit and admin fee, which are left for extraction. `raw_ref` is None.
