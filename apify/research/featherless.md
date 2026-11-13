@@ -82,6 +82,7 @@ Paid model calls in this session: about 37 (Qwen 29, DeepSeek-V4-Flash 3, OpenAI
 | before | main 882f2b2, concurrency 1, extract all then write | 13 | 155.8 s | about 12 s | about 11 s on average, one after another (no per-flat log then) |
 | after 1 | streaming, 8 units, prompt v1 | 12 | 69.9 s | 12.3 s | 7.1 to 22.0 s, median 12.2 s; one 55.1 s (`schema:kauce.value.rent_multiple`, then a retry) |
 | after 2 | final: streaming, 8 units, prompt v2 | 12 | 51.4 s | 11.3 s | 7.3 to 18.7 s, median 13.1 s; one 37.6 s (`truncated`, then a retry) |
+| perf2 | sources concurrent, 16 units, 20 s attempts, 45 s budget | 12 | 22.3 s | 6.6 s (all three at once; slowest idnes) | 6.7 to 13.2 s, median 10.4 s; no retry, timeout or invalid answer in this run |
 
 With streaming, the wall time is about the sources plus the slowest flat. max_listings 5 per source (15 listings) instead of 15 kept the paid calls within the ticket's budget: 52 Featherless calls in all (runs 14 + 13 + 13, diagnosis 10, replay 2), no OpenAI.
 
