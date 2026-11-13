@@ -673,14 +673,9 @@ class CallShapeTest(unittest.TestCase):
             self.assertTrue(hasattr(backend.module, name), name)
 
     def test_call_py_calls_a_shortlisted_flat_only_when_interested_is_yes(self):
-        def answer_query(body, query):
-            status = body["filter"]["select"]["equals"]
-            if status == "Shortlisted":
-                return no_more([flat_page(OTHER_PAGE_ID, "Shortlisted", "No"),
-                                flat_page(PAGE_ID, "Shortlisted", "Yes"),
-                                flat_page("33333333-3333-4333-8333-333333333333", "Shortlisted")])
-            return no_more([])
-        self.fake.answer("POST", "/data_sources/%s/query" % DS_ID, answer_query)
+        rows = [flat_page(OTHER_PAGE_ID, "Shortlisted", "No"), flat_page(PAGE_ID, "Shortlisted", "Yes"),
+                flat_page("33333333-3333-4333-8333-333333333333", "Shortlisted")]
+        self.fake.answer("POST", "/data_sources/%s/query" % DS_ID, no_more(rows))  # call.py reads every row once
         backend = call.Shortlist(notion)
         page = call.pick_page(CFG_NOTION, backend, None)
         self.assertEqual(page["notion_page_id"], PAGE_ID)

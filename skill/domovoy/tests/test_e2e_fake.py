@@ -256,10 +256,10 @@ class EndToEndFake(unittest.TestCase):
         code, out = self.run_call("run", "--windows", WINDOWS)
         thread.join()
         self.assertEqual((seen["status"], out["status"]), ("Calling", "Viewing booked"))
-        fake_phone_server.STATE["pending"] = None
-        code, out = self.run_call("run", "--windows", WINDOWS)
-        self.assertEqual((code, out["refused"]), (2, True))
-        self.assertIsNone(fake_phone_server.STATE["pending"])
+        # Status does not block a repeat call: Interested? is still Yes, so the flat stays callable.
+        code, out = self.run_call("check", "--windows", WINDOWS)
+        self.assertEqual((code, out["call_context"]["notion_page_id"], self.page()["status"]),
+                         (0, PAGE, "Viewing booked"))
 
     def test_interested_no_or_empty_does_not_trigger(self):
         for value in (False, None, "Yes"):
