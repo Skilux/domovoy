@@ -1,6 +1,6 @@
 # Katastr research (WP9, Phase A)
 
-**Status: research only, no product code. API KN and the WSDP test environment were checked live. No WSDP production call was made. All four DOMOVOY credentials are missing (section 7), so no keyed API KN call was made either.** The old LV XML directory exists but is empty, so section 4 maps the schemas, not real files.
+**Status: research only, no product code. API KN and the WSDP test environment were checked live. No WSDP production call was made. All four DOMOVOY credentials are missing (section 7), so no keyed API KN call was made either.** The old LV XML files arrived later in the afternoon. Section 4 confirms by structure only that they are WSDP LV 1.0.
 
 - Date: 13 Nov 2026
 - Scope: GitHub issue #57, Phase A. This note holds no personal data. Owner fields are named by element name only.
@@ -85,10 +85,17 @@ Name-matching inputs follow from this. SJM/BSM has two partner records (`bsm1_*`
 
 ## 4. Old LV XML → live WSDP schema
 
-- `~/.config/domovoy/lv/` exists and holds **0 files**. `KATASTR_LV_DIR` is not set in the shell or in `.env`. Nothing could be inspected, and no file was opened.
-- The mapping is therefore by schema. A WSDP LV XML is either **1.0** (root `VypisZKatastruNemovitosti`, no namespace) or **3.0** (root `{urn:cz:gov:cuzk:iskn:sestavy:VypisZKatastruNemovitosti:3.0}vypisZKatastruNemovitosti`). An old WSDP export is almost certainly 1.0, the only XML LV format before NTŘ, but that is unverified. Section 3 maps both onto `KatastrResult` element by element.
+**Update, 13 Nov 2026, afternoon:** Vladimir has placed 75 old LV files in `~/.config/domovoy/lv/` (`KATASTR_LV_DIR` is now in `.env`). They are the LVs with units, out of 216 originals. They were inspected by a script that printed element and attribute names, paths and counts only. No text or attribute value was printed, and no file was copied.
+
+- **The old files are WSDP LV 1.0.** All 75 parse. All have root `VypisZKatastruNemovitosti` with no namespace and a `ds:Signature`. **Every element and attribute path in all 75 files is declared in the v1.0 XSD** (0 unknown paths). The only XSD paths no file uses are under `NEM_BEZ_LV/NEMOVITOST`. So live `generujLV` with `verze=1.0` and `--cached-lv` can share one parser.
+- **Several `TEXTY` blocks:** 68 files have one `LIST_TEXT/TEXTY`, and 7 have 2–30. The parser must read all of them.
+- **Where units sit:** 63 files have units in `TEXTY/JEDNOTKY/JEDNOTKA` (the LV's own units; 9 files have exactly 1). In the other 12, top-level `JEDNOTKY` is empty and units appear only under `STAVBY/BUDOVA/JEDNOTKY` or `POZEMKY/PARCELA/JEDNOTKY`: a house or land owner's LV. Those nested units carry their own `NA_LV` and `VLASTNICTVI`, i.e. *other* LVs' owners, which must never be counted as this LV's owners.
+- **Section shape:** `JINA_PRAVA` always has exactly three `SEKCE_LIST` (`@SEKCE` = B1, C, D), each with a `JPV_LIST` (XSD `minOccurs=maxOccurs=3`). C-section `JPV` counts per file range from 1 to 58. No file has a `ZMENY_PV/ZMENA_PV` or `D1_UPOZORNENI/SEZNAM_RIZENI` entry, so none of the 75 shows a pending change.
+- **SJM:** 9 files carry the spouse fields (`OPSUB_NAZEV/bsm1_*`, `bsm2_*`).
+- **Vladimir's demo picks, by structure:** the two mortgage cases each have 1 unit, 1 owner record and 4 C-section entries. The easement-only case has 1 unit, 1 owner record and 1 C entry. **The case labelled "SJM, no mortgage" does not look like SJM by structure:** it has 1 owner record with no `bsm1_*`/`bsm2_*` fields, and 3 units on the LV, not 1. Either the label or the file pick needs a second look by Vladimir; I did not read values to settle it. The LV numbers are kept out of the repo.
+- **Synthetic fixtures** with the same structure are in `skill/domovoy/tests/fixtures/katastr/` (generator + README). All 5 validate against the v1.0 XSD, and their element paths occur in the real files, except the plomba case, which has no real example.
 - **The 1.0 sections are:** `LIST_TEXT/TEXTY/{ZAHLAVI_LV, VLASTNICI_JINI_OPRAVNENI, POZEMKY, STAVBY, PRAVA_STAVBY, JEDNOTKY, JINA_PRAVA, D1_UPOZORNENI, ZMENY_PV, E_NABYVACI_TITULY, F_BONITY, UKONY_KN, PARCELY_ZE, UPOZORNENI1, UPOZORNENI2, CASTECNY}`, then `LIST_ZAPATI_LV`, `NEM_BEZ_LV`, `PLATNOST`, `BEZPL_PRISTUP`, `VYHOTOVENO`, `INFO_VYSTUP`. An unsigned test-environment 1.0 LV contained every one of these. A production LV also carries a `ds:Signature`.
-- **First step in Phase B:** once a file is placed in the directory, run a names-only check (root tag and namespace, plus whether the tag set is a subset of the 1.0 or 3.0 XSD) before wiring `--cached-lv`.
+- Section 3 maps both versions onto `KatastrResult`: **1.0** (root `VypisZKatastruNemovitosti`, no namespace) and **3.0** (root `{urn:cz:gov:cuzk:iskn:sestavy:VypisZKatastruNemovitosti:3.0}vypisZKatastruNemovitosti`).
 
 ## 5. Recommendation
 
@@ -107,10 +114,10 @@ Name-matching inputs follow from this. SJM/BSM has two partner records (`bsm1_*`
 ## 6. What Phase B needs
 
 1. **Credentials** in `/Users/vladimir/.config/domovoy/.env`: `CUZK_API_KN_KEY`, `WSDP_USERNAME`, `WSDP_PASSWORD`, `WSDP_ENV` (`trial` | `prod`). All four are missing today. Default `WSDP_ENV=trial` so that development never bills.
-2. **One parser module** for LV XML, chosen by root tag. Pin `verze` on live calls to whatever version the cached files turn out to be (most likely `1.0`), so the live and cached paths go through the same code. Keep the 3.0 branch for when ČÚZK drops 1.0.
+2. **One parser module** for LV XML. The cached files are 1.0 (section 4), so pin `verze=1.0` on live calls and the live and cached paths go through the same code. Reject any other root with `unknown`; a 3.0 branch can come later if ČÚZK drops 1.0.
 3. **Billing guard** `WSDP_MAX_BILLED_PER_DAY` (≤ 10), counted **before** `generujLV` (conservative: the manual books the charge at `vratSestavu`). The counter file goes outside the repo. Set `WSDP_ENV=prod` explicitly for the guard to apply. Always call `smazSestavu` after retrieval.
 4. **`lease_risk` rule proposal**, open for Vladimir. A mortgage (`zástavní právo`) is normal and is reported but not flagged. Flagged items: a plomb or pending ownership change, execution or insolvency notes (`Nařízení exekuce`, `Exekuční příkaz`, `insolvence`), `zákaz zcizení nebo zatížení`, and co-ownership with more than 2 owner records.
-5. **Fixtures:** the repo gets only hand-made synthetic XML in both shapes, never a real or test-environment LV, even though test-environment data are fictional. This keeps the "names only in Notion" rule easy to check.
+5. **Fixtures:** the repo gets only hand-made synthetic XML, never a real or test-environment LV, even though test-environment data are fictional. This keeps the "names only in Notion" rule easy to check. The five 1.0 fixtures are in `skill/domovoy/tests/fixtures/katastr/`.
 6. **Stdout redaction test:** a test asserting that the result text never contains an `oS`/`OPSUB_NAZEV` name value from a synthetic fixture.
 
 ## 7. Credentials and inputs, status 13 Nov 2026
@@ -121,7 +128,7 @@ Name-matching inputs follow from this. SJM/BSM has two partner records (`bsm1_*`
 | `WSDP_USERNAME` | missing |
 | `WSDP_PASSWORD` | missing |
 | `WSDP_ENV` | missing |
-| `KATASTR_LV_DIR` | not set; the default dir `~/.config/domovoy/lv/` exists with 0 files |
+| `KATASTR_LV_DIR` | set in `.env`; 75 LV 1.0 files (afternoon update) |
 
 ## Sources
 
