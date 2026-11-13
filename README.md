@@ -45,6 +45,7 @@ shows what each flat really costs, and holds a live voice call to book the viewi
 - [Why this exists](#why-this-exists)
 - [What it does](#what-it-does)
 - [How it works](#how-it-works)
+- [The self-improvement loop](#the-self-improvement-loop)
 - [A real call](#a-real-call)
 - [Quick start](#quick-start)
 - [Services](#services)
@@ -140,6 +141,27 @@ The two halves meet at two JSON contracts, [`call_context`](docs/plan.md#contrac
 <sub>The public start page, <a href="https://domovoy-phone.vercel.app/start">domovoy-phone.vercel.app/start</a>. Screenshot taken 13 Nov 2026.</sub>
 
 </div>
+
+## The self-improvement loop
+
+DOMOVOY learns from the flats you reject. It notices a reason that repeats, asks you one question, changes its own search rules after your yes, and then checks whether the change held. Details and commands: [docs/prd/posthog.md](docs/prd/posthog.md) and [posthog/README.md](posthog/README.md).
+
+| Step | What happens | Where it lives in PostHog |
+| --- | --- | --- |
+| **1 Record** | Every flat shown, rejected (with the reason you typed), liked or filtered is sent as an event | Events |
+| **2 Notice** | Claude reads the rejections back with its own instructions and groups the free-text reasons. "No lift", "without elevator" and "5th floor, no elevator" become one reason | Query API, skills store |
+| **3 Ask** | When 3 or more flats share a reason, it writes one page: what it noticed, what it suggests, and a switch that is off | Notebook, feature flag |
+| **4 Change** | On your yes the switch goes on. Flats that break the rule leave the shortlist, and every later search is filtered by it | Feature flag |
+| **5 Remember** | Yes or no, the agent writes the decision into its own instructions as a new version. It never asks the same thing twice | Skills store, versioned |
+| **6 Measure** | After the next search it counts the flats that break the rule and still reached you, before and after, and writes the result into the same page and into its memory | Events, notebook |
+
+**What starts it.** You, by saying "improve my search". Or a timer on your Mac (`python3 posthog/schedule.py install`): every 10 minutes it sends the changes to PostHog and wakes Claude only when 3 or more rejections are new.
+
+**What stays with you.** Nothing changes without your yes. The timer can only file a suggestion. It cannot answer one and it never writes to Notion.
+
+**Why PostHog and not only Notion.** Notion is your list and shows only how it looks now. PostHog keeps the history that a before and after needs, keeps every version of the agent's instructions, and is a record the agent cannot quietly rewrite. The voice calls are there too, one trace per call with a score per prompt version.
+
+**What is proven today.** The whole loop ran end to end on synthetic flats on 13 Nov 2026, including one suggestion filed by the timer with nobody asking: before the change 4 of 9 flats shown broke the rule and reached the renter, after it 0 of 8, and the agent filtered out 2. That number shows the rule holds, not that the renter is happier, and it is a small sample. It has not run on a real shortlist yet. It uses PostHog's free plan only; PostHog's own scouts and Inbox are paid and are not used. Three real calls are in PostHog as traces; nothing suggests a prompt change from them yet.
 
 ## A real call
 

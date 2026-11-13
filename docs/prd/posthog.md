@@ -2,36 +2,58 @@
 
 Owner: Danila. Priority: P1. Code: `posthog/`.
 
-Optional self-improvement loop. DOMOVOY sends what happens to PostHog; Claude reads it back, finds one pattern, proposes one change, and applies it only after Vladimir says yes. Start only when the core flow has run end to end; cut at 16:00 otherwise.
+Optional self-improvement loop. DOMOVOY sends what happens to PostHog; Claude reads it back, finds one pattern, proposes one change, applies it only after Vladimir says yes, and then measures whether the change held.
 
-## Definition of done
+## Summary: the self-improvement loop
 
-- [ ] The skill's search and call flow send the events below to PostHog, each with `property_id`. Events sent from inside the Actor are phase 2.
-- [ ] A report script reads today's `listing_rejected` events from PostHog and prints one grouped finding with its evidence, e.g. "3 of 3 rejected flats: no elevator".
-- [ ] Claude proposes one specific criteria change and waits for Vladimir's yes or no.
-- [ ] On yes, the change is switched on as a PostHog feature flag whose payload holds the requirement, the shortlist is re-filtered, and Notion visibly changes. `search.py` merges approved flags into the active profile on the next run (issue #43).
-- [ ] The decision is recorded as an event, so the same proposal is not made twice.
-- [ ] The whole step fits in 60 seconds on stage and uses only real events from today. The machine part is about 14 s; see [Stage timing](#stage-timing).
+| Step | What happens | Command | PostHog feature |
+| --- | --- | --- | --- |
+| 1 Record | Flats shown, rejected with a typed reason, liked or filtered become events | `loop.py sync` | Events |
+| 2 Notice | Claude reads the rejections and its own instructions, and groups the free-text reasons by a short key | `loop.py report` | Query API, skills store |
+| 3 Ask | One reason on 3 or more flats becomes one suggestion: a notebook and a switch that is off | `loop.py propose` | Notebook, feature flag |
+| 4 Change | On a yes the switch goes on and flats that break the rule leave the shortlist. After every later search the rule is applied again | `loop.py decide`, `loop.py apply` | Feature flag |
+| 5 Remember | Each decision is appended to the agent's instructions as a new version; a decided reason is never proposed again | inside `decide` | Skills store, events |
+| 6 Measure | Flats that break the rule and still reached the renter, before and after; the result goes into the notebook and the instructions | `loop.py measure` | Events, notebook |
+
+- **Trigger:** the renter asks, or the local timer `posthog/schedule.py` runs. See [Who starts the loop](#who-starts-the-loop).
+- **Human control:** nothing changes without a yes. The timer can only propose.
+- **Why PostHog and not only Notion:** Notion holds the current list. PostHog holds the history a before and after needs, every version of the agent's instructions, and a record the agent does not edit. Call traces with a score per prompt version live there too (`posthog/calls.py`).
+- **Not built:** a suggestion for the voice prompt from call scores, and anything across more than one renter.
+
+## Definition of done (state on 13 Nov 2026)
+
+- [x] `loop.py sync` sends the events below from the Notion shortlist, each with `property_id`. Events sent from inside the Actor are phase 2.
+- [x] `loop.py report` reads today's `listing_rejected` events from PostHog; Claude groups them into one finding with its evidence.
+- [x] Claude proposes one specific criteria change and waits for a yes or no.
+- [x] On yes, the change is switched on as a PostHog feature flag whose payload holds the requirement, and the shortlist is re-filtered. The research command applies approved rules after each search; `search.py` itself does not read them (issue #43).
+- [x] The decision is recorded as an event and in the stored instructions, so the same proposal is not made twice.
+- [x] `loop.py measure` writes a before and after into the notebook.
+- [x] `posthog/schedule.py` runs the loop on a timer and only proposes.
+- [ ] Run on the real shortlist. Every box above was checked on synthetic flats only: [posthog/README.md](../../posthog/README.md).
+- [ ] The stage step fits in 60 seconds. Measured machine time is about 14 s; see [Stage timing](#stage-timing). Not rehearsed.
 
 ## Diagram
 
 ```mermaid
 flowchart LR
-  A[Vladimir rejects flats and types Reason] --> B[Skill reads Notion]
-  B --> C[capture listing_rejected]
-  P[Pipeline and call flow] --> C2[capture other events]
-  C --> PH[(PostHog)]
-  C2 --> PH
-  PH --> R[Report script: group rejections by reason]
-  R --> Q{Same reason 3+ times, not proposed before?}
-  Q -- no --> Z[Report: nothing to change]
-  Q -- yes --> S[Claude proposes one criteria change]
-  S --> V{Vladimir: yes or no}
-  V -- yes --> T[Update active profile, re-filter, update Notion]
-  V -- no --> W[Record the no]
-  T --> M[capture criteria_change_decided]
+  A[Renter rejects flats and types Reason] --> B[loop.py sync reads Notion]
+  B --> PH[(PostHog events)]
+  T[Timer or the renter asks] --> R[loop.py report]
+  PH --> R
+  SK[(Instructions and memory in the skills store)] --> R
+  R --> Q{Same reason on 3 or more flats, not decided before?}
+  Q -- no --> Z[Nothing to propose]
+  Q -- yes --> S[loop.py propose: notebook and a flag that is off]
+  S --> V{Renter: yes or no}
+  V -- yes --> D[Flag on, shortlist re-filtered]
+  V -- no --> W[Nothing changes]
+  D --> M[Decision written to events and to the instructions]
   W --> M
-  M --> PH
+  M --> SK
+  D --> N[Next search, then loop.py apply and sync]
+  N --> PH
+  N --> ME[loop.py measure: before and after into the notebook and the instructions]
+  ME --> SK
 ```
 
 ## Details
