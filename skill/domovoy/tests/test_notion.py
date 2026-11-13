@@ -104,7 +104,7 @@ def no_more(results):
     return {"results": results, "has_more": False, "next_cursor": None}
 
 
-def flat_page(page_id=PAGE_ID, status="Interested"):
+def flat_page(page_id=PAGE_ID, status="Interested", interested=None):
     def text(value):
         return [{"plain_text": value}] if value else []
     return {
@@ -114,6 +114,7 @@ def flat_page(page_id=PAGE_ID, status="Interested"):
             "Name": {"type": "title", "title": text("2+kk · SYNTHETIC · Testville")},
             "Property ID": {"type": "rich_text", "rich_text": text("synthetic-test-001")},
             "Status": {"type": "select", "select": {"name": status}},
+            "Interested?": {"type": "select", "select": {"name": interested} if interested else None},
             "Reason": {"type": "rich_text", "rich_text": []},
             "Notes": {"type": "rich_text", "rich_text": []},
             "Viewing date": {"type": "date", "date": None},
@@ -509,7 +510,18 @@ class BackendTest(unittest.TestCase):
         [query] = [c for c in self.fake.calls if c[1].endswith("/query")]
         self.assertEqual(query[2]["filter"], {"property": "Status", "select": {"equals": "Interested"}})
         self.assertEqual(rows, [{"id": PAGE_ID, "title": "2+kk · SYNTHETIC · Testville", "url": PAGE_URL,
-                                 "status": "Interested", "listing": EXPECTED_LISTING}])
+                                 "status": "Interested", "interested": None, "listing": EXPECTED_LISTING}])
+
+    def test_interested_is_true_for_yes_false_for_no_and_none_when_empty(self):
+        for answer, expected in (("Yes", True), ("No", False), (None, None)):
+            page = flat_page(status="Shortlisted", interested=answer)
+            self.fake.answer("POST", "/data_sources/%s/query" % DS_ID, no_more([page]))
+            self.fake.answer("GET", "/pages/%s" % PAGE_ID, page)
+            self.fake.answer("GET", "/blocks/%s/children" % PAGE_ID, no_more([]))
+            [row] = notion.list_flats(CFG_NOTION, "Shortlisted")
+            self.assertIs(row["interested"], expected, answer)
+            self.assertIs(notion.get_flat(CFG_NOTION, PAGE_ID)["interested"], expected, answer)
+            self.assertNotIn("interested", row["listing"])  # a row key for call.py, not a call_context field
 
     def test_list_flats_without_a_status_has_no_filter(self):
         notion.list_flats(CFG_NOTION)
@@ -604,6 +616,23 @@ class CallShapeTest(unittest.TestCase):
         backend = call.load_backend(dict(CFG_NOTION, backend={"module": "scripts/notion.py"}))
         for name in ("list_flats", "get_flat", "set_status", "append", "set_viewing_date"):
             self.assertTrue(hasattr(backend.module, name), name)
+
+    def test_call_py_calls_a_shortlisted_flat_only_when_interested_is_yes(self):
+        def answer_query(body, query):
+            status = body["filter"]["select"]["equals"]
+            if status == "Shortlisted":
+                return no_more([flat_page(OTHER_PAGE_ID, "Shortlisted", "No"),
+                                flat_page(PAGE_ID, "Shortlisted", "Yes"),
+                                flat_page("33333333-3333-4333-8333-333333333333", "Shortlisted")])
+            return no_more([])
+        self.fake.answer("POST", "/data_sources/%s/query" % DS_ID, answer_query)
+        backend = call.Shortlist(notion)
+        page = call.pick_page(CFG_NOTION, backend, None)
+        self.assertEqual(page["notion_page_id"], PAGE_ID)
+        self.assertIs(page["interested"], True)
+        context = call.build_context(CFG_NOTION, page, WINDOWS)
+        self.assertEqual(call.validate(context, call.load_schema("call_context")), [])
+        self.assertNotIn("interested", context)
 
     def test_the_interested_flat_gives_a_valid_call_context(self):
         pages = call.Shortlist(notion).list_pages(CFG_NOTION, "Interested")

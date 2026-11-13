@@ -10,12 +10,13 @@
                     Exit 0 when done; exit 1 on an error or a conflict (then nothing is changed).
 
 SHORTLIST BACKEND, shape B of the call.py docstring (config.json "backend.module": "scripts/notion.py"):
-  list_flats(cfg, status=None)          -> [{"id", "title", "url", "status", "listing"}]
-  get_flat(cfg, flat_id)                -> {"id", "title", "url", "listing", "text"}
+  list_flats(cfg, status=None)          -> [{"id", "title", "url", "status", "interested", "listing"}]
+  get_flat(cfg, flat_id)                -> {"id", "title", "url", "interested", "listing", "text"}
   set_status(cfg, flat_id, status)
   append(cfg, flat_id, text)            text lines, one paragraph each, added to the page body
   set_viewing_date(cfg, flat_id, start) ISO 8601 with a UTC offset
-"listing" holds the call_context fields read from the page properties. Realtor contacts are never read.
+"interested" is the user's "Interested?" column: True (Yes), False (No) or None (empty). call.py calls a
+Shortlisted flat only when it is True. "listing" holds the call_context fields read from the page properties. Realtor contacts are never read.
 call_context's "upfront" is read from the "Move-in cost" property (the Actor renamed Upfront) until the
 call_context field is renamed.
 
@@ -210,9 +211,17 @@ def listing_of(page):
     }
 
 
+INTERESTED = {"Yes": True, "No": False}
+
+
+def interested_of(page):
+    """The user's "Interested?" column: True for Yes, False for No, None when empty (call.py's "interested")."""
+    return INTERESTED.get(select_name(page, "Interested?"))
+
+
 def flat_row(page):
     return {"id": page["id"], "title": page_title(page), "url": page.get("url"),
-            "status": select_name(page, "Status"), "listing": listing_of(page)}
+            "status": select_name(page, "Status"), "interested": interested_of(page), "listing": listing_of(page)}
 
 
 def data_source(cfg):
@@ -247,7 +256,7 @@ def list_flats(cfg, status=None):
 
 def get_flat(cfg, flat_id):
     page = request("GET", "/pages/%s" % checked_id(flat_id, "flat id"))
-    return {"id": page["id"], "title": page_title(page), "url": page.get("url"),
+    return {"id": page["id"], "title": page_title(page), "url": page.get("url"), "interested": interested_of(page),
             "listing": listing_of(page), "text": "\n".join(body_lines(page["id"]))}
 
 
