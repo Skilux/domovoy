@@ -451,7 +451,12 @@ def cmd_start(cfg, backend, args, post, wait=True):
                 "property_id": context["property_id"], "status": cfg["statuses"]["calling"],
                 "warnings": warnings, "next": "call.py resume --page %s" % page[PAGE_ID]}
     print("call posted for page %s, waiting for the result" % page[PAGE_ID], file=sys.stderr)
-    out = apply_result(cfg, backend, page, context, poll(cfg, context["property_id"], seen_conversations()))
+    result = poll(cfg, context["property_id"], seen_conversations())
+    if result is None:
+        # Remembered so that resume may still apply a result that arrives after this timeout.
+        with open(state_path(page[PAGE_ID]), "w", encoding="utf-8") as f:
+            json.dump(dict(saved, timed_out=True), f, indent=2)
+    out = apply_result(cfg, backend, page, context, result)
     out["warnings"] = warnings
     return out
 
@@ -476,9 +481,14 @@ def cmd_resume(cfg, backend, args):
     if result is None:
         raise Refusal("the phone server has no result for %s yet" % saved["context"]["property_id"])
     if marker_id(result.get("conversation_id")) not in seen_conversations():
-        if not any(p[PAGE_ID] == args.page for p in backend.list_pages(cfg, calling)):
+        allowed = [calling] + ([cfg["statuses"]["not_booked"]] if saved.get("timed_out") else [])
+        if not any(p[PAGE_ID] == args.page for status in allowed for p in backend.list_pages(cfg, status)):
             raise Refusal("page %s is not in %s; nothing was changed" % (args.page, calling))
-    return apply_result(cfg, backend, saved["page"], saved["context"], result)
+    out = apply_result(cfg, backend, saved["page"], saved["context"], result)
+    if saved.pop("timed_out", None):
+        with open(state_path(args.page), "w", encoding="utf-8") as f:
+            json.dump(saved, f, indent=2)
+    return out
 
 
 def main(argv=None):
