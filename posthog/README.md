@@ -15,28 +15,28 @@ Owner: Danila. Spec: [docs/prd/posthog.md](../docs/prd/posthog.md). Status on 13
 
 ## Keys
 
-Nothing below is committed. `.env*` is gitignored.
+Nothing below is committed. All five live in `~/.config/domovoy/.env`, the one env file every DOMOVOY script reads. Names match the root [`.env.example`](../.env.example).
 
 | Variable | What | Secret? | Where it goes |
 | --- | --- | --- | --- |
-| `POSTHOG_PROJECT_TOKEN` | `phc_...`, write-only capture token | No, public by design | `.env`, and Vercel if the phone page sends events |
-| `POSTHOG_INGEST_HOST` | `https://eu.i.posthog.com` | No | `.env`, Vercel |
-| `POSTHOG_PERSONAL_API_KEY` | `phx_...`, reads data as Danila | Yes | `.env` on the laptop only. Never Vercel, never the browser, never the Actor |
-| `POSTHOG_PROJECT_ID` | `348322` | No | `.env` |
-| `POSTHOG_HOST` | `https://eu.posthog.com` | No | `.env` |
+| `POSTHOG_PROJECT_TOKEN` | `phc_...`, write-only capture token | No, public by design | Env file, and Vercel if the phone page sends events |
+| `POSTHOG_INGEST_HOST` | `https://eu.i.posthog.com` | No | Env file, Vercel |
+| `POSTHOG_PERSONAL_API_KEY` | `phx_...`, reads data as Danila | Yes | Env file on the laptop only. Never Vercel, never the browser, never the Actor |
+| `POSTHOG_PROJECT_ID` | `348322` | No | Env file |
+| `POSTHOG_APP_HOST` | `https://eu.posthog.com`, for queries and the UI | No | Env file |
 
 The phone page needs only `POSTHOG_PROJECT_TOKEN` and `POSTHOG_INGEST_HOST`. The Apify Actor, if it ever sends events (phase 2), also needs only those two.
 
 ## Use the same project (Vladimir)
 
 1. Ask Danila for the project token and the personal key. He sends them outside the repo.
-2. Create `.env` in the repo root:
+2. Append to `~/.config/domovoy/.env`:
 
    ```
-   POSTHOG_HOST=https://eu.posthog.com
-   POSTHOG_INGEST_HOST=https://eu.i.posthog.com
-   POSTHOG_PROJECT_ID=348322
    POSTHOG_PROJECT_TOKEN=phc_...
+   POSTHOG_INGEST_HOST=https://eu.i.posthog.com
+   POSTHOG_APP_HOST=https://eu.posthog.com
+   POSTHOG_PROJECT_ID=348322
    POSTHOG_PERSONAL_API_KEY=phx_...
    ```
 
@@ -59,8 +59,8 @@ From Python: `from ph import capture, query`. `capture(event, distinct_id, prope
 ## What was run and seen (13 Nov 2026)
 
 - `ph.py capture`: HTTP 200.
-- `ph.py smoke`: the event came back through the query API 63 s after capture (one run). An earlier run had not returned it after 90 s; that run reused a cached query result, so `query()` now sends `"refresh": "force_blocking"`.
-- Plan for at least 60 to 100 s between sending an event and reading it. Send the demo events before the PostHog minute on stage, not during it.
+- `ph.py smoke`: the event came back through the query API 63 s after capture in one run and 26 s in another. An earlier run had not returned it after 90 s; that run reused a cached query result, so `query()` now sends `"refresh": "force_blocking"`.
+- Plan for up to 100 s between sending an event and reading it. Send the demo events before the PostHog minute on stage, not during it.
 
 ## Rules
 
