@@ -27,7 +27,8 @@ BUILDING = os.path.join(FIX, "lv_synth_building_owner.xml")
 PAGE = "cccccccc-0000-4000-8000-000000000003"
 # Every invented person or company name in the fixtures. None of them may appear on stdout.
 NAMES = ["Vzorová", "Jana", "Fiktivní Petr", "Petr", "Smyšlený", "Karel", "Smyšlená", "Eva",
-         "Testovací nemovitosti", "Fiktivní banka", "Vzorový", "Tomáš", "Lenka", "Nájemná", "Alena", "Pokusný", "Ondřej"]
+         "Testovací nemovitosti", "Fiktivní banka", "Vzorový", "Tomáš", "Lenka", "Nájemná", "Alena",
+         "Pokusný", "Ondřej"]
 LIVE = {"CUZK_API_KN_KEY": "test-key", "WSDP_USERNAME": "test-user", "WSDP_PASSWORD": "test-pass",
         "WSDP_ENV": "prod", "WSDP_MAX_BILLED_PER_DAY": "10"}
 
