@@ -6,11 +6,11 @@ Your real-estate agent in your pocket. Tell your existing AI agent what home you
 
 ## Planned workflow
 
-1. Apify collects real listings; scripts normalize, deduplicate, filter and calculate known monthly and upfront costs.
-2. A Notion shortlist shows evidence, source timestamps and unknowns. The renter marks a property **Interested**, authorizing contact.
-3. Claude Code passes property context and approved calendar windows to an ElevenLabs voice agent.
+1. Apify collects real listings; Featherless extracts fees; scripts normalize, deduplicate, filter and calculate known monthly and upfront costs.
+2. Each shortlisted flat becomes a GitHub issue on a Projects board, with evidence, source timestamps and unknowns. The renter moves one card to **Interested**, authorizing contact.
+3. Claude Code passes property context and free calendar windows to an ElevenLabs voice agent on the phone page.
 4. A consenting demo realtor answers a live English browser conversation on the same laptop.
-5. The agent returns a structured result. Claude updates Notion and creates a clearly labeled test Calendar event only after an explicit agreement within approved constraints.
+5. The agent returns a structured result. Claude moves the card and creates a test Calendar event only after agreement on a time inside the approved windows and budget.
 
 The intended package is an open-source Agent Skill for Claude Code. The phone page demonstrates live voice over WebRTC; it does not place a telephone call to the listing agent.
 
@@ -20,7 +20,8 @@ The intended package is an open-source Agent Skill for Claude Code. The phone pa
 - [Current scope and architecture](docs/plan.md)
 - [Demo and acceptance gates](docs/demo.md)
 - [PostHog improvement loop](docs/posthog.md)
-- [Resolved inconsistencies and remaining decisions](docs/decisions.md)
+- [Decisions](docs/decisions.md)
+- [Open items](docs/open-items.md)
 - [Original Notion exports](docs/archive/2026-11-13-notion/README.md)
 
 ## Running and submission
