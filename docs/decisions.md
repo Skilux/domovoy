@@ -120,3 +120,14 @@ Made by Vladimir for the katastr check (issue #57, PRs #111 and #113).
 | Owner names in Notion | Compliance signed off. The Katastr check writes owner and lender names to the flat's Notion page and attaches the LV PDF there. LV files stay in `KATASTR_LV_DIR`, outside any git checkout. Names never go into the repo, commits, cached fallbacks, issues or chat; `katastr.py` prints none | "Storing owner names needs compliance sign-off" (Actor PRD decisions); open item 19 |
 | Where the check runs | A skill command, `katastr.py` `locate`, `fetch`, `lookup`, `attach`, documented in `SKILL.md`. Each billed WSDP output (100 CZK per LV extract, XML or PDF) needs its own yes from the user, and the script refuses without `--confirm-billed`. API KN (free) finds the building, units and LVs; it has no owners or encumbrances | `katastr_lookup` Actor mode |
 | Easements for a tenant | Someone else's right to live in or use the flat: high. A right of way through the flat, or an easement of unknown kind on it: medium. Utility lines: low, reported only. The building's own LV (land and the house as a whole) is named as not checked unless ordered | — |
+
+## Open items closed, 13 Nov 2026
+
+Moved from [open-items.md](open-items.md) on 13 Nov 2026. Each was settled by merged work, not by a new decision.
+
+| Topic | Decision | Replaces |
+| --- | --- | --- |
+| Shortlist database | `notion.py setup` was run: the **DOMOVOY shortlist** database exists, and one full Actor run created 22 pages in it ([packaging.md](packaging.md#100-flats-researched)) | Open item 6 |
+| Featherless model, threshold, concurrency | Primary model Qwen (`DEFAULT_MODEL` in `apify/domovoy/extraction/llm.py`). An answer with confidence below 0.5 becomes unknown. The plan allows 100 concurrent units, read from the Featherless plan API; the default `llm.concurrency` is in `apify/README.md` | Open item 7 |
+| Bezrealitky access | Plain HTTP GET of the page's own server-side JSON (`__NEXT_DATA__` and the `_next/data` route). No GraphQL call and no Playwright. Recorded in `apify/research/bezrealitky.md`; the source is on `main` (PR #61) | Open item 12 |
+| Active profile | `active_profile` in `config.json` holds a profile `id`. `call.py` and `doctor.py` read it, and `SKILL.md` tells the agent to set it | Open item 17 |

@@ -1,6 +1,6 @@
 # Current plan
 
-Status: documentation only, 13 Nov 2026. Basis: the proposal's final locked plan, its 23:26 staging update, the 13 Nov day-of hub, the 13 Nov pre-PRD decisions and the 13 Nov actor PRD decisions in [decisions.md](decisions.md#actor-prd-decisions-13-nov-2026). Unresolved items live in [open-items.md](open-items.md).
+Status, 13 Nov 2026: the code for every lane is on `main`. This file owns scope, flow, boundaries and contracts; what was run and seen is in each merged pull request and in [packaging.md](packaging.md). Basis: the proposal's final locked plan, its 23:26 staging update, the 13 Nov day-of hub, the 13 Nov pre-PRD decisions and the 13 Nov actor PRD decisions in [decisions.md](decisions.md#actor-prd-decisions-13-nov-2026). Unresolved items live in [open-items.md](open-items.md).
 
 ## Scope and ownership
 
@@ -12,7 +12,7 @@ Build one reusable Agent Skill in Claude Code: real listing research → Notion 
 
 The demo calls about exactly one flat, in English only. Sreality, Bezrealitky and iDNES are all required by the 17:00 code freeze, Bezrealitky before iDNES; the 14:00 checkpoint needs real flats in Notion from at least Sreality. PostHog is P1 after the core path works. Gmail confirmation is an optional stretch.
 
-Out of scope: GitHub Issues or the Projects board as a DOMOVOY surface (the board is only our hackathon task tracker; the shortlist is Notion), always-on VPS monitoring, a bespoke dashboard, a new MCP orchestration server, multi-user support, buying/selling, complex geography, autonomous skill modification, agent investigation of listings, negotiation of alternative times or costs, and anything in Czech. Actor phase 2: katastr ownership check and PostHog events sent from the Actor.
+Out of scope: GitHub Issues or the Projects board as a DOMOVOY surface (the board is only our hackathon task tracker; the shortlist is Notion), always-on VPS monitoring, a bespoke dashboard, a new MCP orchestration server, multi-user support, buying/selling, complex geography, autonomous skill modification, agent investigation of listings, negotiation of alternative times or costs, and anything in Czech. The katastr ownership check is not part of the demo's core path: it landed as an optional skill command, `skill/domovoy/scripts/katastr.py` (stretch, see [decisions.md](decisions.md#katastr-check-decisions-13-nov-2026)). Actor phase 2: the `katastr_lookup` Actor mode and PostHog events sent from the Actor.
 
 ## Data and execution
 
@@ -24,7 +24,7 @@ Claude writes a search profile → `search.py` starts the Apify Actor with it an
 - **Relay:** ElevenLabs calls `submit_call_result` as a client tool in the browser. The page POSTs the result to the Vercel server; Claude fetches it by `property_id`.
 - **Secrets:** the browser never receives the ElevenLabs API key. The server issues the signed URL. `NOTION_TOKEN` lives in `.env` locally and as an Apify secret input for the Actor.
 - **Laptop:** the whole demo runs on Vladimir's laptop, with his Google Calendar, his Notion workspace and his GitHub access to `Skilux/domovoy`.
-- **Agent tools:** the voice agent has only `submit_call_result` and the built-in end-call. Claude owns Notion status changes, Calendar and optional Gmail actions. Free windows reach the agent as dynamic variables before the call.
+- **Agent tools:** the voice agent has two client tools, `submit_call_result` (the result) and `mark_question_asked` (display only: ticks an open question on the phone page), and the built-in end-call. Claude owns Notion status changes, Calendar and optional Gmail actions. Free windows reach the agent as dynamic variables before the call.
 
 ## Boundaries
 

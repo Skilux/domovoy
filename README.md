@@ -50,6 +50,7 @@ shows what each flat really costs, and holds a live voice call to book the viewi
 - [Services](#services)
 - [Costs](#costs)
 - [Interesting facts](#interesting-facts)
+- [Built today, and what we reused](#built-today-and-what-we-reused)
 - [Make it yours](#make-it-yours)
 - [Roadmap](#roadmap)
 - [FAQ](#faq)
@@ -274,13 +275,31 @@ Each fact names its source in this repo.
 
 - **Fee reading is the expensive part.** Without extraction, the same 45 listings took 38 s and 0.0085 USD, so extraction is about 90% of the compute. Measured on two runs. [docs/packaging.md](docs/packaging.md#100-flats-researched)
 - **The first real booked call happened on 13 Nov 2026.** A spoken demo call on a sample context ended in `booked`. Read an excerpt in [A real call](#a-real-call). Its result is kept as a labelled fixture, `skill/domovoy/tests/fixtures/real_call_2026-11-13_booked.json`. [skill/domovoy/SKILL.md](skill/domovoy/SKILL.md)
-- **The voice agent has one tool.** It can only call `submit_call_result` and end the call. Notion, Calendar and every status change belong to Claude, which rechecks the agent's `booked` against your free windows and budget. [docs/plan.md](docs/plan.md#data-and-execution)
-- **Three models read each listing, in order.** A Qwen model on Featherless gets two attempts, then DeepSeek-V4-Flash gets one, then OpenAI `gpt-4o-mini` as a last resort when a key is set. An answer with confidence below 0.5 becomes unknown. [apify/README.md](apify/README.md#extraction-chain-wp4)
+- **The voice agent cannot touch your data.** It has two client tools, `submit_call_result` (send the result) and `mark_question_asked` (tick a question on the phone screen), plus the built-in end-call (`phone/agent/agent.json`). Notion, Calendar and every status change belong to Claude, which rechecks the agent's `booked` against your free windows and budget. [docs/plan.md](docs/plan.md#data-and-execution)
+- **Two models read each listing, in order.** A Qwen model on Featherless gets two attempts. If it gives no answer, an OpenAI model gets one attempt, only when an OpenAI key is set. An answer with confidence below 0.5 becomes unknown. [apify/README.md](apify/README.md#extraction-chain-wp4)
 - **It scrapes politely.** At most 3 requests in flight per portal, 0.5 to 1 s between request starts, stop on 403 or 429. No proxies and no stealth. [docs/decisions.md](docs/decisions.md#idnes-source-decisions-13-nov-2026)
 - **The phone rings like a Nokia 3310.** The incoming-call screen plays that ringtone. [docs/plan.md](docs/plan.md#data-and-execution)
 - **The key never reaches the browser.** The server issues a signed URL for each call, so the page never holds the ElevenLabs API key. [docs/plan.md](docs/plan.md#data-and-execution)
 - **The whole phone store is 46 lines.** `phone/lib/store.js` is the only file that knows Upstash Redis. [docs/packaging.md](docs/packaging.md#swap-a-service)
 - **64 pull requests were merged on 13 Nov 2026** before this README. Counted with `gh pr list --state merged` at 14:30.
+
+## Built today, and what we reused
+
+Each row says how we know. "Confirmed" names its source. "Not checked" means nobody verified it.
+
+| What | New on 13 Nov 2026, or reused | How we know |
+| --- | --- | --- |
+| All code in `apify/`, `phone/`, `skill/` and `posthog/` | New, written during the hackathon | Confirmed: `git log` on `main`. The first commit is from 13 Nov 2026, 11:23, and every commit on `main` when this section was written (87) carries that date |
+| The docs in `docs/`, except the archive | New, written on 13 Nov 2026 | Confirmed: same `git log` |
+| The idea and the plan | Existed before. Five Notion exports, including a brief from 9 Nov and decisions from 12 Nov | Confirmed: [docs/archive/](docs/archive/2026-11-13-notion/README.md) keeps them unchanged, and [docs/decisions.md](docs/decisions.md) reconciles them |
+| Code copied in from an earlier project | Not checked | Git history shows when a file was committed, not where its text came from |
+| The Actor folder layout | Started from an Apify template scaffold, replaced in the first Actor work package | Confirmed: [docs/prd/actor-implementation.md](docs/prd/actor-implementation.md), row WP0. Which template: not checked |
+| The ringtone, `phone/public/ringtone.mp3` | Reused: cut from a video of a Nokia 3310 | Confirmed: [docs/plan.md](docs/plan.md#data-and-execution). Its licence: not checked |
+| Hosted services | Third party: Claude Code, Apify, Featherless, OpenAI (fallback model), Notion, ElevenLabs, Vercel, Upstash, PostHog | Confirmed: [Services](#services) and [apify/README.md](apify/README.md) |
+| Libraries in the phone app | Third party: `@elevenlabs/client`, built with `esbuild` | Confirmed: `phone/package.json` |
+| Libraries in the Actor | Third party: `apify`, `crawlee`, `beautifulsoup4`, `pydantic`, `httpx`, `requests`, `openai`, `jsonschema`, tested with `pytest` | Confirmed: `apify/requirements.txt` |
+| Libraries in the skill and PostHog scripts | None. Python standard library only | Confirmed: the imports in `skill/domovoy/scripts/` and `posthog/` |
+| How the code was written | Two people, each with Claude Code as the coding agent | Confirmed: [CLAUDE.md](CLAUDE.md) |
 
 ## Make it yours
 
