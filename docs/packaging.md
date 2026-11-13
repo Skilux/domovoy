@@ -44,20 +44,22 @@ Read-only: GET requests only. It prints PASS, FAIL, WARN or SKIP per row, one fi
 
 ## Cost per 100 cases
 
-Prices are from the public pricing pages, read on 13 Nov 2026. Quantities are estimates: no measured call length, token count or Apify compute is recorded in the repo yet.
+Prices are from the public pricing pages, read on 13 Nov 2026. The Apify numbers are measured on one real run. The voice call quantities are estimates: no measured call length or token count is recorded yet.
 
 ### 100 flats researched
 
-| Service | Quantity (estimate) | Unit price (pricing page) | USD |
-| --- | --- | --- | --- |
-| Apify compute | 0.33 compute units: about 1,200 s at 1 GB | 0.20 USD per compute unit, [apify.com/pricing](https://apify.com/pricing) | 0.07 |
-| Apify proxy | 0 GB, the proxy is off in `input_schema.json` | 8 USD per GB | 0.00 |
-| Featherless | 100 extraction calls | Flat 25 USD per month, [featherless.ai/pricing](https://featherless.ai/pricing) | 0.00 extra |
-| Notion | about 300 requests | No API charge found | 0.00 |
-| PostHog | 100 to 200 events | First 1,000,000 per month free, [posthog.com/pricing](https://posthog.com/pricing) | 0.00 |
-| **Total** | | | **about 0.07**, plus the Featherless plan |
+Measured on one full Actor run on 13 Nov 2026 (run `U6wPhiVWKvrc0OsXq`, read from the Apify API): 45 listings fetched from three portals, merged into 39 flats, 39 Featherless extractions with an empty cache, 22 Notion pages created, 504 s at 4 GB of memory, 0.56 compute units, 0.111 USD. The table scales that run from 39 flats to 100.
 
-Assumptions: 105 portal requests at 0.6 s each (one Bezrealitky smoke run took 3.7 s for 6 requests, `apify/research/bezrealitky.md`), 100 extraction calls at 10 s with concurrency 1, 120 s of Notion writes at 3 requests per second. At 4 GB of memory the compute cost is about 0.26 USD. A second run on the same flats costs less, because extraction is cached.
+| Service | Quantity | Unit price (pricing page) | USD | Label |
+| --- | --- | --- | --- | --- |
+| Apify compute and storage | 1.44 compute units, about 1,290 s at 4 GB | 0.20 USD per compute unit, [apify.com/pricing](https://apify.com/pricing) | 0.28 | Measured, scaled from 39 flats |
+| Apify proxy | 0 GB | 8 USD per GB | 0.00 | Measured: the run used no proxy |
+| Featherless | 100 extraction calls | Flat 25 USD per month, [featherless.ai/pricing](https://featherless.ai/pricing) | 0.00 extra | Measured count; no token count is recorded |
+| Notion | about 300 requests | No API charge found | 0.00 | Estimate |
+| PostHog | 100 to 200 events | First 1,000,000 per month free, [posthog.com/pricing](https://posthog.com/pricing) | 0.00 | Estimate |
+| **Total** | | | **about 0.28**, plus the Featherless plan | |
+
+Scaling by flat count is an assumption: one run, one profile. Without extraction the same 45 listings took 38 s and 0.0085 USD (two runs measured), so extraction is about 90% of the compute. A second run on the same flats costs less, because extraction is cached; that was not measured.
 
 ### 100 voice calls
 
@@ -77,7 +79,7 @@ A call cannot exceed 300 s (`phone/agent/agent.json`), so 100 calls cost at most
 | Service | Free per month | Enough for |
 | --- | --- | --- |
 | ElevenLabs | 15 agent minutes | 7 calls of 2 minutes |
-| Apify | 5 USD of usage | About 25 compute units |
+| Apify | 5 USD of usage | About 25 compute units, about 1,800 flats at the measured rate |
 | PostHog | 1,000,000 events, 100,000 AI events | The whole loop |
 | Upstash Redis | 500,000 commands | See the note below |
 | Vercel Hobby | 1,000,000 function invocations | Personal, non-commercial use only |
